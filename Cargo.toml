@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "programs/nullifier_registry",
+    "programs/shielded_pool",
+    "programs/lending_pool",
+]
+resolver = "2"
+
+[workspace.dependencies]
+anchor-lang = "0.30.1"

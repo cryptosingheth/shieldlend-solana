@@ -10,6 +10,7 @@ keys/
 
 # Circuit build artifacts
 build/
+target/
 *.r1cs
 *.sym
 *.wtns
@@ -33,6 +34,9 @@ contracts/lib/
 
 # macOS
 .DS_Store
+
+# Local archives
+*.zip
 
 # Editor
 .vscode/

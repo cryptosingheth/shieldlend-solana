@@ -1,0 +1,18 @@
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+nullifier_registry = "HsaVmvSd88h8w5LVtD9byiTu8N6zZrpu3KxuXH592GRL"
+shielded_pool = "EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7"
+lending_pool = "2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npm run test:anchor"
