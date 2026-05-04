@@ -8,6 +8,8 @@
  */
 
 import { buildPoseidon } from "circomlibjs";
+import artifactManifestJson from "../../../circuits/artifact_manifest.json";
+import circuitConstantsJson from "../../../circuits/constants.json";
 
 export const FIELD_SIZE = BigInt(
   "21888242871839275222246405745257275088548364400416034343698204186575808495617"
@@ -16,22 +18,59 @@ export const FIELD_SIZE = BigInt(
 export const MERKLE_LEVELS = 24;
 export const RING_SIZE = 16;
 
-// Must match the constants in circuits/*.circom. Regenerate when the deployed
-// shielded_pool program id is finalized.
-export const SHIELDED_POOL_PROGRAM_ID_FIELD = 13n;
+type CircuitName = "withdraw" | "collateral" | "repay";
+
+interface ArtifactEntry {
+  path: string;
+  sha256: string | null;
+}
+
+interface CircuitArtifactEntry {
+  wasm: ArtifactEntry;
+  zkey: ArtifactEntry;
+  vkey: ArtifactEntry;
+}
+
+interface CircuitConstantsFile {
+  programs: {
+    shielded_pool: {
+      programId: string;
+      fieldElement: string;
+      source: string;
+      status: string;
+    };
+  };
+}
+
+export const CIRCUIT_ARTIFACTS = artifactManifestJson as Record<
+  CircuitName,
+  CircuitArtifactEntry
+>;
+
+const circuitConstants = circuitConstantsJson as CircuitConstantsFile;
+
+// Must match circuits/constants.circom, generated from circuits/constants.json.
+// Regenerate when the deployed shielded_pool program id is finalized.
+export const SHIELDED_POOL_PROGRAM_ID = circuitConstants.programs.shielded_pool.programId;
+export const SHIELDED_POOL_PROGRAM_ID_FIELD = BigInt(
+  circuitConstants.programs.shielded_pool.fieldElement
+);
 
 export const CIRCUIT_PATHS = {
   withdraw: {
-    wasm: "/circuits/withdraw_ring.wasm",
-    zkey: "/circuits/withdraw_ring.zkey",
+    wasm: CIRCUIT_ARTIFACTS.withdraw.wasm.path,
+    zkey: CIRCUIT_ARTIFACTS.withdraw.zkey.path,
+    vkey: CIRCUIT_ARTIFACTS.withdraw.vkey.path,
   },
   collateral: {
-    wasm: "/circuits/collateral_ring.wasm",
-    zkey: "/circuits/collateral_ring.zkey",
+    wasm: CIRCUIT_ARTIFACTS.collateral.wasm.path,
+    zkey: CIRCUIT_ARTIFACTS.collateral.zkey.path,
+    vkey: CIRCUIT_ARTIFACTS.collateral.vkey.path,
   },
   repay: {
-    wasm: "/circuits/repay_ring.wasm",
-    zkey: "/circuits/repay_ring.zkey",
+    wasm: CIRCUIT_ARTIFACTS.repay.wasm.path,
+    zkey: CIRCUIT_ARTIFACTS.repay.zkey.path,
+    vkey: CIRCUIT_ARTIFACTS.repay.vkey.path,
   },
 } as const;
 
@@ -56,6 +95,17 @@ export interface ZkProofResult {
   publicSignals: string[];
 }
 
+export interface CommitmentRingRequest {
+  commitment: bigint;
+  root: bigint;
+  leafIndex: bigint;
+  ringSize: number;
+}
+
+export interface CommitmentRingProvider {
+  getRing(request: CommitmentRingRequest): Promise<readonly bigint[]>;
+}
+
 export interface RepayPublicContext {
   loanId: bigint;
   outstandingBalance: bigint;
@@ -77,8 +127,8 @@ export async function poseidonHash(inputs: bigint[]): Promise<bigint> {
 }
 
 export async function computeCommitment(
-  nullifier: bigint,
   secret: bigint,
+  nullifier: bigint,
   amountLamports: bigint
 ): Promise<bigint> {
   return poseidonHash([secret, nullifier, amountLamports]);
@@ -107,7 +157,7 @@ export async function computeReceiptBindingHash(
 export async function createNote(amountLamports: bigint): Promise<Note> {
   const nullifier = randomFieldElement();
   const secret = randomFieldElement();
-  const commitment = await computeCommitment(nullifier, secret, amountLamports);
+  const commitment = await computeCommitment(secret, nullifier, amountLamports);
   return { nullifier, secret, amountLamports, commitment };
 }
 
@@ -120,19 +170,70 @@ function validateMerklePath(path: MerklePath): void {
   }
 }
 
-function buildRing(commitment: bigint): { ring: bigint[]; ringIndex: number } {
-  const ring = [commitment];
-  for (let i = 1; i < RING_SIZE; i++) ring.push(BigInt(i + 1));
-  return { ring, ringIndex: 0 };
+export class CommitmentRingUnavailableError extends Error {
+  constructor() {
+    super(
+      "Real commitment ring data is required before proof generation. Wire a CommitmentRingProvider that fetches confirmed on-chain commitments for the requested Merkle root; synthetic decoy rings are not allowed."
+    );
+    this.name = "CommitmentRingUnavailableError";
+  }
+}
+
+function assertUniqueRing(ring: readonly bigint[]): void {
+  const seen = new Set<string>();
+  for (const commitment of ring) {
+    const key = commitment.toString();
+    if (seen.has(key)) {
+      throw new Error("ring commitments must be unique");
+    }
+    seen.add(key);
+  }
+}
+
+export function buildRing(
+  commitments: readonly bigint[],
+  selectedCommitment: bigint
+): { ring: bigint[]; ringIndex: number } {
+  if (commitments.length !== RING_SIZE) {
+    throw new Error(`ring must contain exactly ${RING_SIZE} real commitments`);
+  }
+  assertUniqueRing(commitments);
+
+  const ringIndex = commitments.findIndex((commitment) => commitment === selectedCommitment);
+  if (ringIndex === -1) {
+    throw new Error("selected commitment is missing from the provided ring");
+  }
+
+  return { ring: [...commitments], ringIndex };
+}
+
+async function loadRing(
+  note: Note,
+  merklePath: MerklePath,
+  ringProvider?: CommitmentRingProvider
+): Promise<{ ring: bigint[]; ringIndex: number }> {
+  if (!ringProvider) {
+    throw new CommitmentRingUnavailableError();
+  }
+
+  const commitments = await ringProvider.getRing({
+    commitment: note.commitment,
+    root: merklePath.root,
+    leafIndex: merklePath.leafIndex,
+    ringSize: RING_SIZE,
+  });
+
+  return buildRing(commitments, note.commitment);
 }
 
 export async function generateWithdrawProof(
   note: Note,
-  merklePath: MerklePath
+  merklePath: MerklePath,
+  ringProvider?: CommitmentRingProvider
 ): Promise<ZkProofResult> {
   validateMerklePath(merklePath);
   const snarkjs = await import("snarkjs");
-  const { ring, ringIndex } = buildRing(note.commitment);
+  const { ring, ringIndex } = await loadRing(note, merklePath, ringProvider);
   const nullifierHash = await computeNullifierHash(note.nullifier, merklePath.leafIndex);
 
   const input = {
@@ -159,11 +260,12 @@ export async function generateCollateralProof(
   note: Note,
   merklePath: MerklePath,
   borrowedLamports: bigint,
-  minRatioBps: bigint
+  minRatioBps: bigint,
+  ringProvider?: CommitmentRingProvider
 ): Promise<ZkProofResult> {
   validateMerklePath(merklePath);
   const snarkjs = await import("snarkjs");
-  const { ring, ringIndex } = buildRing(note.commitment);
+  const { ring, ringIndex } = await loadRing(note, merklePath, ringProvider);
   const nullifierHash = await computeNullifierHash(note.nullifier, merklePath.leafIndex);
 
   const input = {

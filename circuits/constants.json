@@ -1,0 +1,13 @@
+{
+  "field": "bn254",
+  "modulus": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+  "encoding": "Decode the Solana base58 program id to 32 bytes, interpret those bytes as a big-endian unsigned integer, then reduce modulo the BN254 scalar field.",
+  "programs": {
+    "shielded_pool": {
+      "programId": "EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7",
+      "fieldElement": "1940380672232244779192225680111840427351951635172679071286159880427552566168",
+      "source": "Anchor.toml [programs.localnet].shielded_pool",
+      "status": "localnet-id-needs-deployment-confirmation"
+    }
+  }
+}

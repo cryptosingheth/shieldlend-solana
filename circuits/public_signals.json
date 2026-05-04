@@ -1,0 +1,53 @@
+{
+  "withdraw": [
+    { "index": 0, "name": "denomination_out", "source": "output" },
+    { "index": 1, "name": "ring[0]", "source": "public input" },
+    { "index": 2, "name": "ring[1]", "source": "public input" },
+    { "index": 3, "name": "ring[2]", "source": "public input" },
+    { "index": 4, "name": "ring[3]", "source": "public input" },
+    { "index": 5, "name": "ring[4]", "source": "public input" },
+    { "index": 6, "name": "ring[5]", "source": "public input" },
+    { "index": 7, "name": "ring[6]", "source": "public input" },
+    { "index": 8, "name": "ring[7]", "source": "public input" },
+    { "index": 9, "name": "ring[8]", "source": "public input" },
+    { "index": 10, "name": "ring[9]", "source": "public input" },
+    { "index": 11, "name": "ring[10]", "source": "public input" },
+    { "index": 12, "name": "ring[11]", "source": "public input" },
+    { "index": 13, "name": "ring[12]", "source": "public input" },
+    { "index": 14, "name": "ring[13]", "source": "public input" },
+    { "index": 15, "name": "ring[14]", "source": "public input" },
+    { "index": 16, "name": "ring[15]", "source": "public input" },
+    { "index": 17, "name": "nullifierHash", "source": "public input" },
+    { "index": 18, "name": "root", "source": "public input" }
+  ],
+  "collateral": [
+    { "index": 0, "name": "ring[0]", "source": "public input" },
+    { "index": 1, "name": "ring[1]", "source": "public input" },
+    { "index": 2, "name": "ring[2]", "source": "public input" },
+    { "index": 3, "name": "ring[3]", "source": "public input" },
+    { "index": 4, "name": "ring[4]", "source": "public input" },
+    { "index": 5, "name": "ring[5]", "source": "public input" },
+    { "index": 6, "name": "ring[6]", "source": "public input" },
+    { "index": 7, "name": "ring[7]", "source": "public input" },
+    { "index": 8, "name": "ring[8]", "source": "public input" },
+    { "index": 9, "name": "ring[9]", "source": "public input" },
+    { "index": 10, "name": "ring[10]", "source": "public input" },
+    { "index": 11, "name": "ring[11]", "source": "public input" },
+    { "index": 12, "name": "ring[12]", "source": "public input" },
+    { "index": 13, "name": "ring[13]", "source": "public input" },
+    { "index": 14, "name": "ring[14]", "source": "public input" },
+    { "index": 15, "name": "ring[15]", "source": "public input" },
+    { "index": 16, "name": "nullifierHash", "source": "public input" },
+    { "index": 17, "name": "root", "source": "public input" },
+    { "index": 18, "name": "borrowed", "source": "public input" },
+    { "index": 19, "name": "minRatioBps", "source": "public input" }
+  ],
+  "repay": [
+    { "index": 0, "name": "nullifierHash", "source": "public input" },
+    { "index": 1, "name": "loanId", "source": "public input" },
+    { "index": 2, "name": "outstandingBalance", "source": "public input" },
+    { "index": 3, "name": "settlementReceiptHash", "source": "public input" },
+    { "index": 4, "name": "repaymentVault", "source": "public input" },
+    { "index": 5, "name": "receiptBindingHash", "source": "public input" }
+  ]
+}
