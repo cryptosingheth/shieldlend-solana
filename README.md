@@ -45,7 +45,7 @@ ShieldLend applies sequential protections across the transaction lifecycle. Each
 
 ## Current Build Status
 
-The project is in the architecture-finalisation phase. All design documentation is complete. On-chain programs and the full frontend have not yet been built.
+**Implementation note (as of 2026-05-03):** The status table below reflects a pre-implementation documentation snapshot. The Anchor workspace, all three programs, `circuits/repay_ring.circom`, Rust unit tests, Anchor test scaffolds, and a frontend MVP shell have since been added in a subsequent pass. `cargo check` passes. ZK artifacts are stale and must be regenerated (`npm run circuits:compile`). All program IDs remain placeholders until `anchor keys list` confirms. No programs have been deployed. Treat all pre-alpha/external-dependency rows as unchanged.
 
 | Component | Status | Notes |
 |---|---|---|
@@ -292,13 +292,29 @@ ShieldLend has three operational modes that degrade gracefully when external dep
 
 ## Repository Structure
 
-### Current (as of April 2026)
+### Current (as of May 2026)
+
+> Anchor workspace, programs, circuits, test scaffolds, and frontend MVP shell were added in the Phase 1–2 implementation pass. `cargo check` passes. No programs are deployed; all program IDs are placeholders. ZK artifacts are stale — run `npm run circuits:compile` before using proofs.
 
 ```
 shieldlend-solana/
+├── Anchor.toml                 # workspace config; cluster = localnet
+├── Cargo.toml                  # root Rust workspace
+├── package.json                # root scripts (check:env, test:programs, build:frontend, circuits:compile)
 ├── circuits/
-│   ├── withdraw_ring.circom    # K=16 ring + depth-24 Merkle (update required before recompile)
-│   └── collateral_ring.circom  # K=16 ring + LTV in-circuit (update required before recompile)
+│   ├── withdraw_ring.circom    # K=16 ring + depth-24 Merkle; nullifier formula updated
+│   ├── collateral_ring.circom  # K=16 ring + LTV in-circuit; nullifier formula updated
+│   └── repay_ring.circom       # scaffolded — ZK artifacts not yet generated
+├── programs/                   # all three programs: fail-closed stubs, not deployed
+│   ├── shielded_pool/src/lib.rs
+│   ├── lending_pool/src/lib.rs
+│   └── nullifier_registry/src/lib.rs
+├── tests/                      # Anchor test scaffolds (not full integration tests)
+│   ├── shielded_pool.ts
+│   ├── lending_pool.ts
+│   └── nullifier_registry.ts
+├── scripts/
+│   └── check-env.mjs           # validates CLI tools + env vars
 ├── docs/
 │   ├── architecture.md
 │   ├── DESIGN_DECISIONS.md
@@ -311,12 +327,20 @@ shieldlend-solana/
 │   └── VISUAL_FLOWS.md
 ├── frontend/
 │   ├── public/circuits/
-│   │   ├── withdraw_ring.wasm  # stale — recompile after circuit update
+│   │   ├── withdraw_ring.wasm  # stale — recompile via npm run circuits:compile
 │   │   └── collateral_ring.wasm
-│   └── src/lib/
-│       ├── circuits.ts         # snarkjs proof generation
-│       └── noteStorage.ts      # AES-256-GCM note vault
-├── .gitignore
+│   └── src/
+│       ├── app/
+│       │   ├── api/integrations/
+│       │   │   ├── encrypt/    # liquidation-reveal + status endpoints (pre-alpha stub)
+│       │   │   └── ika/        # future-sign + status endpoints (pre-alpha stub)
+│       │   └── page.tsx        # wallet connect + deposit flow shell
+│       └── lib/
+│           ├── circuits.ts         # snarkjs Groth16 proof generation
+│           ├── noteStorage.ts      # AES-256-GCM note vault
+│           ├── solanaClient.ts     # wallet / RPC / program ID boundaries
+│           ├── protocolAdapters.ts # IKA / Encrypt / MagicBlock adapter stubs
+│           └── prealphaIntegrations.ts  # pre-alpha status + fallback logic
 └── README.md
 ```
 
