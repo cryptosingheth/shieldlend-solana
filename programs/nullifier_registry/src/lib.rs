@@ -8,7 +8,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("HsaVmvSd88h8w5LVtD9byiTu8N6zZrpu3KxuXH592GRL");
+declare_id!("E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF");
 
 pub const MAX_AUTHORIZED_PROGRAMS: usize = 8;
 

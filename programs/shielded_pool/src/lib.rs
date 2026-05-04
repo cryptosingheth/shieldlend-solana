@@ -12,7 +12,7 @@ use nullifier_registry::{
     self, cpi::accounts as registry_accounts, program::NullifierRegistry, RegistryConfig,
 };
 
-declare_id!("EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7");
+declare_id!("9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE");
 
 pub const ROOT_HISTORY_SIZE: usize = 30;
 pub const MAX_EPOCH_COMMITMENTS: usize = 128;
