@@ -1,0 +1,17 @@
+{
+  "withdraw": {
+    "wasm": { "path": "/circuits/withdraw_ring.wasm", "sha256": null },
+    "zkey": { "path": "/circuits/withdraw_ring.zkey", "sha256": null },
+    "vkey": { "path": "/circuits/withdraw_ring_vkey.json", "sha256": null }
+  },
+  "collateral": {
+    "wasm": { "path": "/circuits/collateral_ring.wasm", "sha256": null },
+    "zkey": { "path": "/circuits/collateral_ring.zkey", "sha256": null },
+    "vkey": { "path": "/circuits/collateral_ring_vkey.json", "sha256": null }
+  },
+  "repay": {
+    "wasm": { "path": "/circuits/repay_ring.wasm", "sha256": null },
+    "zkey": { "path": "/circuits/repay_ring.zkey", "sha256": null },
+    "vkey": { "path": "/circuits/repay_ring_vkey.json", "sha256": null }
+  }
+}

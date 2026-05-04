@@ -1,6 +1,7 @@
 pragma circom 2.1.6;
 
 include "circomlib/circuits/poseidon.circom";
+include "./constants.circom";
 
 template RepayRing(shieldedPoolProgramId) {
     // Private inputs
@@ -40,8 +41,8 @@ template RepayRing(shieldedPoolProgramId) {
 // [3] settlementReceiptHash
 // [4] repaymentVault
 // [5] receiptBindingHash
-// Template arg is the ShieldLend Solana shielded_pool domain separator.
-// Regenerate this value when the deployed shielded_pool program id is finalized.
+// Template arg is the ShieldLend Solana shielded_pool domain separator
+// generated from circuits/constants.json by scripts/derive-program-id-field.mjs.
 component main {public [
     nullifierHash,
     loanId,
@@ -49,4 +50,4 @@ component main {public [
     settlementReceiptHash,
     repaymentVault,
     receiptBindingHash
-]} = RepayRing(13);
+]} = RepayRing(ShieldedPoolProgramIdField());

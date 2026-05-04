@@ -3,6 +3,8 @@ pragma circom 2.1.6;
 include "circomlib/circuits/poseidon.circom";
 include "circomlib/circuits/mux1.circom";
 include "circomlib/circuits/comparators.circom";
+include "circomlib/circuits/bitify.circom";
+include "./constants.circom";
 
 template MerkleTreeChecker(levels) {
     signal input leaf;
@@ -52,7 +54,9 @@ template CollateralRing(levels, ringSize, shieldedPoolProgramId) {
     signal input borrowed;
     signal input minRatioBps;
 
-    component ringIndexRange = LessThan(4);
+    // ringSize is 16, so the comparison uses 5 bits. LessThan(4) puts the
+    // upper bound exactly at 2^4 and relies on a boundary edge case.
+    component ringIndexRange = LessThan(5);
     ringIndexRange.in[0] <== ring_index;
     ringIndexRange.in[1] <== ringSize;
     ringIndexRange.out === 1;
@@ -87,6 +91,20 @@ template CollateralRing(levels, ringSize, shieldedPoolProgramId) {
 
     runningSum[ringSize] === commitment;
 
+    // Public ring entries must be unique; repeated public commitments shrink
+    // the effective anonymity set even when the selected commitment is valid.
+    component ringUniqueChecks[ringSize * (ringSize - 1) / 2];
+    var pair = 0;
+    for (var a = 0; a < ringSize; a++) {
+        for (var b = a + 1; b < ringSize; b++) {
+            ringUniqueChecks[pair] = IsEqual();
+            ringUniqueChecks[pair].in[0] <== ring[a];
+            ringUniqueChecks[pair].in[1] <== ring[b];
+            ringUniqueChecks[pair].out === 0;
+            pair++;
+        }
+    }
+
     component treeChecker = MerkleTreeChecker(levels);
     treeChecker.leaf <== commitment;
     treeChecker.root <== root;
@@ -94,6 +112,19 @@ template CollateralRing(levels, ringSize, shieldedPoolProgramId) {
         treeChecker.pathElements[j] <== pathElements[j];
         treeChecker.pathIndices[j] <== pathIndices[j];
     }
+
+    // Solana lamports fit in u64. minRatioBps is capped to 24 bits
+    // (16,777,215 bps), keeping denomination * minRatioBps below 2^88.
+    // That is far below the BN254 scalar field and the 96-bit comparator
+    // bound, so the LTV multiplication cannot wrap modulo the field.
+    component denominationBits = Num2Bits(64);
+    denominationBits.in <== denomination;
+
+    component borrowedBits = Num2Bits(64);
+    borrowedBits.in <== borrowed;
+
+    component minRatioBpsBits = Num2Bits(24);
+    minRatioBpsBits.in <== minRatioBps;
 
     signal lhs;
     signal rhs;
@@ -112,6 +143,6 @@ template CollateralRing(levels, ringSize, shieldedPoolProgramId) {
 // [17] root
 // [18] borrowed
 // [19] minRatioBps
-// Third template arg is the ShieldLend Solana shielded_pool domain separator.
-// Regenerate this value when the deployed shielded_pool program id is finalized.
-component main {public [ring, nullifierHash, root, borrowed, minRatioBps]} = CollateralRing(24, 16, 13);
+// Third template arg is the ShieldLend Solana shielded_pool domain separator
+// generated from circuits/constants.json by scripts/derive-program-id-field.mjs.
+component main {public [ring, nullifierHash, root, borrowed, minRatioBps]} = CollateralRing(24, 16, ShieldedPoolProgramIdField());
