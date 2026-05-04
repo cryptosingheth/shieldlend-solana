@@ -1043,6 +1043,7 @@ name = "lending_pool"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "nullifier_registry",
 ]
 
 [[package]]
@@ -1537,6 +1538,7 @@ name = "shielded_pool"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "nullifier_registry",
 ]
 
 [[package]]

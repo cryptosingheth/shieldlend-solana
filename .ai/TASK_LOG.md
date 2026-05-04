@@ -87,3 +87,22 @@ Append-only. Most recent entry at the bottom.
 - Defined Phase 0 static fixes (no CLI/deployment needed) as immediate next action
 - Created: `audit-reports/FINAL_AUDIT_REPORT.md`
 - No product code modified.
+
+---
+
+## 2026-05-04 — Backend Safety Remediation
+
+- Patched backend-only Anchor invariants on `fix/backend-critical`; no frontend, circuit, deployment, or ZK artifact files changed.
+- Fixed `nullifier_registry::spend` so only `Locked -> Spent` is valid; added unit tests for Active rejection, lock/spend, and unlock requirements.
+- Fixed `shielded_pool::is_known_root` to reject `[0;32]` and all roots before any deposited index exists; added zero-root/empty-tree tests.
+- Added nullifier-registry CPI account surfaces and registry-writer PDAs to `Withdraw`, `Borrow`, and `Repay`.
+- Scaffolded fail-closed CPI paths:
+  - `withdraw`: `register -> lock -> spend` after Groth16 verifier gate.
+  - `borrow`: `lock` after collateral verifier gate.
+  - `repay`: `unlock` after repay proof and private-payment verifier gates.
+- Constrained `shielded_pool::disburse` to the lending-pool PDA signer.
+- Bound `lending_pool::verify_liquidation_reveal` to both loan PDA and ciphertext handle.
+- Bound `repay.outstanding_balance` to on-chain accrued amount and reset liquidation state after successful repay.
+- Added borrow financial-parameter validation against amount, bucket, max configured interest rate, repayment vault, nullifier hash, and proof signal hash.
+- Created `audit-reports/BACKEND_FIX_NOTES.md`.
+- Verification: `cargo test --workspace` passed (21 tests); `anchor build` blocked because Anchor CLI was not installed/on PATH.

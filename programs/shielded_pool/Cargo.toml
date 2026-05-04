@@ -15,3 +15,4 @@ default = []
 
 [dependencies]
 anchor-lang = { workspace = true }
+nullifier_registry = { path = "../nullifier_registry", features = ["cpi"] }
