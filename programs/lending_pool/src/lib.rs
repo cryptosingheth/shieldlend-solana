@@ -7,18 +7,27 @@
 // ============================================================
 
 use anchor_lang::prelude::*;
+use nullifier_registry::{
+    self, cpi::accounts as registry_accounts, program::NullifierRegistry, NullifierAccount,
+    RegistryConfig,
+};
 
 declare_id!("2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT");
 
 pub const KINK_COUNT: usize = 11;
 pub const BPS_DENOMINATOR: u128 = 10_000;
 pub const SLOTS_PER_YEAR: u128 = 78_840_000;
+pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
 
 #[program]
 pub mod lending_pool {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, utilization_kinks: [u16; KINK_COUNT], rate_at_kink: [u16; KINK_COUNT]) -> Result<()> {
+    pub fn initialize(
+        ctx: Context<Initialize>,
+        utilization_kinks: [u16; KINK_COUNT],
+        rate_at_kink: [u16; KINK_COUNT],
+    ) -> Result<()> {
         validate_rate_model(&utilization_kinks, &rate_at_kink)?;
         let model = &mut ctx.accounts.interest_model;
         model.authority = ctx.accounts.authority.key();
@@ -30,9 +39,9 @@ pub mod lending_pool {
     }
 
     pub fn borrow(ctx: Context<Borrow>, args: BorrowArgs) -> Result<()> {
-        require!(args.borrow_amount > 0, LendingError::InvalidAmount);
-        require!(args.borrow_bucket > 0, LendingError::InvalidBorrowBucket);
+        validate_borrow_args(&args, &ctx.accounts.interest_model)?;
         verify_collateral_proof(&args)?;
+        lock_collateral_nullifier(&ctx)?;
 
         let clock = Clock::get()?;
         let loan = &mut ctx.accounts.loan;
@@ -59,37 +68,63 @@ pub mod lending_pool {
     }
 
     pub fn repay(ctx: Context<Repay>, args: RepayArgs) -> Result<()> {
-        let loan = &mut ctx.accounts.loan;
-        require!(loan.status == LoanStatus::Active, LendingError::LoanNotActive);
+        let repayment_vault = {
+            let loan = &ctx.accounts.loan;
+            require!(
+                loan.status == LoanStatus::Active,
+                LendingError::LoanNotActive
+            );
 
-        let outstanding = accrue_outstanding_balance(loan, Clock::get()?.slot)?;
-        require!(args.outstanding_balance >= outstanding, LendingError::InsufficientRepayment);
-        require!(
-            args.nullifier_hash == loan.collateral_nullifier_hash,
-            LendingError::NullifierMismatch
-        );
+            let outstanding = accrue_outstanding_balance(loan, Clock::get()?.slot)?;
+            require!(
+                args.outstanding_balance == outstanding,
+                LendingError::OutstandingBalanceMismatch
+            );
+            require!(
+                args.nullifier_hash == loan.collateral_nullifier_hash,
+                LendingError::NullifierMismatch
+            );
+            loan.repayment_vault
+        };
+
         verify_repay_proof(&args)?;
-        verify_private_payment_receipt(&args, loan.repayment_vault)?;
+        verify_private_payment_receipt(&args, repayment_vault)?;
+        unlock_collateral_nullifier(&ctx)?;
 
+        let loan = &mut ctx.accounts.loan;
         loan.latest_repayment_receipt_hash = args.settlement_receipt_hash;
+        reset_liquidation_state_after_repay(loan);
         loan.status = LoanStatus::Repaid;
         Ok(())
     }
 
-    pub fn request_liquidation_reveal(ctx: Context<RequestLiquidationReveal>, ciphertext_handle: [u8; 32]) -> Result<()> {
+    pub fn request_liquidation_reveal(
+        ctx: Context<RequestLiquidationReveal>,
+        ciphertext_handle: [u8; 32],
+    ) -> Result<()> {
         let loan = &mut ctx.accounts.loan;
-        require!(loan.status == LoanStatus::Active, LendingError::LoanNotActive);
-        require!(ciphertext_handle != [0; 32], LendingError::InvalidCiphertextHandle);
+        require!(
+            loan.status == LoanStatus::Active,
+            LendingError::LoanNotActive
+        );
+        require!(
+            ciphertext_handle != [0; 32],
+            LendingError::InvalidCiphertextHandle
+        );
         loan.liq_ciphertext_handle = ciphertext_handle;
         loan.pending_liquidation_reveal = true;
         Ok(())
     }
 
-    pub fn verify_liquidation_reveal(ctx: Context<VerifyLiquidationReveal>, args: LiquidationRevealArgs) -> Result<()> {
+    pub fn verify_liquidation_reveal(
+        ctx: Context<VerifyLiquidationReveal>,
+        args: LiquidationRevealArgs,
+    ) -> Result<()> {
         require!(
             ctx.accounts.loan.pending_liquidation_reveal,
             LendingError::LiquidationRevealNotPending
         );
+        validate_liquidation_reveal_args(ctx.accounts.loan.key(), &ctx.accounts.loan, &args)?;
         verify_encrypt_reveal(&args)?;
         let loan = &mut ctx.accounts.loan;
         loan.confirmed_liquidatable = args.decrypted_liquidatable;
@@ -108,18 +143,111 @@ pub mod lending_pool {
 
     pub fn liquidate(ctx: Context<Liquidate>) -> Result<()> {
         let loan = &mut ctx.accounts.loan;
-        require!(loan.status == LoanStatus::Active, LendingError::LoanNotActive);
+        require!(
+            loan.status == LoanStatus::Active,
+            LendingError::LoanNotActive
+        );
         require!(loan.future_sign_authorized, LendingError::FutureSignMissing);
         require!(loan.confirmed_liquidatable, LendingError::NotLiquidatable);
-        require!(loan.consecutive_breach_count >= 2, LendingError::BreachNotConfirmed);
+        require!(
+            loan.consecutive_breach_count >= 2,
+            LendingError::BreachNotConfirmed
+        );
         loan.status = LoanStatus::Liquidated;
         Ok(())
     }
 }
 
+fn validate_borrow_args(args: &BorrowArgs, interest_model: &InterestRateModel) -> Result<()> {
+    require!(args.borrow_amount > 0, LendingError::InvalidAmount);
+    require!(
+        args.borrow_bucket > 0 && args.borrow_bucket <= BPS_DENOMINATOR as u16,
+        LendingError::InvalidBorrowBucket
+    );
+    require!(
+        args.interest_rate_bps <= u64::from(interest_model.rate_at_kink[KINK_COUNT - 1]),
+        LendingError::InvalidInterestRate
+    );
+    require!(
+        args.repayment_vault != Pubkey::default(),
+        LendingError::InvalidRepaymentVault
+    );
+    require!(
+        args.collateral_nullifier_hash != [0; 32],
+        LendingError::InvalidNullifierHash
+    );
+    require!(
+        args.collateral_proof_public_signals_hash != [0; 32],
+        LendingError::InvalidProofSignalHash
+    );
+    Ok(())
+}
+
+fn lock_collateral_nullifier(ctx: &Context<Borrow>) -> Result<()> {
+    let writer_bump = ctx.bumps.registry_writer;
+    let signer_seeds: &[&[&[u8]]] = &[&[REGISTRY_WRITER_SEED, &[writer_bump]]];
+
+    nullifier_registry::cpi::lock(CpiContext::new_with_signer(
+        ctx.accounts.nullifier_registry_program.to_account_info(),
+        registry_accounts::MutateNullifier {
+            writer: ctx.accounts.registry_writer.to_account_info(),
+            config: ctx.accounts.registry_config.to_account_info(),
+            nullifier: ctx.accounts.nullifier.to_account_info(),
+        },
+        signer_seeds,
+    ))
+}
+
+fn unlock_collateral_nullifier(ctx: &Context<Repay>) -> Result<()> {
+    let writer_bump = ctx.bumps.registry_writer;
+    let signer_seeds: &[&[&[u8]]] = &[&[REGISTRY_WRITER_SEED, &[writer_bump]]];
+
+    nullifier_registry::cpi::unlock(CpiContext::new_with_signer(
+        ctx.accounts.nullifier_registry_program.to_account_info(),
+        registry_accounts::MutateNullifier {
+            writer: ctx.accounts.registry_writer.to_account_info(),
+            config: ctx.accounts.registry_config.to_account_info(),
+            nullifier: ctx.accounts.nullifier.to_account_info(),
+        },
+        signer_seeds,
+    ))
+}
+
+fn reset_liquidation_state_after_repay(loan: &mut LoanAccount) {
+    loan.pending_liquidation_reveal = false;
+    loan.confirmed_liquidatable = false;
+    loan.consecutive_breach_count = 0;
+    loan.breach_first_slot = 0;
+    loan.liq_ciphertext_handle = [0; 32];
+    loan.is_liquidatable_handle = [0; 32];
+}
+
+fn validate_liquidation_reveal_args(
+    expected_loan_pda: Pubkey,
+    loan: &LoanAccount,
+    args: &LiquidationRevealArgs,
+) -> Result<()> {
+    require!(
+        args.loan_pda == expected_loan_pda,
+        LendingError::LoanPdaMismatch
+    );
+    require!(
+        args.ciphertext_handle == loan.liq_ciphertext_handle,
+        LendingError::CiphertextHandleMismatch
+    );
+    require!(
+        args.proof_hash != [0; 32],
+        LendingError::InvalidProofSignalHash
+    );
+    Ok(())
+}
+
 fn validate_rate_model(kinks: &[u16; KINK_COUNT], rates: &[u16; KINK_COUNT]) -> Result<()> {
     require!(kinks[0] == 0, LendingError::InvalidRateModel);
-    require!(kinks[KINK_COUNT - 1] == 10_000, LendingError::InvalidRateModel);
+    require!(
+        kinks[KINK_COUNT - 1] == 10_000,
+        LendingError::InvalidRateModel
+    );
     for i in 1..KINK_COUNT {
         require!(kinks[i] > kinks[i - 1], LendingError::InvalidRateModel);
         require!(rates[i] >= rates[i - 1], LendingError::InvalidRateModel);
@@ -189,10 +317,28 @@ pub struct Borrow<'info> {
     pub loan: Account<'info, LoanAccount>,
     #[account(seeds = [b"interest-rate-model"], bump = interest_model.bump)]
     pub interest_model: Account<'info, InterestRateModel>,
+    #[account(
+        mut,
+        seeds = [b"nullifier", args.collateral_nullifier_hash.as_ref()],
+        bump = nullifier.bump,
+        seeds::program = nullifier_registry::ID
+    )]
+    pub nullifier: Account<'info, NullifierAccount>,
+    #[account(
+        seeds = [b"registry-config"],
+        bump = registry_config.bump,
+        seeds::program = nullifier_registry::ID
+    )]
+    pub registry_config: Account<'info, RegistryConfig>,
+    /// CHECK: LendingPool registry-writer PDA; signed only through invoke_signed.
+    #[account(seeds = [REGISTRY_WRITER_SEED], bump)]
+    pub registry_writer: UncheckedAccount<'info>,
+    pub nullifier_registry_program: Program<'info, NullifierRegistry>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
+#[instruction(args: RepayArgs)]
 pub struct Repay<'info> {
     pub relay: Signer<'info>,
     #[account(
@@ -201,6 +347,23 @@ pub struct Repay<'info> {
         bump = loan.bump
     )]
     pub loan: Account<'info, LoanAccount>,
+    #[account(
+        mut,
+        seeds = [b"nullifier", args.nullifier_hash.as_ref()],
+        bump = nullifier.bump,
+        seeds::program = nullifier_registry::ID
+    )]
+    pub nullifier: Account<'info, NullifierAccount>,
+    #[account(
+        seeds = [b"registry-config"],
+        bump = registry_config.bump,
+        seeds::program = nullifier_registry::ID
+    )]
+    pub registry_config: Account<'info, RegistryConfig>,
+    /// CHECK: LendingPool registry-writer PDA; signed only through invoke_signed.
+    #[account(seeds = [REGISTRY_WRITER_SEED], bump)]
+    pub registry_writer: UncheckedAccount<'info>,
+    pub nullifier_registry_program: Program<'info, NullifierRegistry>,
 }
 
 #[derive(Accounts)]
@@ -273,7 +436,8 @@ pub struct LoanAccount {
 }
 
 impl LoanAccount {
-    pub const SPACE: usize = 8 + 32 + 1 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 1 + 1 + 1 + 8 + 1 + 8 + 8 + 32 + 32 + 1;
+    pub const SPACE: usize =
+        8 + 32 + 1 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 1 + 1 + 1 + 8 + 1 + 8 + 8 + 32 + 32 + 1;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
@@ -320,6 +484,14 @@ pub enum LendingError {
     InvalidAmount,
     #[msg("Borrow bucket is invalid")]
     InvalidBorrowBucket,
+    #[msg("Interest rate is outside the configured model bounds")]
+    InvalidInterestRate,
+    #[msg("Repayment vault is invalid")]
+    InvalidRepaymentVault,
+    #[msg("Nullifier hash is invalid")]
+    InvalidNullifierHash,
+    #[msg("Proof public signal hash is invalid")]
+    InvalidProofSignalHash,
     #[msg("Interest rate model is invalid")]
     InvalidRateModel,
     #[msg("Loan is not active")]
@@ -328,6 +500,8 @@ pub enum LendingError {
     NullifierMismatch,
     #[msg("Repayment is less than accrued outstanding balance")]
     InsufficientRepayment,
+    #[msg("Repayment outstanding balance does not match on-chain accrual")]
+    OutstandingBalanceMismatch,
     #[msg("Groth16 verifier is not wired yet")]
     Groth16VerifierNotWired,
     #[msg("MagicBlock private payment verifier is not wired yet")]
@@ -336,6 +510,10 @@ pub enum LendingError {
     EncryptVerifierNotWired,
     #[msg("Ciphertext handle is invalid")]
     InvalidCiphertextHandle,
+    #[msg("Ciphertext handle does not match the loan reveal request")]
+    CiphertextHandleMismatch,
+    #[msg("Liquidation reveal loan PDA does not match this loan account")]
+    LoanPdaMismatch,
     #[msg("No liquidation reveal is pending")]
     LiquidationRevealNotPending,
     #[msg("IKA FutureSign authorization is missing")]
@@ -353,11 +531,25 @@ mod tests {
     use super::*;
 
     fn valid_kinks() -> [u16; KINK_COUNT] {
-        [0, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000]
+        [
+            0, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000,
+        ]
     }
 
     fn valid_rates() -> [u16; KINK_COUNT] {
-        [0, 150, 300, 450, 600, 800, 1_100, 1_600, 2_400, 4_000, 8_000]
+        [
+            0, 150, 300, 450, 600, 800, 1_100, 1_600, 2_400, 4_000, 8_000,
+        ]
+    }
+
+    fn interest_model() -> InterestRateModel {
+        InterestRateModel {
+            authority: Pubkey::new_unique(),
+            utilization_kinks: valid_kinks(),
+            rate_at_kink: valid_rates(),
+            last_updated: 0,
+            bump: 255,
+        }
     }
 
     fn loan() -> LoanAccount {
@@ -400,8 +592,97 @@ mod tests {
     #[test]
     fn interest_accrual_is_slot_based_and_never_reduces_principal() {
         let loan = loan();
-        let outstanding = accrue_outstanding_balance(&loan, loan.last_accrual_slot + 1_000_000).unwrap();
+        let outstanding =
+            accrue_outstanding_balance(&loan, loan.last_accrual_slot + 1_000_000).unwrap();
         assert!(outstanding > loan.borrow_amount);
+    }
+
+    #[test]
+    fn interest_accrual_same_slot_returns_principal() {
+        let loan = loan();
+        let outstanding = accrue_outstanding_balance(&loan, loan.last_accrual_slot).unwrap();
+
+        assert_eq!(outstanding, loan.borrow_amount);
+    }
+
+    #[test]
+    fn borrow_args_reject_out_of_bounds_financial_inputs() {
+        let model = interest_model();
+        let mut args = BorrowArgs {
+            collateral_nullifier_hash: [3; 32],
+            collateral_denomination_class: 1,
+            loan_id: 42,
+            borrow_amount: 500_000_000,
+            borrow_bucket: 5_000,
+            interest_rate_bps: 1_000,
+            repayment_vault: Pubkey::new_unique(),
+            future_sign_authorized: true,
+            collateral_proof_public_signals_hash: [4; 32],
+        };
+
+        assert!(validate_borrow_args(&args, &model).is_ok());
+
+        args.borrow_amount = 0;
+        assert!(validate_borrow_args(&args, &model).is_err());
+        args.borrow_amount = 500_000_000;
+
+        args.borrow_bucket = 10_001;
+        assert!(validate_borrow_args(&args, &model).is_err());
+        args.borrow_bucket = 5_000;
+
+        args.interest_rate_bps = u64::from(model.rate_at_kink[KINK_COUNT - 1]) + 1;
+        assert!(validate_borrow_args(&args, &model).is_err());
+    }
+
+    #[test]
+    fn liquidation_reveal_rejects_ciphertext_handle_mismatch() {
+        let mut loan = loan();
+        loan.pending_liquidation_reveal = true;
+        loan.liq_ciphertext_handle = [8; 32];
+        let loan_pda = Pubkey::new_unique();
+
+        let args = LiquidationRevealArgs {
+            ciphertext_handle: [9; 32],
+            loan_pda,
+            decrypted_liquidatable: true,
+            proof_hash: [10; 32],
+        };
+
+        assert!(validate_liquidation_reveal_args(loan_pda, &loan, &args).is_err());
+    }
+
+    #[test]
+    fn liquidation_reveal_rejects_wrong_loan_pda() {
+        let mut loan = loan();
+        loan.liq_ciphertext_handle = [8; 32];
+        let args = LiquidationRevealArgs {
+            ciphertext_handle: [8; 32],
+            loan_pda: Pubkey::new_unique(),
+            decrypted_liquidatable: true,
+            proof_hash: [10; 32],
+        };
+
+        assert!(validate_liquidation_reveal_args(Pubkey::new_unique(), &loan, &args).is_err());
+    }
+
+    #[test]
+    fn repay_resets_liquidation_state() {
+        let mut loan = loan();
+        loan.pending_liquidation_reveal = true;
+        loan.confirmed_liquidatable = true;
+        loan.consecutive_breach_count = 3;
+        loan.breach_first_slot = 99;
+        loan.liq_ciphertext_handle = [8; 32];
+        loan.is_liquidatable_handle = [7; 32];
+
+        reset_liquidation_state_after_repay(&mut loan);
+
+        assert!(!loan.pending_liquidation_reveal);
+        assert!(!loan.confirmed_liquidatable);
+        assert_eq!(loan.consecutive_breach_count, 0);
+        assert_eq!(loan.breach_first_slot, 0);
+        assert_eq!(loan.liq_ciphertext_handle, [0; 32]);
+        assert_eq!(loan.is_liquidatable_handle, [0; 32]);
     }
 
     #[test]

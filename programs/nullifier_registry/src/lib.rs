@@ -57,32 +57,17 @@ pub mod nullifier_registry {
 
     pub fn lock(ctx: Context<MutateNullifier>) -> Result<()> {
         assert_authorized(&ctx.accounts.config, &ctx.accounts.writer.key())?;
-        require!(
-            ctx.accounts.nullifier.status == NullifierStatus::Active,
-            RegistryError::InvalidStatusTransition
-        );
-        ctx.accounts.nullifier.status = NullifierStatus::Locked;
-        Ok(())
+        lock_nullifier(&mut ctx.accounts.nullifier)
     }
 
     pub fn unlock(ctx: Context<MutateNullifier>) -> Result<()> {
         assert_authorized(&ctx.accounts.config, &ctx.accounts.writer.key())?;
-        require!(
-            ctx.accounts.nullifier.status == NullifierStatus::Locked,
-            RegistryError::InvalidStatusTransition
-        );
-        ctx.accounts.nullifier.status = NullifierStatus::Active;
-        Ok(())
+        unlock_nullifier(&mut ctx.accounts.nullifier)
     }
 
     pub fn spend(ctx: Context<MutateNullifier>) -> Result<()> {
         assert_authorized(&ctx.accounts.config, &ctx.accounts.writer.key())?;
-        require!(
-            ctx.accounts.nullifier.status != NullifierStatus::Spent,
-            RegistryError::AlreadySpent
-        );
-        ctx.accounts.nullifier.status = NullifierStatus::Spent;
-        Ok(())
+        spend_nullifier(&mut ctx.accounts.nullifier)
     }
 }
 
@@ -91,6 +76,33 @@ fn assert_authorized(config: &RegistryConfig, writer: &Pubkey) -> Result<()> {
         config.authorized_programs.iter().any(|item| item == writer),
         RegistryError::UnauthorizedWriter
     );
+    Ok(())
+}
+
+fn lock_nullifier(nullifier: &mut NullifierAccount) -> Result<()> {
+    require!(
+        nullifier.status == NullifierStatus::Active,
+        RegistryError::InvalidStatusTransition
+    );
+    nullifier.status = NullifierStatus::Locked;
+    Ok(())
+}
+
+fn unlock_nullifier(nullifier: &mut NullifierAccount) -> Result<()> {
+    require!(
+        nullifier.status == NullifierStatus::Locked,
+        RegistryError::InvalidStatusTransition
+    );
+    nullifier.status = NullifierStatus::Active;
+    Ok(())
+}
+
+fn spend_nullifier(nullifier: &mut NullifierAccount) -> Result<()> {
+    require!(
+        nullifier.status == NullifierStatus::Locked,
+        RegistryError::InvalidStatusTransition
+    );
+    nullifier.status = NullifierStatus::Spent;
     Ok(())
 }
 
@@ -212,6 +224,16 @@ mod tests {
         }
     }
 
+    fn nullifier(status: NullifierStatus) -> NullifierAccount {
+        NullifierAccount {
+            nullifier_hash: [4; 32],
+            status,
+            leaf_index: 7,
+            registered_at_slot: 11,
+            bump: 255,
+        }
+    }
+
     #[test]
     fn authorized_program_check_accepts_only_configured_writers() {
         let writer = Pubkey::new_unique();
@@ -226,10 +248,48 @@ mod tests {
         let authority = Pubkey::new_unique();
         let max_config = RegistryConfig {
             authority,
-            authorized_programs: (0..MAX_AUTHORIZED_PROGRAMS).map(|_| Pubkey::new_unique()).collect(),
+            authorized_programs: (0..MAX_AUTHORIZED_PROGRAMS)
+                .map(|_| Pubkey::new_unique())
+                .collect(),
             bump: 255,
         };
-        assert_eq!(max_config.authorized_programs.len(), MAX_AUTHORIZED_PROGRAMS);
-        assert!(max_config.authorized_programs.iter().all(|program| *program != Pubkey::default()));
+        assert_eq!(
+            max_config.authorized_programs.len(),
+            MAX_AUTHORIZED_PROGRAMS
+        );
+        assert!(max_config
+            .authorized_programs
+            .iter()
+            .all(|program| *program != Pubkey::default()));
+    }
+
+    #[test]
+    fn spend_rejects_active_nullifier() {
+        let mut record = nullifier(NullifierStatus::Active);
+
+        assert!(spend_nullifier(&mut record).is_err());
+        assert!(record.status == NullifierStatus::Active);
+    }
+
+    #[test]
+    fn lock_then_spend_is_valid_path() {
+        let mut record = nullifier(NullifierStatus::Active);
+
+        lock_nullifier(&mut record).unwrap();
+        assert!(record.status == NullifierStatus::Locked);
+
+        spend_nullifier(&mut record).unwrap();
+        assert!(record.status == NullifierStatus::Spent);
+    }
+
+    #[test]
+    fn unlock_requires_locked_state() {
+        let mut active = nullifier(NullifierStatus::Active);
+        assert!(unlock_nullifier(&mut active).is_err());
+        assert!(active.status == NullifierStatus::Active);
+
+        let mut locked = nullifier(NullifierStatus::Locked);
+        unlock_nullifier(&mut locked).unwrap();
+        assert!(locked.status == NullifierStatus::Active);
     }
 }

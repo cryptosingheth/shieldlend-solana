@@ -8,12 +8,19 @@
 
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
+use nullifier_registry::{
+    self, cpi::accounts as registry_accounts, program::NullifierRegistry, RegistryConfig,
+};
 
 declare_id!("EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7");
 
 pub const ROOT_HISTORY_SIZE: usize = 30;
 pub const MAX_EPOCH_COMMITMENTS: usize = 128;
 pub const MAX_EXIT_QUEUE: usize = 128;
+pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
+pub const LENDING_POOL_AUTHORITY_SEED: &[u8] = b"lending-pool-authority";
+pub const LENDING_POOL_PROGRAM_ID: Pubkey =
+    anchor_lang::pubkey!("2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT");
 
 #[program]
 pub mod shielded_pool {
@@ -94,9 +101,13 @@ pub mod shielded_pool {
     }
 
     pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<()> {
-        require!(ctx.accounts.state.is_known_root(args.root), PoolError::UnknownRoot);
+        require!(
+            ctx.accounts.state.is_known_root(args.root),
+            PoolError::UnknownRoot
+        );
         require_valid_denomination(args.denomination_lamports)?;
         verify_withdraw_proof(&args)?;
+        register_and_spend_withdraw_nullifier(&ctx, &args)?;
         require!(
             ctx.accounts.state.exit_queue.len() < MAX_EXIT_QUEUE,
             PoolError::ExitQueueFull
@@ -111,7 +122,12 @@ pub mod shielded_pool {
         Ok(())
     }
 
-    pub fn disburse(ctx: Context<Disburse>, amount_lamports: u64, stealth_address: Pubkey, relay_nonce: u64) -> Result<()> {
+    pub fn disburse(
+        ctx: Context<Disburse>,
+        amount_lamports: u64,
+        stealth_address: Pubkey,
+        relay_nonce: u64,
+    ) -> Result<()> {
         require!(amount_lamports > 0, PoolError::InvalidAmount);
         require!(
             ctx.accounts.state.exit_queue.len() < MAX_EXIT_QUEUE,
@@ -134,7 +150,10 @@ pub mod shielded_pool {
         );
         // SOL transfer fan-out is intentionally left for the PER adapter. A base
         // Solana loop over arbitrary exits would create CU and privacy problems.
-        require!(ctx.accounts.state.exit_queue.is_empty(), PoolError::PerAdapterNotWired);
+        require!(
+            ctx.accounts.state.exit_queue.is_empty(),
+            PoolError::PerAdapterNotWired
+        );
         Ok(())
     }
 }
@@ -149,6 +168,53 @@ fn require_valid_denomination(amount: u64) -> Result<()> {
 
 fn verify_withdraw_proof(_args: &WithdrawArgs) -> Result<()> {
     err!(PoolError::Groth16VerifierNotWired)
+}
+
+fn register_and_spend_withdraw_nullifier(
+    ctx: &Context<Withdraw>,
+    args: &WithdrawArgs,
+) -> Result<()> {
+    let writer_bump = ctx.bumps.registry_writer;
+    let signer_seeds: &[&[&[u8]]] = &[&[REGISTRY_WRITER_SEED, &[writer_bump]]];
+    let registry_program = ctx.accounts.nullifier_registry_program.to_account_info();
+
+    nullifier_registry::cpi::register(
+        CpiContext::new_with_signer(
+            registry_program.clone(),
+            registry_accounts::RegisterNullifier {
+                payer: ctx.accounts.relay.to_account_info(),
+                writer: ctx.accounts.registry_writer.to_account_info(),
+                config: ctx.accounts.registry_config.to_account_info(),
+                nullifier: ctx.accounts.nullifier.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        args.nullifier_hash,
+        ctx.accounts.state.next_index,
+    )?;
+
+    // Direct withdrawal uses the same Locked -> Spent guard as borrowed
+    // collateral instead of bypassing it with an Active -> Spent transition.
+    nullifier_registry::cpi::lock(CpiContext::new_with_signer(
+        registry_program.clone(),
+        registry_accounts::MutateNullifier {
+            writer: ctx.accounts.registry_writer.to_account_info(),
+            config: ctx.accounts.registry_config.to_account_info(),
+            nullifier: ctx.accounts.nullifier.to_account_info(),
+        },
+        signer_seeds,
+    ))?;
+
+    nullifier_registry::cpi::spend(CpiContext::new_with_signer(
+        registry_program,
+        registry_accounts::MutateNullifier {
+            writer: ctx.accounts.registry_writer.to_account_info(),
+            config: ctx.accounts.registry_config.to_account_info(),
+            nullifier: ctx.accounts.nullifier.to_account_info(),
+        },
+        signer_seeds,
+    ))
 }
 
 #[derive(Accounts)]
@@ -188,14 +254,40 @@ pub struct FlushEpoch<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(args: WithdrawArgs)]
 pub struct Withdraw<'info> {
+    #[account(mut)]
     pub relay: Signer<'info>,
     #[account(mut, seeds = [b"shielded-pool-state"], bump = state.bump)]
     pub state: Account<'info, ShieldedPoolState>,
+    /// CHECK: created and mutated by the nullifier registry CPI.
+    #[account(
+        mut,
+        seeds = [b"nullifier", args.nullifier_hash.as_ref()],
+        bump,
+        seeds::program = nullifier_registry::ID
+    )]
+    pub nullifier: UncheckedAccount<'info>,
+    #[account(
+        seeds = [b"registry-config"],
+        bump = registry_config.bump,
+        seeds::program = nullifier_registry::ID
+    )]
+    pub registry_config: Account<'info, RegistryConfig>,
+    /// CHECK: ShieldedPool registry-writer PDA; signed only through invoke_signed.
+    #[account(seeds = [REGISTRY_WRITER_SEED], bump)]
+    pub registry_writer: UncheckedAccount<'info>,
+    pub nullifier_registry_program: Program<'info, NullifierRegistry>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct Disburse<'info> {
+    #[account(
+        seeds = [LENDING_POOL_AUTHORITY_SEED],
+        bump,
+        seeds::program = LENDING_POOL_PROGRAM_ID
+    )]
     pub lending_pool_authority: Signer<'info>,
     #[account(mut, seeds = [b"shielded-pool-state"], bump = state.bump)]
     pub state: Account<'info, ShieldedPoolState>,
@@ -230,14 +322,19 @@ impl ShieldedPoolState {
         + (ROOT_HISTORY_SIZE * 32)
         + 1
         + 8
-        + 4 + (MAX_EPOCH_COMMITMENTS * QueuedDeposit::SPACE)
-        + 4 + (MAX_EXIT_QUEUE * QueuedExit::SPACE)
+        + 4
+        + (MAX_EPOCH_COMMITMENTS * QueuedDeposit::SPACE)
+        + 4
+        + (MAX_EXIT_QUEUE * QueuedExit::SPACE)
         + 8
         + 1
         + 1
         + 1;
 
     pub fn is_known_root(&self, root: [u8; 32]) -> bool {
+        if root == [0; 32] || self.next_index == 0 {
+            return false;
+        }
         root == self.current_root || self.historical_roots.iter().any(|item| item == &root)
     }
 }
@@ -348,11 +445,45 @@ mod tests {
             protocol_mode: ProtocolMode::FullPrivacy,
             bump: 255,
         };
+        state.next_index = 2;
         state.historical_roots[3] = retained_root;
 
         assert!(state.is_known_root(current_root));
         assert!(state.is_known_root(retained_root));
         assert!(!state.is_known_root(unknown_root));
+    }
+
+    #[test]
+    fn root_history_rejects_zero_root_and_empty_tree() {
+        let mut state = ShieldedPoolState {
+            authority: Pubkey::new_unique(),
+            current_root: [0; 32],
+            historical_roots: [[0; 32]; ROOT_HISTORY_SIZE],
+            root_index: 0,
+            next_index: 0,
+            epoch_commitments: Vec::new(),
+            exit_queue: Vec::new(),
+            epoch_start_slot: 0,
+            epochs_without_per_flush: 0,
+            protocol_mode: ProtocolMode::FullPrivacy,
+            bump: 255,
+        };
+
+        assert!(!state.is_known_root([0; 32]));
+        assert!(!state.is_known_root([9; 32]));
+
+        state.next_index = 1;
+        state.current_root = [9; 32];
+        assert!(!state.is_known_root([0; 32]));
+        assert!(state.is_known_root([9; 32]));
+    }
+
+    #[test]
+    fn lending_pool_authority_pda_is_not_any_signer() {
+        let (authority, _) =
+            Pubkey::find_program_address(&[LENDING_POOL_AUTHORITY_SEED], &LENDING_POOL_PROGRAM_ID);
+
+        assert_ne!(authority, Pubkey::new_unique());
     }
 
     #[test]

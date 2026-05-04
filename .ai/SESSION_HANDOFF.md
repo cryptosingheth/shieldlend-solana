@@ -2,48 +2,51 @@
 
 ## Task Objective
 
-Full read-only security and implementation audit of the ShieldLend Solana pre-alpha scaffold, prior to any protocol integration work. No product code was modified.
+Backend-only remediation of critical Anchor safety invariants from `audit-reports/FINAL_AUDIT_REPORT.md` on branch `fix/backend-critical`.
 
 ## Current Status
 
-**Audit complete. FINAL_AUDIT_REPORT.md written. Remediation planning is next.**
+**Backend pass complete; frontend/circuit/ZK work intentionally untouched.**
 
-- All 7 specialist reports complete (Pass 1 + Pass 2 merged, consolidated on disk)
-- Final synthesis run → `audit-reports/FINAL_AUDIT_REPORT.md` created 2026-05-04
-- 43 deduplicated findings: 16 Critical, 12 High, 11 Medium, 4 Low
-- **Decision: frontend privacy testing cannot start yet** — blockers listed in report Section 1
-- No product code modified throughout the audit.
-
-## Files Inspected (audit scope)
-
-All three programs, all three circuits, all frontend lib + app files, all docs, Anchor.toml, Cargo.toml, package.json, security-checklist.md, scripts/check-env.mjs, tests/*.ts
+- `nullifier_registry::spend` now requires `Locked -> Spent`.
+- `shielded_pool::is_known_root` rejects `[0;32]` and rejects roots before `next_index > 0`.
+- `lending_pool::verify_liquidation_reveal` checks both `loan_pda` and `ciphertext_handle`.
+- `lending_pool::repay` requires caller-supplied `outstanding_balance` to equal on-chain accrued balance and clears liquidation state after success.
+- `borrow` validates obvious caller-supplied financial parameters, including interest rate against the configured model max.
+- `Withdraw`, `Borrow`, and `Repay` now include nullifier-registry accounts and registry-writer PDA scaffolding.
+- Nullifier registry CPI paths are scaffolded after fail-closed verifier gates:
+  - `withdraw`: `register -> lock -> spend`.
+  - `borrow`: `lock`.
+  - `repay`: `unlock`.
+- `shielded_pool::disburse` requires the lending-pool PDA signer.
+- `audit-reports/BACKEND_FIX_NOTES.md` created.
 
 ## Files Changed
 
-- `audit-reports/00_AUDIT_BRIEF.md` — created
-- `audit-reports/01–07_*.md` — created (Pass 1), overwritten (Pass 2)
-- `audit-reports/FINAL_AUDIT_REPORT.md` — **created this session**
-- No product code was modified.
+- `.ai/CURRENT_TASK.md`
+- `.ai/SESSION_HANDOFF.md`
+- `.ai/TASK_LOG.md`
+- `Cargo.lock`
+- `audit-reports/BACKEND_FIX_NOTES.md`
+- `programs/lending_pool/Cargo.toml`
+- `programs/lending_pool/src/lib.rs`
+- `programs/nullifier_registry/src/lib.rs`
+- `programs/shielded_pool/Cargo.toml`
+- `programs/shielded_pool/src/lib.rs`
 
-## Commands Run
+## Verification
 
-- `ls`, `find` for structure discovery and file verification
-- All audit report reads (read-only)
-- No build, test, install, or git write commands were run.
+- `cargo test --workspace` — passed, 21 tests.
+- `anchor build` — not run; `anchor` CLI is not installed or not on `PATH`.
 
-## Tests Run
+Known warnings during `cargo test`: Anchor 0.30.1 emits `unexpected cfg` warnings for `anchor-debug`, `custom-heap`, `custom-panic`, and `no-log-ix-name`. These were warnings only and did not block tests.
 
-None — read-only audit pass.
+## Current Blockers
 
-## Current Blockers (frontend privacy testing blocked until all resolved)
-
-1. No ZK artifacts — stale `.wasm`, no `.zkey`/`_vkey.json`, `repay_ring.wasm` missing
-2. Programs not deployed — all program IDs are placeholders in `Anchor.toml`
-3. `groth16-solana` not in `Cargo.toml` — prerequisite for all verifier wiring
-4. `buildRing()` uses integers 2–16 as decoys — anonymity set = 1
-5. User wallet is on-chain relay signer — "depositor hidden" claim is false
-6. Cross-program CPI entirely absent — nullifier double-spend non-functional
-7. Critical security bugs (zero-root drain, Active→Spent bypass, unconstrained Disburse)
+1. Anchor CLI/Solana localnet tooling needed for `anchor build` and CPI/account-constraint integration tests.
+2. Real Groth16 verifiers remain unwired.
+3. IKA, Encrypt, MagicBlock, and Umbra integrations remain pre-alpha/unwired and fail-closed.
+4. Frontend and circuit findings remain intentionally out of scope for this backend pass.
 
 ## Do Not Claim Publicly Until Implemented
 
@@ -51,21 +54,12 @@ None — read-only audit pass.
 - K=16 anonymity set
 - IKA FutureSign wired
 - MagicBlock PER batching
-- Double-spend prevention
+- Double-spend prevention end-to-end
 - VRF dummies indistinguishable
 - Borrow vs withdrawal exit indistinguishable
 
 ## Next Steps
 
-1. **Phase 0 static fixes (no CLI needed, do these first):**
-   - `nullifier_registry::spend` must require `status == Locked` (not `!= Spent`)
-   - `is_known_root` must reject `[0;32]` zero root
-   - `verify_liquidation_reveal` must check `args.ciphertext_handle == loan.liq_ciphertext_handle`
-   - `computeCommitment(nullifier, secret, ...)` parameter order must be fixed to `(secret, nullifier, ...)`
-   - `per.healthy` must not be hardcoded `true` in `protocolAdapters.ts`
-   - `collateral_ring.circom` needs `Num2Bits` range checks before LTV multiplication
-   - README must downgrade 13 claimed "✓" privacy properties to accurate state
-2. Install Solana CLI + Anchor CLI → `anchor build` → `anchor deploy` → real program IDs
-3. Compile all three circuits with real `shieldedPoolProgramId` → generate artifacts
-4. Wire CPIs and `groth16-solana`
-5. Refer to `FINAL_AUDIT_REPORT.md` Section 10 for the full ordered test plan
+1. Run `anchor build` once Anchor CLI is available.
+2. Add local-validator or Anchor integration tests for CPI signer behavior and foreign-program PDA constraints.
+3. In a separate scoped pass, address frontend and circuit findings from `FINAL_AUDIT_REPORT.md` without mixing them into backend remediation.
