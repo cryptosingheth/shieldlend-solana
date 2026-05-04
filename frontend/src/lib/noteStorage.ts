@@ -84,6 +84,18 @@ async function decryptNote(record: EncryptedNote, key: CryptoKey): Promise<Store
   return JSON.parse(new TextDecoder().decode(plaintext)) as StoredNote;
 }
 
+export function hasPlaintextNotes(address: string): boolean {
+  if (typeof window === "undefined") return false;
+  const raw = localStorage.getItem(STORAGE_KEY(address));
+  if (!raw) return false;
+  try {
+    const records = JSON.parse(raw) as NoteRecord[];
+    return records.some((r) => !isEncrypted(r));
+  } catch {
+    return false;
+  }
+}
+
 export async function loadNotes(address: string, key: CryptoKey | null): Promise<StoredNote[]> {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(STORAGE_KEY(address));
@@ -93,6 +105,8 @@ export async function loadNotes(address: string, key: CryptoKey | null): Promise
   const notes: StoredNote[] = [];
   for (const record of records) {
     if (!isEncrypted(record)) {
+      // Plaintext note predates vault encryption. nullifier and secret are XSS-readable.
+      console.warn("[ShieldLend] Plaintext note found in localStorage. Unlock vault and re-save to encrypt.");
       notes.push(record);
       continue;
     }
@@ -141,6 +155,54 @@ export async function updateNoteStatus(
   const updated = notes.map((note) => (note.commitment === commitment ? { ...note, status } : note));
   const encrypted = await Promise.all(updated.map((note) => encryptNote(note, key)));
   localStorage.setItem(STORAGE_KEY(address), JSON.stringify(encrypted));
+}
+
+export async function exportNotes(address: string, key: CryptoKey): Promise<string> {
+  const notes = await loadNotes(address, key);
+  if (notes.length === 0) throw new Error("No notes to export.");
+  const encrypted = await Promise.all(notes.map((note) => encryptNote(note, key)));
+  return JSON.stringify(
+    {
+      format: "shieldlend-solana-notes-backup-v1",
+      address,
+      exportedAt: new Date().toISOString(),
+      count: notes.length,
+      notes: encrypted,
+    },
+    null,
+    2
+  );
+}
+
+export async function importNotes(address: string, key: CryptoKey, backupJson: string): Promise<number> {
+  let data: { format: string; notes: EncryptedNote[] };
+  try {
+    data = JSON.parse(backupJson) as { format: string; notes: EncryptedNote[] };
+  } catch {
+    throw new Error("Invalid backup file: could not parse JSON.");
+  }
+  if (data.format !== "shieldlend-solana-notes-backup-v1") {
+    throw new Error(`Unrecognized backup format: ${data.format}`);
+  }
+  const imported: StoredNote[] = [];
+  for (const enc of data.notes) {
+    try {
+      imported.push(await decryptNote(enc, key));
+    } catch {
+      // Skip records encrypted with a different key.
+    }
+  }
+  if (imported.length === 0) {
+    throw new Error("No notes could be decrypted. The backup file may belong to a different wallet.");
+  }
+  const existing = await loadNotes(address, key);
+  const merged = [...imported];
+  for (const note of existing) {
+    if (!merged.some((m) => m.commitment === note.commitment)) merged.push(note);
+  }
+  const encrypted = await Promise.all(merged.map((n) => encryptNote(n, key)));
+  localStorage.setItem(STORAGE_KEY(address), JSON.stringify(encrypted));
+  return imported.length;
 }
 
 export function storedNoteToNote(stored: StoredNote): Note {

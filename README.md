@@ -45,23 +45,31 @@ ShieldLend applies sequential protections across the transaction lifecycle. Each
 
 ## Current Build Status
 
-**Implementation note (as of 2026-05-03):** The status table below reflects a pre-implementation documentation snapshot. The Anchor workspace, all three programs, `circuits/repay_ring.circom`, Rust unit tests, Anchor test scaffolds, and a frontend MVP shell have since been added in a subsequent pass. `cargo check` passes. ZK artifacts are stale and must be regenerated (`npm run circuits:compile`). All program IDs remain placeholders until `anchor keys list` confirms. No programs have been deployed. Treat all pre-alpha/external-dependency rows as unchanged.
+> **Pre-alpha scaffold — as of 2026-05-04.**  
+> All three Anchor programs compile (`cargo check`). No programs are deployed. ZK artifacts are stale.
+> All program IDs are placeholders. 8 Rust unit tests pass locally. No Anchor integration tests (all `it.skip`).
+> Do not use this codebase to claim any privacy property is live.
 
 | Component | Status | Notes |
 |---|---|---|
-| `circuits/withdraw_ring.circom` | Done (update required) | Nullifier formula must be updated before recompile — see ZK Circuits section |
-| `circuits/collateral_ring.circom` | Done (update required) | Same nullifier update required |
-| `circuits/repay_ring.circom` | TODO | Not yet written (Phase 2) |
-| `frontend/public/circuits/*.wasm` | Stale | Recompile after circuit update |
-| `frontend/src/lib/circuits.ts` | Done | snarkjs Groth16 proof generation (chain-agnostic) |
-| `frontend/src/lib/noteStorage.ts` | Done | AES-256-GCM note vault (chain-agnostic) |
-| `docs/` | Updating | Architecture, implementation plan, visual flows, and pitch narrative |
-| Anchor workspace (`Anchor.toml`, `Cargo.toml`) | TODO | Phase 1 — not yet initialized |
-| `programs/shielded_pool/` | TODO | Phase 1 |
-| `programs/lending_pool/` | TODO | Phase 1 |
-| `programs/nullifier_registry/` | TODO | Phase 1 |
-| Solana frontend (wallet adapter, forms, API routes) | TODO | Phase 4 |
-| Tests | TODO | Phase 5 |
+| `circuits/withdraw_ring.circom` | Written — not compiled | Nullifier formula update required before recompile |
+| `circuits/collateral_ring.circom` | Written — not compiled | Same nullifier update required |
+| `circuits/repay_ring.circom` | Written — not compiled | No ZK artifacts generated |
+| `frontend/public/circuits/*.wasm` | Stale | Predate `leaf_index` update; must be deleted and recompiled |
+| `frontend/public/circuits/*.zkey` | Missing | No `.zkey` or `_vkey.json` files exist anywhere in repo |
+| `frontend/src/lib/circuits.ts` | Done | snarkjs Groth16 proof pipeline ready; inert without real artifacts |
+| `frontend/src/lib/noteStorage.ts` | Done | AES-256-GCM + HKDF note vault — cryptographically sound |
+| `frontend/src/lib/history.ts` | Done | AES-256-GCM encrypted history log (vault key required) |
+| `programs/shielded_pool/` | Scaffolded — not deployed | Deposit queues SOL; withdraw/disburse fail-closed |
+| `programs/lending_pool/` | Scaffolded — not deployed | Interest accrual correct; borrow/repay fail-closed |
+| `programs/nullifier_registry/` | Scaffolded — not deployed | State machine correct; CPI wiring absent |
+| Cross-program CPIs | Not implemented | No CPI between any of the three programs |
+| `groth16-solana` dependency | Not added | Not in `Cargo.toml`; all verifiers return errors |
+| IKA dWallet relay | Not wired | User wallet is the on-chain signer for every deposit |
+| MagicBlock PER | Not wired | No `#[ephemeral]`/`#[delegate]`/`#[commit]` macros in any program |
+| Umbra SDK | Not installed | Not in `package.json`; stealth address field is a free Pubkey |
+| Anchor integration tests | Scaffolded — all skipped | 9 × `it.skip` |
+| Rust unit tests | Active | 8 categories pass locally with `cargo test --workspace` |
 
 ---
 
@@ -116,44 +124,50 @@ The canonical explanation of these flows is [`docs/VISUAL_FLOWS.md`](docs/VISUAL
 
 ## Privacy Status
 
-Complete property-by-property breakdown of what is and is not hidden:
+> **Audit result (2026-05-04):** The properties below have been independently audited. Claims marked
+> `[NOT IMPLEMENTED]` are false in the current codebase and must not be stated in demos or submissions
+> until the corresponding blocker is resolved. See `audit-reports/FINAL_AUDIT_REPORT.md` for full findings.
 
 ```
-PROPERTY                                STATUS      MECHANISM
-────────────────────────────────────────────────────────────────────────────────
-Depositor wallet hidden                 ✓           IKA relay (relay is TX2 signer)
-Deposit timing correlation broken       ✓           PER temporal batching (Intel TDX enclave)
-Anonymity set ≥ 8 real (min batch)      ✓           min_real_deposits_before_flush = 8
-VRF dummies indistinguishable           ✓           PER CSPRNG seeded by MagicBlock VRF + enclave-private
-                                                    entropy; dummy preimages never stored or revealed
-Root tolerance (offline users)          ✓           30 historical roots retained; no lockout
-Which commitment was spent              ✓           Ring proof hides ring_index (K=16 + VRF dummies)
-Cross-contract nullifier unlinkability  ✓           nullifierHash includes SHIELDED_POOL_PROGRAM_ID
-Re-insertion double-spend prevention    ✓           nullifierHash includes leaf_index
-Withdrawal submitter wallet hidden      ✓           Withdrawal routed through relay
-Withdrawal destination hidden           ✓           Umbra stealth (ECDH, fresh per op)
-Borrow vs withdrawal exit               ✓           Unified relay → PER → stealth path
-Which collateral note is locked         ✓           Collateral ring proof hides index
-Borrower wallet hidden                  ✓           ZK private input + relay signer
-Disbursement destination hidden         ✓           Umbra stealth address
-Repayment amount hidden                 ✓/mode      Full Privacy: MagicBlock Private Payments receipt;
-                                                    degraded relay repayment reveals transfer amount
-Repayer wallet hidden                   ✓           ZK private input + relay routing
-Oracle price (liquidation MEV)          ✓           Encrypt FHE encrypted oracle
-FHE liquidation handle replay           ✓           Handle pinning — PDA seed binding [C-01]
-Stale liquidation on healthy position   ✓           Consecutive breach confirmation (≥ 2 epochs)
-Individual collateral values            ✓           Encrypt FHE encrypted oracle/health computation
-Who was liquidated                      ✓           Wallet never linked to loanId
-Single operator key risk                ✓           IKA 2PC-MPC — user + MPC both required
-Liquidation trust                       ✓           IKA FutureSign — pre-signed consent, condition-gated
-Double-spend                            ✓           NullifierRegistry PDA + nullifierHash (position-bound)
-────────────────────────────────────────────────────────────────────────────────
-Borrow amount                           public/bucketed ZK public input — required for deterministic LTV;
-                                                    does not link borrower to depositor by itself
-That a borrow occurred                  public      LoanAccount PDA creation visible
-Aggregate collateral coverage           disclosed   Threshold decryption result — total only, not individual
-IP address visible to relay             not covered Tor/VPN required at application layer (user responsibility)
-────────────────────────────────────────────────────────────────────────────────
+PROPERTY                                STATUS              NOTES
+────────────────────────────────────────────────────────────────────────────────────────
+Depositor wallet hidden                 [NOT IMPLEMENTED]   User wallet IS the on-chain relay signer
+                                                            (solanaClient.ts:109). IKA not wired.
+Deposit timing correlation broken       [NOT IMPLEMENTED]   No PER macros in any program; no batching.
+Anonymity set ≥ 8 real (min batch)      [NOT IMPLEMENTED]   Depends on PER — not wired.
+VRF dummies indistinguishable           [NOT IMPLEMENTED]   VRF proof not verified; no dummy insertion logic.
+Root tolerance (offline users)          ✓ — designed        30 historical roots retained (lib.rs:240–242).
+Which commitment was spent              [NOT IMPLEMENTED]   Ring decoys are integers 2–16; anonymity set = 1.
+Cross-contract nullifier unlinkability  [NOT IMPLEMENTED]   Domain separator is placeholder 13 in all circuits.
+Re-insertion double-spend prevention    [NOT IMPLEMENTED]   No CPI from withdraw/borrow/repay to registry.
+Withdrawal submitter wallet hidden      [NOT IMPLEMENTED]   Depends on IKA relay — not wired.
+Withdrawal destination hidden           [NOT IMPLEMENTED]   Umbra SDK not in package.json; no code exists.
+Borrow vs withdrawal exit               [NOT IMPLEMENTED]   ExitKind stored publicly in QueuedExit on-chain.
+Which collateral note is locked         ✓ — designed        Collateral ring proof structure correct.
+Borrower wallet hidden                  [NOT IMPLEMENTED]   Depends on IKA relay — not wired.
+Disbursement destination hidden         [NOT IMPLEMENTED]   Umbra not installed; lending_pool_authority
+                                                            unconstrained (any signer accepted).
+Repayment amount hidden                 [NOT IMPLEMENTED]   MagicBlock Private Payments not integrated.
+Repayer wallet hidden                   [NOT IMPLEMENTED]   Depends on IKA relay — not wired.
+Oracle price (liquidation MEV)          [NOT IMPLEMENTED]   Encrypt verifier returns error; no FHE ciphertext.
+FHE liquidation handle replay           ✓ — designed        ciphertext_handle field exists (fix for binding
+                                                            check needed before deployment — audit C-06).
+Stale liquidation on healthy position   ✓ — designed        Consecutive breach guard (count ≥ 2) in place.
+Individual collateral values            [NOT IMPLEMENTED]   borrow_amount is plaintext; no FHE ciphertexts.
+Who was liquidated                      [NOT IMPLEMENTED]   Depends on IKA relay — not wired.
+Single operator key risk eliminated     [NOT IMPLEMENTED]   No IKA call in any program or API route.
+Liquidation trust via IKA FutureSign    [NOT IMPLEMENTED]   future_sign_authorized is a borrower-supplied
+                                                            boolean (lending_pool/src/lib.rs:52).
+Double-spend prevention                 [NOT IMPLEMENTED]   NullifierRegistry CPI absent from all callers.
+────────────────────────────────────────────────────────────────────────────────────────
+Note vault encryption (local)           ✓ — implemented     AES-256-GCM + HKDF, wallet-derived key.
+History log encryption (local)          ✓ — implemented     AES-256-GCM, same vault key.
+Fixed denominations enforced on-chain   ✓ — designed        0.1 / 1 / 10 SOL (lib.rs:142–148).
+Borrow amount                           public/bucketed     Required for deterministic LTV mechanics.
+That a borrow occurred                  public              LoanAccount PDA creation is visible.
+Aggregate collateral coverage           disclosed           Threshold decrypt aggregate only (planned).
+IP address visible to relay             not covered         Tor/VPN at application layer — user responsibility.
+────────────────────────────────────────────────────────────────────────────────────────
 ```
 
 ---

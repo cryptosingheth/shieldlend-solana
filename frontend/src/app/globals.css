@@ -42,7 +42,8 @@ button:disabled {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 256px 1fr;
-  grid-template-rows: 64px auto 1fr;
+  /* topbar | prealpha-banner | mode-banner(s) | sidebar+main */
+  grid-template-rows: 64px auto auto 1fr;
 }
 
 .topbar {
@@ -113,11 +114,43 @@ button:disabled {
   color: var(--amber);
 }
 
+.prealpha-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 24px;
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface-0));
+  border-bottom: 2px solid color-mix(in srgb, var(--danger) 55%, var(--line));
+}
+
+.prealpha-banner svg {
+  color: var(--danger);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.prealpha-banner strong {
+  display: block;
+  color: var(--danger);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.prealpha-banner span {
+  display: block;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
 .mode-banner {
   grid-column: 1 / -1;
   display: flex;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px 24px;
   background: color-mix(in srgb, var(--amber) 12%, var(--surface-0));
   border-bottom: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line));
@@ -125,6 +158,8 @@ button:disabled {
 
 .mode-banner svg {
   color: var(--amber);
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .mode-banner strong,
@@ -132,8 +167,12 @@ button:disabled {
   display: block;
 }
 
+.danger {
+  color: var(--danger);
+}
+
 .sidebar {
-  grid-row: 2 / -1;
+  grid-row: 4 / -1;
   padding: 22px 14px;
   border-right: 1px solid var(--line);
   background: var(--surface-1);
@@ -204,7 +243,7 @@ button:disabled {
 }
 
 .main {
-  grid-row: 2 / -1;
+  grid-row: 4 / -1;
   min-width: 0;
   padding: 40px;
 }

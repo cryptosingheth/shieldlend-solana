@@ -1,23 +1,36 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
   Banknote,
+  CheckCircle,
   CircleAlert,
+  Download,
   History,
   Home,
   KeyRound,
   LockKeyhole,
   RotateCcw,
   Shield,
+  Upload,
   Wallet,
+  XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { DENOMINATIONS, PROGRAM_IDS, lamportsToSol, shortHash } from "../lib/contracts";
-import { appendHistory, loadHistory, type HistoryRecord } from "../lib/history";
-import { deriveNoteKey, loadNotes, saveNote, type StoredNote } from "../lib/noteStorage";
-import { FULL_PRIVACY_RAILS } from "../lib/protocolAdapters";
+import { appendHistory, hasPlaintextHistoryRecords, loadHistory, type HistoryRecord } from "../lib/history";
+import {
+  deriveNoteKey,
+  exportNotes,
+  hasPlaintextNotes,
+  importNotes,
+  loadNotes,
+  saveNote,
+  type StoredNote,
+} from "../lib/noteStorage";
+import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/protocolAdapters";
 import {
   getConnection,
   getPhantomProvider,
@@ -46,15 +59,18 @@ export default function HomePage() {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hasPlaintext, setHasPlaintext] = useState(false);
 
   const connected = Boolean(wallet?.publicKey && address);
   const vaultReady = Boolean(vaultKey);
+  const protocolMode = useMemo(() => modeFromRails(FULL_PRIVACY_RAILS), []);
 
   const refreshAccount = useCallback(async (nextAddress = address, key = vaultKey) => {
     if (!nextAddress) return;
     const lamports = await getConnection().getBalance(await importPublicKey(nextAddress), "confirmed");
     setBalance(BigInt(lamports));
-    setHistory(loadHistory(nextAddress));
+    setHistory(await loadHistory(nextAddress, key));
+    setHasPlaintext(hasPlaintextNotes(nextAddress) || hasPlaintextHistoryRecords(nextAddress));
     if (key) setNotes(await loadNotes(nextAddress, key));
   }, [address, vaultKey]);
 
@@ -86,7 +102,10 @@ export default function HomePage() {
     const signed = await wallet.signMessage(prompt, "utf8");
     const key = await deriveNoteKey(signed.signature, wallet.publicKey.toBase58());
     setVaultKey(key);
-    setNotes(await loadNotes(wallet.publicKey.toBase58(), key));
+    const addr = wallet.publicKey.toBase58();
+    setNotes(await loadNotes(addr, key));
+    setHistory(await loadHistory(addr, key));
+    setHasPlaintext(hasPlaintextNotes(addr) || hasPlaintextHistoryRecords(addr));
     setMessage("Local encrypted note vault unlocked for this browser session.");
   }
 
@@ -102,12 +121,12 @@ export default function HomePage() {
       const note = await createNote(amountLamports);
       const stored = await saveNote(address, note, vaultKey);
       setNotes((current) => [stored, ...current]);
-      appendHistory(address, {
-        kind: "deposit",
-        amountLamports: amountLamports.toString(),
-        commitment: stored.commitment,
-      });
-      setHistory(loadHistory(address));
+      await appendHistory(
+        address,
+        { kind: "deposit", amountLamports: amountLamports.toString(), commitment: stored.commitment },
+        vaultKey
+      );
+      setHistory(await loadHistory(address, vaultKey));
       setMessage("Local note created. Funds are not deposited until the ShieldedPool program is deployed and the deposit transaction succeeds.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not create local note.");
@@ -129,18 +148,54 @@ export default function HomePage() {
       const { signature } = await submitDeposit({ wallet, amountLamports, commitment: note.commitment });
       const stored = await saveNote(address, note, vaultKey, signature);
       setNotes((current) => [stored, ...current]);
-      appendHistory(address, {
-        kind: "deposit",
-        amountLamports: amountLamports.toString(),
-        commitment: stored.commitment,
-        txSignature: signature,
-      });
+      await appendHistory(
+        address,
+        { kind: "deposit", amountLamports: amountLamports.toString(), commitment: stored.commitment, txSignature: signature },
+        vaultKey
+      );
       await refreshAccount(address, vaultKey);
       setMessage(`Deposit submitted: ${signature}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Deposit failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleExportNotes() {
+    if (!vaultKey || !address) {
+      setMessage("Unlock the note vault first to export notes.");
+      return;
+    }
+    try {
+      const json = await exportNotes(address, vaultKey);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `shieldlend-notes-backup-${address.slice(0, 8)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage("Notes exported. Store this file safely — it is encrypted with your wallet key.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Export failed.");
+    }
+  }
+
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  async function handleImportNotes(file: File) {
+    if (!vaultKey || !address) {
+      setMessage("Unlock the note vault first to import notes.");
+      return;
+    }
+    try {
+      const text = await file.text();
+      const count = await importNotes(address, vaultKey, text);
+      setNotes(await loadNotes(address, vaultKey));
+      setMessage(`Imported ${count} note(s) from backup.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Import failed.");
     }
   }
 
@@ -155,6 +210,9 @@ export default function HomePage() {
           </div>
         </div>
         <div className="topbar-actions">
+          <span className={`chip ${protocolMode === "full" ? "full" : "degraded"}`}>
+            {protocolMode === "full" ? "Full Privacy" : "Degraded"}
+          </span>
           <button className={`chip ${vaultReady ? "ok" : "danger"}`} onClick={initializeVault} disabled={!connected}>
             <LockKeyhole size={14} />
             {vaultReady ? "VAULT UNLOCKED" : "UNLOCK VAULT"}
@@ -166,13 +224,46 @@ export default function HomePage() {
         </div>
       </header>
 
-      <section className="mode-banner">
-        <CircleAlert size={18} />
+      {/* Pre-alpha scaffold banner — always visible */}
+      <section className="prealpha-banner">
+        <AlertTriangle size={16} />
         <div>
-          <strong>No dummy success states.</strong>
-          <span>Actions call real wallet/RPC paths where possible and block when programs or verifiers are not deployed.</span>
+          <strong>PRE-ALPHA / SCAFFOLD MODE</strong>
+          <span>
+            Programs not deployed. ZK artifacts stale. All 8 required privacy rails offline.
+            No privacy properties hold. Do not use with real funds.
+          </span>
         </div>
       </section>
+
+      {/* localStorage loss warning */}
+      {(connected && !vaultReady) && (
+        <section className="mode-banner">
+          <CircleAlert size={18} />
+          <div>
+            <strong>Note vault locked.</strong>
+            <span>
+              Unlock the vault to load encrypted notes. If this browser&apos;s localStorage is cleared before
+              you export a backup, your notes and the SOL they represent will be permanently unrecoverable.
+              Export a backup after every deposit.
+            </span>
+          </div>
+        </section>
+      )}
+
+      {hasPlaintext && (
+        <section className="mode-banner">
+          <CircleAlert size={18} />
+          <div>
+            <strong>Plaintext records detected.</strong>
+            <span>
+              Some notes or history records in this browser&apos;s localStorage are not encrypted.
+              They were written before vault encryption was enabled. Fields including commitment hashes
+              are XSS-readable. Unlock the vault and re-deposit or export/re-import to re-encrypt.
+            </span>
+          </div>
+        </section>
+      )}
 
       <aside className="sidebar">
         <span className="eyebrow">Operations</span>
@@ -194,12 +285,55 @@ export default function HomePage() {
 
       <main className="main">
         {message && <div className="notice">{message}</div>}
-        {screen === "positions" && <Positions notes={notes} connected={connected} vaultReady={vaultReady} setScreen={setScreen} />}
-        {screen === "deposit" && <Deposit busy={busy} connected={connected} vaultReady={vaultReady} onDeposit={deposit} onCreateLocalNote={createLocalNote} />}
-        {screen === "withdraw" && <BlockedFlow title="Withdraw" notes={notes} reason="Withdrawal needs compiled WASM/zkey artifacts, a deployed ShieldedPool verifier path, and an Umbra stealth recipient adapter." />}
-        {screen === "borrow" && <BlockedFlow title="Borrow" notes={notes} reason="Borrow needs deployed LendingPool, collateral proof verification, NullifierRegistry CPI, IKA pre-alpha FutureSign approval, and a real PER exit queue." />}
-        {screen === "repay" && <BlockedFlow title="Repay" notes={notes} reason="Repay needs MagicBlock Private Payments receipts, repay_ring verification, and a deployed LendingPool account for the selected loan." />}
-        {screen === "history" && <HistoryScreen records={history} />}
+
+        {screen === "positions" && (
+          <Positions
+            notes={notes}
+            connected={connected}
+            vaultReady={vaultReady}
+            setScreen={setScreen}
+            onExport={handleExportNotes}
+            onImportClick={() => importFileRef.current?.click()}
+          />
+        )}
+        {screen === "deposit" && (
+          <Deposit busy={busy} connected={connected} vaultReady={vaultReady} onDeposit={deposit} onCreateLocalNote={createLocalNote} />
+        )}
+        {screen === "withdraw" && (
+          <BlockedFlow
+            title="Withdraw"
+            notes={notes}
+            reason="Withdrawal requires: compiled .wasm/.zkey artifacts for withdraw_ring, deployed ShieldedPool with groth16 verifier wired, NullifierRegistry CPI, and Umbra stealth address adapter."
+          />
+        )}
+        {screen === "borrow" && (
+          <BlockedFlow
+            title="Borrow"
+            notes={notes}
+            reason="Borrow requires: deployed LendingPool, collateral_ring proof verification, NullifierRegistry CPI (lock), IKA FutureSign pre-authorization, and a real PER exit queue for disbursement."
+          />
+        )}
+        {screen === "repay" && (
+          <BlockedFlow
+            title="Repay"
+            notes={notes}
+            reason="Repay requires: MagicBlock Private Payments receipts, repay_ring ZK artifacts and verification, NullifierRegistry CPI (unlock), and a deployed LoanAccount PDA for the selected loan."
+          />
+        )}
+        {screen === "history" && <HistoryScreen records={history} vaultReady={vaultReady} />}
+
+        {/* Hidden file input for note import */}
+        <input
+          ref={importFileRef}
+          type="file"
+          accept="application/json"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImportNotes(file);
+            e.target.value = "";
+          }}
+        />
       </main>
     </div>
   );
@@ -215,40 +349,114 @@ function Positions({
   connected,
   vaultReady,
   setScreen,
+  onExport,
+  onImportClick,
 }: {
   notes: StoredNote[];
   connected: boolean;
   vaultReady: boolean;
   setScreen: (screen: Screen) => void;
+  onExport: () => void;
+  onImportClick: () => void;
 }) {
   return (
     <section className="stack">
-      <Hero title="Positions" subtitle="This screen now shows only your local encrypted note vault. No seeded demo positions are displayed." />
+      <Hero title="Positions" subtitle="Local encrypted note vault. No seeded demo positions." />
+
+      {/* What works today / planned / blocked */}
+      <WhatWorksTodayPanel />
+
       <div className="grid two">
-        <Panel title="Local notes" action={<button onClick={() => setScreen("deposit")}>Deposit</button>}>
+        <Panel
+          title="Local notes"
+          action={<button onClick={() => setScreen("deposit")}>Deposit</button>}
+        >
           {!connected && <EmptyState text="Connect Phantom to load your wallet." />}
           {connected && !vaultReady && <EmptyState text="Unlock the note vault to load private notes." />}
           {connected && vaultReady && notes.length === 0 && <EmptyState text="No notes found in this browser vault." />}
           {notes.map((note) => <NoteRow key={note.commitment} note={note} />)}
+          {vaultReady && (
+            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+              <button onClick={onExport} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", fontSize: "13px" }}>
+                <Download size={14} /> Export backup
+              </button>
+              <button onClick={onImportClick} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", fontSize: "13px" }}>
+                <Upload size={14} /> Import backup
+              </button>
+            </div>
+          )}
+          {vaultReady && (
+            <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+              Export a backup after every deposit. localStorage loss means permanent note loss with no recovery path.
+            </p>
+          )}
         </Panel>
-        <Panel title="Deployment status">
-          <StatusLine label="NullifierRegistry" value={PROGRAM_IDS.nullifierRegistry} />
-          <StatusLine label="ShieldedPool" value={PROGRAM_IDS.shieldedPool} />
-          <StatusLine label="LendingPool" value={PROGRAM_IDS.lendingPool} />
-          <p className="muted">These IDs are configured in code, but the frontend checks RPC deployment before sending real protocol instructions.</p>
-        </Panel>
-        <Panel title="Privacy rail status">
-          {FULL_PRIVACY_RAILS.map((rail) => (
-            <StatusLine
-              key={rail.key}
-              label={rail.name}
-              value={`${rail.healthy ? "configured" : "blocked"} - ${rail.role}`}
-            />
-          ))}
-          <p className="muted">IKA and Encrypt are wired through their pre-alpha integration endpoints. Production privacy claims remain limited to the guarantees their current docs provide.</p>
-        </Panel>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <Panel title="Program deployment status">
+            <StatusLine label="NullifierRegistry" value={PROGRAM_IDS.nullifierRegistry} healthy={false} />
+            <StatusLine label="ShieldedPool" value={PROGRAM_IDS.shieldedPool} healthy={false} />
+            <StatusLine label="LendingPool" value={PROGRAM_IDS.lendingPool} healthy={false} />
+            <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+              All program IDs are placeholders. No programs have been deployed. Transactions will fail
+              at assertProgramDeployed before any signing occurs.
+            </p>
+          </Panel>
+
+          <Panel title="Privacy rail status">
+            <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
+              All required rails are currently offline. Full Privacy mode cannot activate.
+              Statuses reflect env config — not live health probes.
+            </p>
+            {FULL_PRIVACY_RAILS.map((rail) => (
+              <RailStatusRow key={rail.key} rail={rail} />
+            ))}
+          </Panel>
+        </div>
       </div>
     </section>
+  );
+}
+
+function WhatWorksTodayPanel() {
+  return (
+    <Panel title="Scaffold status — what works, what is planned, what is blocked">
+      <div className="grid two" style={{ gap: "12px" }}>
+        <div>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--success)" }}>Working now</p>
+          <ul className="plain-list" style={{ fontSize: "13px" }}>
+            <li>Wallet connection (Phantom, Solana devnet)</li>
+            <li>Devnet balance via RPC</li>
+            <li>Note secret generation (browser WebCrypto)</li>
+            <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key)</li>
+            <li>History log encryption (AES-256-GCM, same vault key)</li>
+            <li>Note backup export / import</li>
+            <li>Deposit blocked until programs deployed (assertProgramDeployed)</li>
+            <li>Rust unit tests (8 categories, local only)</li>
+          </ul>
+        </div>
+        <div>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--amber)" }}>Scaffolded / fail-closed</p>
+          <ul className="plain-list" style={{ fontSize: "13px" }}>
+            <li>All 3 Anchor programs (cargo check passes, not deployed)</li>
+            <li>ZK circuits written, not compiled to final artifacts</li>
+            <li>Withdraw / Borrow / Repay UI (intentionally blocked)</li>
+            <li>IKA + Encrypt API routes (return context JSON, no SDK calls)</li>
+            <li>Protocol mode logic (always Degraded until rails go online)</li>
+          </ul>
+          <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Unsafe to claim today</p>
+          <ul className="plain-list" style={{ fontSize: "13px", color: "var(--fg-2)" }}>
+            <li>Depositor wallet hidden — user wallet is on-chain signer today</li>
+            <li>K=16 anonymity — ring decoys are integers 2–16, not real commitments</li>
+            <li>Double-spend prevention — NullifierRegistry CPIs absent</li>
+            <li>IKA FutureSign wired — API routes echo JSON, no SDK call</li>
+            <li>MagicBlock PER batching — no PER macros in any program</li>
+            <li>Encrypt FHE oracle — verifier returns error, no ciphertexts</li>
+            <li>Umbra stealth addresses — SDK not in package.json</li>
+          </ul>
+        </div>
+      </div>
+    </Panel>
   );
 }
 
@@ -268,7 +476,21 @@ function Deposit({
   const disabled = busy || !connected || !vaultReady;
   return (
     <section className="stack">
-      <Hero title="Deposit" subtitle="This creates a real local note and attempts a real ShieldedPool transaction. If the program is not deployed, it fails before signing." />
+      <Hero title="Deposit" subtitle="Creates a real local note and attempts a real ShieldedPool transaction. Fails at assertProgramDeployed until programs are on-chain." />
+
+      {/* Signer warning — always shown */}
+      <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--danger) 40%, var(--line))", background: "color-mix(in srgb, var(--danger) 10%, var(--surface-1))" }}>
+        <AlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Privacy warning: your wallet is the on-chain signer today.</strong>
+          <span>
+            IKA dWallet relay is not wired. Your Phantom wallet public key will be the permanent transaction
+            signer for every deposit. The claim &ldquo;depositor wallet hidden&rdquo; is false until the IKA relay
+            is deployed and wired in solanaClient.ts. Do not deposit with real funds expecting privacy.
+          </span>
+        </div>
+      </div>
+
       <div className="grid two">
         <Panel title="Fixed denominations">
           <div className="cards">
@@ -291,9 +513,13 @@ function Deposit({
             <li>Wallet connection uses Phantom directly.</li>
             <li>Balance comes from Solana devnet RPC.</li>
             <li>Note secrets are generated in browser.</li>
-            <li>Note vault encryption key is derived from wallet `signMessage`.</li>
-            <li>Deposit transaction is blocked if ShieldedPool is not deployed.</li>
+            <li>Vault key derived from wallet signMessage (AES-256-GCM + HKDF).</li>
+            <li>Deposit blocked if ShieldedPool is not deployed (assertProgramDeployed).</li>
+            <li>Notes and history encrypted before localStorage write.</li>
           </ul>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            Export a note backup after any deposit. There is no on-chain recovery path for lost local notes.
+          </p>
         </Panel>
       </div>
     </section>
@@ -303,7 +529,7 @@ function Deposit({
 function BlockedFlow({ title, notes, reason }: { title: string; notes: StoredNote[]; reason: string }) {
   return (
     <section className="stack">
-      <Hero title={title} subtitle="This flow is intentionally blocked until its on-chain and proof dependencies are real." />
+      <Hero title={title} subtitle="Intentionally blocked until on-chain and proof dependencies are real." />
       <Panel title="Why this is not clickable yet">
         <p>{reason}</p>
         <p className="muted">Available notes in local vault: {notes.length}</p>
@@ -312,10 +538,19 @@ function BlockedFlow({ title, notes, reason }: { title: string; notes: StoredNot
   );
 }
 
-function HistoryScreen({ records }: { records: HistoryRecord[] }) {
+function HistoryScreen({ records, vaultReady }: { records: HistoryRecord[]; vaultReady: boolean }) {
   return (
     <section className="stack">
-      <Hero title="History" subtitle="Only local records created in this browser are shown. There are no seeded transaction rows." />
+      <Hero title="History" subtitle="Local records only. Encrypted when vault is unlocked." />
+      {!vaultReady && (
+        <div className="notice">
+          <LockKeyhole size={16} />
+          <span>
+            Unlock the note vault to load encrypted history records. Records created before vault
+            unlock may be stored without sensitive fields (commitment, nullifierHash) to prevent plaintext secrets in localStorage.
+          </span>
+        </div>
+      )}
       <Panel title="Local activity">
         {records.length === 0 && <EmptyState text="No local records yet." />}
         {records.map((record) => (
@@ -369,13 +604,32 @@ function NoteRow({ note }: { note: StoredNote }) {
   );
 }
 
-function StatusLine({ label, value }: { label: string; value: string }) {
+function StatusLine({ label, value, healthy }: { label: string; value: string; healthy: boolean }) {
+  const Icon = healthy ? CheckCircle : XCircle;
   return (
     <div className="rail">
-      <CircleAlert size={16} className="amber" />
+      <Icon size={16} className={healthy ? "green" : "amber"} />
       <div>
         <strong>{label}</strong>
         <span>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function RailStatusRow({ rail }: { rail: RailStatus }) {
+  const Icon = rail.healthy ? CheckCircle : XCircle;
+  return (
+    <div className="rail">
+      <Icon size={16} className={rail.healthy ? "green" : rail.requiredForFullPrivacy ? "amber" : "muted"} />
+      <div>
+        <strong>{rail.name}</strong>
+        <span>{rail.role}</span>
+        {!rail.healthy && rail.requiredForFullPrivacy && (
+          <small style={{ color: "var(--danger)", display: "block", marginTop: "2px" }}>
+            Required for Full Privacy — unavailable
+          </small>
+        )}
       </div>
     </div>
   );

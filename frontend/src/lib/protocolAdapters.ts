@@ -1,7 +1,7 @@
 export type ProtocolMode = "full" | "degraded" | "emergency";
 
 export interface RailStatus {
-  key: "ika" | "per" | "vrf" | "private_payments" | "encrypt" | "umbra" | "groth16";
+  key: "programs_deployed" | "zk_artifacts" | "groth16" | "ika" | "per" | "vrf" | "private_payments" | "encrypt" | "umbra";
   name: string;
   role: string;
   healthy: boolean;
@@ -9,13 +9,70 @@ export interface RailStatus {
 }
 
 export const FULL_PRIVACY_RAILS: RailStatus[] = [
-  { key: "ika", name: "IKA dWallet", role: "Relay authorization and FutureSign approvals", healthy: process.env.NEXT_PUBLIC_IKA_ENABLED === "true", requiredForFullPrivacy: true },
-  { key: "per", name: "MagicBlock PER", role: "Private execution lane for deposit, repay, and exits", healthy: true, requiredForFullPrivacy: true },
-  { key: "vrf", name: "MagicBlock VRF", role: "Publicly verifiable dummy commitment entropy", healthy: false, requiredForFullPrivacy: true },
-  { key: "private_payments", name: "MagicBlock Private Payments", role: "Private repayment settlement receipts", healthy: Boolean(process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL), requiredForFullPrivacy: true },
-  { key: "encrypt", name: "Encrypt FHE", role: "Pre-alpha health-factor computation and liquidation reveal rail", healthy: process.env.NEXT_PUBLIC_ENCRYPT_ENABLED === "true", requiredForFullPrivacy: true },
-  { key: "umbra", name: "Umbra SDK", role: "Optional confidential SPL/Token-2022 amount privacy rail", healthy: Boolean(process.env.NEXT_PUBLIC_UMBRA_ENABLED), requiredForFullPrivacy: false },
-  { key: "groth16", name: "groth16-solana", role: "On-chain proof verification", healthy: false, requiredForFullPrivacy: true },
+  {
+    key: "programs_deployed",
+    name: "Programs deployed",
+    role: "ShieldedPool / LendingPool / NullifierRegistry on devnet",
+    healthy: Boolean(process.env.NEXT_PUBLIC_PROGRAMS_DEPLOYED),
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "zk_artifacts",
+    name: "ZK artifacts",
+    role: "withdraw_ring / collateral_ring / repay_ring — .wasm + .zkey + _vkey.json",
+    healthy: Boolean(process.env.NEXT_PUBLIC_ZK_ARTIFACTS_READY),
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "groth16",
+    name: "groth16-solana verifier",
+    role: "On-chain Groth16 proof verification (BN254 syscalls)",
+    healthy: false,
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "ika",
+    name: "IKA dWallet relay",
+    role: "Relay authorization — prevents user wallet from being on-chain signer",
+    healthy: process.env.NEXT_PUBLIC_IKA_ENABLED === "true",
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "per",
+    name: "MagicBlock PER",
+    role: "Private execution lane — deposit batching and exit batching inside TDX enclave",
+    // Must not be hardcoded true: no PER macros exist in any program.
+    healthy: Boolean(process.env.NEXT_PUBLIC_PER_ENABLED),
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "vrf",
+    name: "MagicBlock VRF",
+    role: "Publicly verifiable dummy commitment entropy",
+    healthy: false,
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "private_payments",
+    name: "MagicBlock Private Payments",
+    role: "Private repayment settlement receipts",
+    healthy: Boolean(process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL),
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "encrypt",
+    name: "Encrypt FHE",
+    role: "Encrypted oracle health-factor computation and liquidation reveal",
+    healthy: process.env.NEXT_PUBLIC_ENCRYPT_ENABLED === "true",
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "umbra",
+    name: "Umbra SDK",
+    role: "One-time stealth addresses for withdrawal and disbursement destinations",
+    healthy: Boolean(process.env.NEXT_PUBLIC_UMBRA_ENABLED),
+    requiredForFullPrivacy: false,
+  },
 ];
 
 export function modeFromRails(rails: RailStatus[]): ProtocolMode {
