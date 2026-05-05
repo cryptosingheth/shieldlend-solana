@@ -198,6 +198,12 @@ Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!`
 
 - Deployment status remains separate from local program-id sync. Do not claim deployed program readiness without localnet/devnet deployment verification.
 
+## ZK Artifact Posture
+
+**Decision**: C2B-generated Groth16 artifacts are DEV/TEST-only, even though local witness/proof/verification smoke tests pass.
+**Why**: The current Powers of Tau was generated locally as a one-person dev setup at `circuits/keys/dev_pot14_final.ptau`, not from a reviewed production ceremony.
+**How to apply**: Browser proving may use these artifacts for local/dev testing. Do not claim production trusted setup, on-chain verification, or live privacy until reviewed ceremony material and `groth16-solana` integration are complete.
+
 ---
 
 ## Implementation Status Ledger

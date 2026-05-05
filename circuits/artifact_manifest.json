@@ -6,11 +6,11 @@
     },
     "zkey": {
       "path": "/circuits/withdraw_ring.zkey",
-      "sha256": null
+      "sha256": "177945b52aa4bab6a8d98343161b1d88d23fdcf5e3aefb005c5dd92469944032"
     },
     "vkey": {
       "path": "/circuits/withdraw_ring_vkey.json",
-      "sha256": null
+      "sha256": "2c86811b19a5ee92609cef0a5d6072393714ec3cb019a06fd0b74af3ace7a163"
     }
   },
   "collateral": {
@@ -20,11 +20,11 @@
     },
     "zkey": {
       "path": "/circuits/collateral_ring.zkey",
-      "sha256": null
+      "sha256": "af4fd077424412ad899a061999817d5367217114798a961272ceb351aa7821ea"
     },
     "vkey": {
       "path": "/circuits/collateral_ring_vkey.json",
-      "sha256": null
+      "sha256": "26fc1c67eb8340a690961369dfebec688f23bbbbf14f1ade76055a974ac1f7e8"
     }
   },
   "repay": {
@@ -34,11 +34,11 @@
     },
     "zkey": {
       "path": "/circuits/repay_ring.zkey",
-      "sha256": null
+      "sha256": "213ab27a8e88e1568e7543d5eb031841a302fde0cea9c9518feb0b2cc05e1f1e"
     },
     "vkey": {
       "path": "/circuits/repay_ring_vkey.json",
-      "sha256": null
+      "sha256": "41fbad43d297734fb66b305c3bbc9acdac182863f54ed64b4734c1fcc0bf0d83"
     }
   }
 }

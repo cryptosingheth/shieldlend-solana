@@ -147,3 +147,20 @@ Append-only. Most recent entry at the bottom.
 - Updated `programs/shielded_pool/src/lib.rs` so `LENDING_POOL_PROGRAM_ID` matches the synced `lending_pool` ID used for the lending-pool authority PDA.
 - Updated `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, and `.ai/DECISIONS.md` to remove the stale-constant blocker.
 - No deployment, full Anchor IDL generation, zkey/vkey generation, circuit logic change, or privacy overclaim was performed.
+
+---
+
+## 2026-05-05 — Convergence Task 2B: DEV/TEST Groth16 Artifacts
+
+- Re-verified tooling: Node 22.14.0, npm 11.8.0, snarkjs 0.7.6, circom 2.2.3.
+- Re-ran `npm run circuits:compile`.
+- Recorded constraint counts:
+  - `withdraw_ring`: 14,019 constraints.
+  - `collateral_ring`: 14,277 constraints.
+  - `repay_ring`: 1,440 constraints.
+- Generated DEV/TEST-only `circuits/keys/dev_pot14_final.ptau` for the largest circuit; SHA-256 `3838aee2feec6518a6eb1198a04c74317652630fbaf5715870fbd1a32deaa18c`; `snarkjs powersoftau verify` passed.
+- Ran `node scripts/generate-zk-artifacts.mjs`; generated browser WASM, final zkeys, and `_vkey.json` files for all three circuits.
+- Verified each zkey with `snarkjs zkey verify`.
+- Ran local deterministic smoke tests for all circuits: witness generation, witness check, proof generation, and Groth16 verification all passed.
+- Updated artifact manifest, ceremony notes, ZK audit notes/blockers, implementation ledger, and shared `.ai/` memory.
+- No deployment, full Anchor IDL generation, Solana program logic change, production trusted setup claim, or on-chain verifier wiring was performed.

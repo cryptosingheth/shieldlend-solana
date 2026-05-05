@@ -1,4 +1,4 @@
-# ZK Artifact Blockers
+# ZK Artifact Status And Remaining Blockers
 
 Date: 2026-05-05
 
@@ -30,7 +30,7 @@ npm run circuits:compile
 Result:
 
 ```text
-completed after creating build/circuits
+completed
 ```
 
 The first attempt failed with `invalid output path` because `build/circuits` did
@@ -46,37 +46,43 @@ node scripts/generate-zk-artifacts.mjs
 Result:
 
 ```text
-No .ptau file found; skipping Groth16 zkey and verification-key generation.
+completed
 ```
 
 The generator compiled all three circuits, copied browser WASM files to
-`frontend/public/circuits/`, and updated `circuits/artifact_manifest.json` with
-WASM hashes.
+`frontend/public/circuits/`, generated final DEV/TEST zkeys and verification
+keys, and updated `circuits/artifact_manifest.json` with WASM, zkey, and vkey
+hashes.
+
+## Cleared In C2B
+
+1. Missing local `.ptau` no longer blocks dev/test artifact generation.
+
+Generated local DEV/TEST-only file:
+
+| Path | Power | Size | SHA-256 |
+|---|---:|---:|---|
+| `circuits/keys/dev_pot14_final.ptau` | 14 | 18 MB | `3838aee2feec6518a6eb1198a04c74317652630fbaf5715870fbd1a32deaa18c` |
+
+2. DEV/TEST Groth16 `.zkey` files and `_vkey.json` files now exist for
+`withdraw_ring`, `collateral_ring`, and `repay_ring`.
+
+3. Local proof smoke tests now pass for all three circuits.
 
 ## Remaining Blockers
 
-1. No Powers of Tau `.ptau` file exists locally.
+1. Production trusted setup is missing.
 
-Provide a reviewed BN254 Powers of Tau file. For a local non-production ceremony
-only:
+The generated `.ptau`, `.zkey`, and verification keys are DEV/TEST-only. For
+production or public privacy claims, use a reviewed ceremony artifact with
+documented provenance and hashes instead of this local one-person ceremony.
 
-```sh
-mkdir -p build/circuits
-snarkjs powersoftau new bn128 20 build/circuits/pot20_0000.ptau -v
-snarkjs powersoftau contribute build/circuits/pot20_0000.ptau build/circuits/pot20_0001.ptau --name="ShieldLend local test contribution" -v -e="replace-with-high-entropy-randomness"
-snarkjs powersoftau prepare phase2 build/circuits/pot20_0001.ptau build/circuits/pot20_final.ptau -v
-node scripts/generate-zk-artifacts.mjs
-```
+2. On-chain verifier integration remains blocked.
 
-For production or public testing claims, use a trusted ceremony artifact with documented provenance and hashes instead of a local one-person ceremony.
+The generated verification keys are not yet wired into `groth16-solana`, and
+the Anchor programs still fail closed for proof verification.
 
-2. Groth16 `.zkey` files and verification keys are not generated.
+3. Devnet deployment is not done.
 
-The manifest intentionally records `null` hashes for zkey and vkey entries until
-real files exist. Do not replace these with placeholder hashes.
-
-3. On-chain verifier integration remains blocked on real verification keys.
-
-The current browser WASM files are compiled artifacts only. They do not make the
-privacy proof path live without matching zkeys, verification keys, and
-`groth16-solana` integration.
+Frontend browser proving artifacts exist locally, but no deployed program
+accounts have been verified on devnet.

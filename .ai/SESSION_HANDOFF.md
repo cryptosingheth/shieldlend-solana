@@ -2,18 +2,19 @@
 
 ## Task Objective
 
-Convergence Task 2A.5: fix stale program ID constants discovered after C1/C2 status reconciliation.
+Convergence Task 2B: generate DEV/TEST Groth16 proving and verification artifacts.
 
 ## Current Status
 
-**Program ID constants aligned; implementation still pre-alpha.**
+**DEV/TEST Groth16 artifacts generated; implementation still pre-alpha.**
 
 - `docs/IMPLEMENTATION_STATUS.md` created as the canonical local implementation ledger.
 - README current build, privacy status, ZK circuits, pre-alpha status, and getting started sections were updated to match local source truth.
 - C1 state recorded: Solana CLI + Anchor 0.30.1 available; program IDs synced in Anchor config and `declare_id!`; `anchor build --no-idl` passes; `.so` artifacts exist.
-- C2 state recorded: ShieldedPool ZK field constant aligned; browser WASM artifacts generated; `.ptau`, `.zkey`, and `_vkey.json` missing.
+- C2 state recorded: ShieldedPool ZK field constant aligned; browser WASM artifacts generated.
 - C2A.5 state recorded: frontend `PROGRAM_IDS` and ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` now match local `anchor keys list`.
-- No devnet deployment, full IDL generation, zkey/vkey generation, or external privacy rail wiring was performed.
+- C2B state recorded: local DEV/TEST pot14 `.ptau`, final zkeys, and verification keys were generated; zkeys verified; proof smoke tests passed for withdraw, collateral, and repay.
+- No devnet deployment, full IDL generation, production trusted setup, on-chain verifier wiring, or external privacy rail wiring was performed.
 - IKA relay signer privacy, PER batching, Private Payments, Umbra exits, Encrypt/FHE, production trusted setup, on-chain Groth16 verification, and full private repayment/borrow/withdraw are explicitly NOT LIVE.
 
 ## Files Changed
@@ -23,8 +24,11 @@ Convergence Task 2A.5: fix stale program ID constants discovered after C1/C2 sta
 - `.ai/SESSION_HANDOFF.md`
 - `.ai/TASK_LOG.md`
 - `docs/IMPLEMENTATION_STATUS.md`
-- `frontend/src/lib/contracts.ts`
-- `programs/shielded_pool/src/lib.rs`
+- `circuits/CEREMONY.md`
+- `circuits/artifact_manifest.json`
+- `frontend/public/circuits/*`
+- `audit-reports/ZK_GENERATION_NOTES.md`
+- `audit-reports/ZK_ARTIFACT_BLOCKERS.md`
 
 ## Verification
 
@@ -37,15 +41,14 @@ Convergence Task 2A.5: fix stale program ID constants discovered after C1/C2 sta
 ## Current Blockers
 
 1. Full Anchor IDL generation blocked by Anchor/proc-macro2 compatibility.
-2. No reviewed BN254 Powers of Tau `.ptau` file exists locally.
-3. Groth16 `.zkey` files and verification keys are not generated.
-4. Proof-generation smoke test and on-chain `groth16-solana` verification are not live.
-5. Devnet deployment is not done.
-6. MagicBlock Private Payments URL missing, Umbra network/config not set, IKA relay not wired, PER not wired.
+2. Production trusted setup is missing; current `.ptau`/zkeys/vkeys are DEV/TEST-only.
+3. On-chain `groth16-solana` verification is not wired.
+4. Devnet deployment is not done.
+5. MagicBlock Private Payments URL missing, Umbra network/config not set, IKA relay not wired, PER not wired.
 
 ## Do Not Claim Publicly Until Implemented
 
-- ZK proof artifacts are live
+- Production ZK proof artifacts are live
 - Trusted setup ceremony completed
 - Verification keys are ready
 - On-chain Groth16 verification is wired
@@ -54,5 +57,6 @@ Convergence Task 2A.5: fix stale program ID constants discovered after C1/C2 sta
 ## Next Steps
 
 1. Handle Anchor IDL compatibility in a separate task.
-2. Provide a reviewed `.ptau`, then generate and verify zkeys/vkeys.
-3. Deploy to devnet only after IDL/artifact/frontend config status is clean.
+2. Replace DEV/TEST setup with reviewed production ceremony material before production privacy claims.
+3. Wire and test `groth16-solana` verification separately.
+4. Deploy to devnet only after IDL/artifact/frontend config status is clean.

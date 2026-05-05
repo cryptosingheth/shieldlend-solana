@@ -12,7 +12,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 |---|---|---|
 | Anchor programs | Compile to SBF with `anchor build --no-idl`; `.so` files exist in `target/deploy/` | Not deployed; full IDL generation is blocked |
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` | Not deployed; synced local IDs are not proof of devnet readiness |
-| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; browser WASM files are generated and hashed | `.ptau`, `.zkey`, and `_vkey.json` are missing; no proof-generation smoke test or on-chain verification is live |
+| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST browser WASM, zkey, and vkey artifacts are generated and hashed; local proof smoke tests pass | Production trusted setup is missing; on-chain verification is not wired or live |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
 | External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
 | Deployment | None | Do not claim devnet or production readiness |
@@ -22,13 +22,14 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | Command | Status | Notes |
 |---|---|---|
 | `pwd` | `/Users/opinderpreetsingh/projects/shieldlend-solana` | Canonical local checkout for this task |
-| `git log --oneline -5` | includes `13df1fc chore: align zk constants with synced program ids` | Convergence Task 2 is present |
+| `git log --oneline -5` | includes C2, status reconciliation, and C2A.5 commits | Convergence history is present |
 | `anchor keys list` | passed | IDs listed below |
 | `find target/deploy -name "*.so"` | passed | Three `.so` files exist |
-| `cargo fmt --all -- --check` | known good | Last validation in this reconciliation pass |
-| `cargo test --workspace` | known good | 21 Rust unit tests pass |
+| `npm run circuits:compile` | known good | Re-run during C2B |
+| `node scripts/generate-zk-artifacts.mjs` | known good | Generated DEV/TEST zkeys and vkeys during C2B |
 | `npm run typecheck:frontend` | known good | TypeScript check passes |
 | `npm run build:frontend` | known good | Next build passes with existing dependency warning |
+| `cargo test --workspace` | known good | 21 Rust unit tests pass |
 | `anchor build --no-idl` | known good | SBF build passes with existing Anchor/SBF warnings |
 
 ## Program IDs
@@ -73,17 +74,18 @@ BN254 field element:
 
 | Circuit | Source file | Public signal metadata | Browser WASM | ZKey | Verification key | Live proof status |
 |---|---|---|---|---|---|---|
-| Withdraw | `circuits/withdraw_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | Missing | Missing | Not live |
-| Collateral | `circuits/collateral_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | Missing | Missing | Not live |
-| Repay | `circuits/repay_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | Missing | Missing | Not live |
+| Withdraw | `circuits/withdraw_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Local smoke passed; on-chain not live |
+| Collateral | `circuits/collateral_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Local smoke passed; on-chain not live |
+| Repay | `circuits/repay_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Local smoke passed; on-chain not live |
 
 Artifact details:
 
-- `circuits/artifact_manifest.json` records WASM hashes.
-- `zkey.sha256` and `vkey.sha256` are intentionally `null`.
-- No `.ptau` file exists locally.
-- No trusted setup ceremony has been executed.
-- No proof-generation smoke test is recorded as passing.
+- `circuits/artifact_manifest.json` records WASM, zkey, and vkey hashes.
+- DEV/TEST Powers of Tau: `circuits/keys/dev_pot14_final.ptau`, 18 MB,
+  SHA-256 `3838aee2feec6518a6eb1198a04c74317652630fbaf5715870fbd1a32deaa18c`.
+- This local `.ptau` is not a production trusted setup.
+- Local witness generation, witness checks, proof generation, and Groth16
+  verification passed for all three circuits.
 - No on-chain `groth16-solana` verification is wired.
 
 ## Implemented Code
@@ -106,7 +108,7 @@ Artifact details:
 | Private payment receipt verification | Fails closed with `PrivatePaymentVerifierNotWired` |
 | Encrypt liquidation reveal verification | Fails closed with `EncryptVerifierNotWired` |
 | PER exit flushing | Fails closed with `PerAdapterNotWired` unless queue is empty |
-| Frontend proof generation | Requires real commitment ring provider and zkeys; synthetic decoys are rejected |
+| Frontend proof generation | Has DEV/TEST browser artifacts; still requires real commitment ring provider for withdraw/collateral; synthetic decoys are rejected |
 
 ## Privacy Rails
 
@@ -120,7 +122,7 @@ Artifact details:
 | Umbra stealth exits | Not wired; env-gated status only | No |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
 | On-chain Groth16 verification | Not wired | No |
-| Production trusted setup | Missing | No |
+| Production trusted setup | Missing; DEV/TEST local setup only | No |
 | Full private repayment | Not live | No |
 | Full private borrow/withdraw flow | Not end-to-end verified | No |
 | Local note/history encryption | Implemented | Yes, local-browser only |
@@ -131,10 +133,7 @@ Artifact details:
 | Blocker | Impact |
 |---|---|
 | Full Anchor IDL generation blocked | Cannot rely on generated IDLs until Anchor/proc-macro2 issue is fixed |
-| No `.ptau` file | Cannot generate Groth16 zkeys or verification keys |
-| No `.zkey` files | Browser proof generation cannot complete |
-| No `_vkey.json` files | Verification key export and on-chain verifier wiring are blocked |
-| No Groth16 proof smoke test | Cannot claim proofs are usable |
+| No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
 | No on-chain verifier integration | Cannot claim withdrawal, collateral, or repay proofs are verified on-chain |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
@@ -148,8 +147,9 @@ Safe wording:
 
 - "Pre-alpha local scaffold."
 - "Anchor programs compile and SBF artifacts are generated."
-- "Circuits compile and browser WASM artifacts are generated."
-- "Zkeys, verification keys, trusted setup, on-chain verification, external privacy rails, and devnet deployment are not live."
+- "Circuits compile and DEV/TEST browser proving artifacts are generated."
+- "Local DEV/TEST Groth16 proof smoke tests pass."
+- "Production trusted setup, on-chain verification, external privacy rails, and devnet deployment are not live."
 
 Unsafe wording:
 
@@ -157,5 +157,6 @@ Unsafe wording:
 - "Withdrawals are private."
 - "Borrow/repay flows are private end-to-end."
 - "Groth16 proofs are verified on-chain."
+- "Production trusted setup is complete."
 - "IKA, MagicBlock, Umbra, or Encrypt privacy is active."
 - "Production privacy artifacts are ready."
