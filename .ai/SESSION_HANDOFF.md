@@ -2,62 +2,67 @@
 
 ## Task Objective
 
-Convergence Task 2B: generate DEV/TEST Groth16 proving and verification artifacts.
+Convergence Task 2C: determine whether on-chain Groth16 verifier wiring can proceed
+safely without requiring full Anchor IDL generation.
 
 ## Current Status
 
-**DEV/TEST Groth16 artifacts generated; implementation still pre-alpha.**
+**C2C analysis complete. On-chain verifier wiring is blocked (Outcome B). No code changed.**
 
-- `docs/IMPLEMENTATION_STATUS.md` created as the canonical local implementation ledger.
-- README current build, privacy status, ZK circuits, pre-alpha status, and getting started sections were updated to match local source truth.
-- C1 state recorded: Solana CLI + Anchor 0.30.1 available; program IDs synced in Anchor config and `declare_id!`; `anchor build --no-idl` passes; `.so` artifacts exist.
-- C2 state recorded: ShieldedPool ZK field constant aligned; browser WASM artifacts generated.
-- C2A.5 state recorded: frontend `PROGRAM_IDS` and ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` now match local `anchor keys list`.
-- C2B state recorded: local DEV/TEST pot14 `.ptau`, final zkeys, and verification keys were generated; zkeys verified; proof smoke tests passed for withdraw, collateral, and repay.
-- No devnet deployment, full IDL generation, production trusted setup, on-chain verifier wiring, or external privacy rail wiring was performed.
-- IKA relay signer privacy, PER batching, Private Payments, Umbra exits, Encrypt/FHE, production trusted setup, on-chain Groth16 verification, and full private repayment/borrow/withdraw are explicitly NOT LIVE.
+- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` created with full file/line evidence.
+- `docs/IMPLEMENTATION_STATUS.md` updated with five new blocker rows.
+- `.ai/CURRENT_TASK.md` and `.ai/SESSION_HANDOFF.md` updated.
+- `.ai/TASK_LOG.md` and `.ai/DECISIONS.md` updated.
+- C2B DEV/TEST Groth16 artifacts remain unchanged and correct.
+- No program code was modified. No dependency was added. No fake wiring was performed.
 
-## Files Changed
+## Files Changed (this task)
 
-- `.ai/CURRENT_TASK.md`
-- `.ai/DECISIONS.md`
-- `.ai/SESSION_HANDOFF.md`
-- `.ai/TASK_LOG.md`
-- `docs/IMPLEMENTATION_STATUS.md`
-- `circuits/CEREMONY.md`
-- `circuits/artifact_manifest.json`
-- `frontend/public/circuits/*`
-- `audit-reports/ZK_GENERATION_NOTES.md`
-- `audit-reports/ZK_ARTIFACT_BLOCKERS.md`
+- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — created
+- `docs/IMPLEMENTATION_STATUS.md` — known-blockers table expanded
+- `.ai/CURRENT_TASK.md` — updated
+- `.ai/SESSION_HANDOFF.md` — updated (this file)
+- `.ai/TASK_LOG.md` — appended
+- `.ai/DECISIONS.md` — appended
 
 ## Verification
 
-- `cargo fmt --all -- --check` — passed.
-- `cargo test --workspace` — passed, 21 tests.
-- `npm run typecheck:frontend` — passed.
-- `npm run build:frontend` — passed with existing dependency warning.
-- `anchor build --no-idl` — passed with existing Anchor/SBF warnings.
+- `cargo fmt --all -- --check` — passed (no code changed)
+- `cargo test --workspace` — passed, 21 tests (no code changed)
+- `npm run typecheck:frontend` — passed (no frontend code changed)
+- `npm run build:frontend` — passed (no frontend code changed)
+- `anchor build --no-idl` — passed (no program code changed)
 
 ## Current Blockers
 
-1. Full Anchor IDL generation blocked by Anchor/proc-macro2 compatibility.
-2. Production trusted setup is missing; current `.ptau`/zkeys/vkeys are DEV/TEST-only.
-3. On-chain `groth16-solana` verification is not wired.
-4. Devnet deployment is not done.
-5. MagicBlock Private Payments URL missing, Umbra network/config not set, IKA relay not wired, PER not wired.
+1. Full Anchor IDL generation blocked by Anchor/proc-macro2 compatibility. **Not a
+   prerequisite for verifier wiring.**
+2. Production trusted setup missing; current artifacts are DEV/TEST-only.
+3. On-chain Groth16 verification blocked by five concrete issues (see below).
+4. Devnet deployment not done.
+5. External privacy rails not wired.
+
+## On-Chain Verifier Specific Blockers (C2C)
+
+1. `groth16-solana` absent from all Cargo.toml files.
+2. `WithdrawArgs` / `BorrowArgs` / `RepayArgs` lack proof bytes and public signal arrays.
+3. vkey conversion script not written (snarkjs JSON → Solana BN254 byte encoding).
+4. No Rust on-chain test vectors.
+5. Compute budget not handled for BN254 pairing (~220k–260k CU).
 
 ## Do Not Claim Publicly Until Implemented
 
-Do NOT claim any of the following yet:
 - Production ZK proof artifacts are live.
-- A production trusted setup ceremony has been completed.
-- Verification keys are production-ready.
-- On-chain Groth16 verification is wired/live.
-- Production privacy exists from the current DEV/TEST artifact set.
+- On-chain Groth16 verification is wired or live.
+- Production trusted setup is complete.
+- Any privacy rail (IKA, MagicBlock, Umbra, Encrypt) is active.
 
 ## Next Steps
 
-1. Handle Anchor IDL compatibility in a separate task.
-2. Replace DEV/TEST setup with reviewed production ceremony material before production privacy claims.
-3. Wire and test `groth16-solana` verification separately.
-4. Deploy to devnet only after IDL/artifact/frontend config status is clean.
+1. Research and pin `groth16-solana` crate version/API. Confirm BPF compatibility
+   with Anchor 0.30.1 / solana-program 1.18.x.
+2. Write vkey conversion script: snarkjs projective decimal → big-endian affine bytes.
+3. Extend `WithdrawArgs`, `BorrowArgs`, `RepayArgs` with proof fields and public signals.
+4. Implement the three fail-closed verifier stubs once above prereqs are satisfied.
+5. Add Rust test vectors + compute budget handling.
+6. Re-run full validation suite after each step.

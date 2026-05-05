@@ -150,6 +150,38 @@ Append-only. Most recent entry at the bottom.
 
 ---
 
+## 2026-05-05 — Convergence Task 2C: On-Chain Verifier Blocker Analysis
+
+- Inspected all required files: three program `lib.rs` files, three program `Cargo.toml` files,
+  workspace `Cargo.toml`, `Cargo.lock`, `circuits/artifact_manifest.json`, `circuits/public_signals.json`,
+  three `_vkey.json` files, `frontend/src/lib/circuits.ts`, `frontend/src/lib/protocolAdapters.ts`,
+  `audit-reports/ZK_GENERATION_NOTES.md`, `audit-reports/ZK_ARTIFACT_BLOCKERS.md`,
+  and `docs/IMPLEMENTATION_STATUS.md`.
+- Confirmed `groth16-solana` is absent from all Cargo.toml files and Cargo.lock.
+  `ark-bn254` is present only as a transitive dep of `solana-program` 1.18.26 — it is
+  a host-side library, not a BPF verifier.
+- Confirmed three fail-closed stubs:
+  - `verify_withdraw_proof` → `PoolError::Groth16VerifierNotWired` (`shielded_pool/src/lib.rs:170`)
+  - `verify_collateral_proof` → `LendingError::Groth16VerifierNotWired` (`lending_pool/src/lib.rs:274`)
+  - `verify_repay_proof` → `LendingError::Groth16VerifierNotWired` (`lending_pool/src/lib.rs:278`)
+- Mapped public signal order for all three circuits from `public_signals.json`.
+- Identified five concrete blockers preventing safe wiring:
+  1. `groth16-solana` dep absent — version/API unknown.
+  2. Instruction args lack proof bytes — `WithdrawArgs`, `BorrowArgs`, `RepayArgs` carry only
+     hashes; need `proof_a/b/c` and full public signal arrays (breaking ABI change).
+  3. vkey format conversion unscripted — snarkjs decimal projective format not convertable
+     to Solana BN254 big-endian affine bytes without a new utility.
+  4. No Rust on-chain test vectors.
+  5. Compute budget not handled (~220k–260k CU for BN254 pairing exceeds 200k default).
+- Confirmed: Anchor IDL blocker is NOT a prerequisite for verifier wiring.
+- Outcome B: wiring blocked. No program code changed. No fake wiring performed.
+- Created `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`.
+- Updated `docs/IMPLEMENTATION_STATUS.md` known-blockers table.
+- Validations: `cargo fmt` pass, `cargo test` pass (21 tests), `npm run typecheck:frontend` pass,
+  `npm run build:frontend` pass, `anchor build --no-idl` pass.
+
+---
+
 ## 2026-05-05 — Convergence Task 2B: DEV/TEST Groth16 Artifacts
 
 - Re-verified tooling: Node 22.14.0, npm 11.8.0, snarkjs 0.7.6, circom 2.2.3.

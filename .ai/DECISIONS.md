@@ -30,6 +30,23 @@ Remote verification rejected — must be atomic on-chain to prevent TOCTOU attac
 
 ---
 
+## On-Chain Verifier Wiring Prerequisites (C2C)
+
+**Decision**: Do not wire `groth16-solana` until five prerequisites are cleared in order.
+**Why**: C2C analysis confirmed that instruction arg structs lack proof bytes (breaking ABI change
+required), the vkey conversion script is missing, no Rust test vectors exist, and compute budget
+handling is absent. Adding a stub `return Ok(())` or partial wiring would silently break the
+fail-closed security guarantee.
+**How to apply**:
+1. Research and pin `groth16-solana` crate version/API.
+2. Write vkey conversion script (snarkjs JSON → Solana BN254 big-endian affine bytes).
+3. Extend `WithdrawArgs`, `BorrowArgs`, `RepayArgs` with `proof_a/b/c` and public signal arrays.
+4. Implement verifier calls only after steps 1–3 are complete and test vectors are available.
+5. Add compute budget constant and document client-side `set_compute_unit_limit` requirement.
+Evidence: `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`.
+
+---
+
 ## Smart Contract Framework
 
 **Decision**: Use plain Anchor, not Bolt.

@@ -134,12 +134,18 @@ Artifact details:
 |---|---|
 | Full Anchor IDL generation blocked | Cannot rely on generated IDLs until Anchor/proc-macro2 issue is fixed |
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
-| No on-chain verifier integration | Cannot claim withdrawal, collateral, or repay proofs are verified on-chain |
+| `groth16-solana` dep absent from all Cargo.toml files | On-chain verifier cannot be called; version and API not yet researched |
+| Instruction args lack proof bytes (`WithdrawArgs`, `BorrowArgs`, `RepayArgs`) | Verifier cannot receive proof points or public signals; ABI break required |
+| vkey conversion script missing | snarkjs JSON vkeys not converted to Solana BN254 byte encoding needed by verifier |
+| Missing Rust on-chain test vectors | No deterministic proof bytes in Rust tests; verifier correctness unverifiable before devnet |
+| Compute budget not handled for BN254 instructions | Withdraw/collateral verify calls will exceed default 200k CU limit without `set_compute_unit_limit` |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |
 | PER not wired | No private batching or unified exit batching |
+
+See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file/line evidence.
 
 ## Claim Policy
 
