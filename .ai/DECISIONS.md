@@ -200,6 +200,14 @@ Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!`
 
 ---
 
+## Implementation Status Ledger
+
+**Decision**: `docs/IMPLEMENTATION_STATUS.md` is the canonical local source for current implementation readiness and privacy claim boundaries.
+**Why**: README and older docs can drift from local build/artifact state; a compact ledger prevents stale claims after convergence tasks.
+**How to apply**: Update the ledger whenever build readiness, artifacts, deployment status, external rails, or privacy claims change. Do not claim live privacy from target-architecture docs.
+
+---
+
 ## Audit-Confirmed Risk Decisions (2026-05-04)
 
 **Decision**: Do not begin any protocol integration (groth16, PER, IKA, Encrypt, Umbra) until `audit-reports/FINAL_AUDIT_REPORT.md` is reviewed and a prioritised fix list is agreed.

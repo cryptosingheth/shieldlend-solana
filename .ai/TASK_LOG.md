@@ -123,3 +123,14 @@ Append-only. Most recent entry at the bottom.
 - Ran `node scripts/generate-zk-artifacts.mjs`; generated browser WASM artifacts and hashes, but skipped zkey/vkey because no `.ptau` file exists locally.
 - Updated `circuits/CEREMONY.md`, `audit-reports/ZK_GENERATION_NOTES.md`, and `audit-reports/ZK_ARTIFACT_BLOCKERS.md` to reflect current status.
 - Remaining blocker: no reviewed BN254 Powers of Tau file, no `.zkey`, no `_vkey.json`, and no live Groth16 verifier integration.
+
+---
+
+## 2026-05-05 — Status Reconciliation After C1/C2
+
+- Created `docs/IMPLEMENTATION_STATUS.md` as the canonical local implementation ledger.
+- Updated README current build status, privacy status, ZK circuits, pre-alpha status, repository structure, and getting-started sections to remove stale claims.
+- Recorded known-good validation commands: `cargo fmt --all -- --check`, `cargo test --workspace`, `npm run typecheck:frontend`, `npm run build:frontend`, and `anchor build --no-idl`.
+- Explicitly marked not live: IKA relay signer privacy, MagicBlock PER, MagicBlock Private Payments, Umbra stealth exits, Encrypt/FHE oracle/health computation, on-chain Groth16 verification, production trusted setup, full private repayment, and end-to-end private borrow/withdraw.
+- Documented blockers: full Anchor IDL generation, missing `.ptau`, missing `.zkey`, missing `_vkey.json`, no proof smoke test, no on-chain verifier, no devnet deployment, missing Private Payments URL, Umbra config not set, IKA relay not wired, and PER not wired.
+- Noted local source-truth follow-up: frontend `contracts.ts` still has old program IDs, and `shielded_pool` has a stale internal `LENDING_POOL_PROGRAM_ID` constant. No code changes were made in this docs-only task.

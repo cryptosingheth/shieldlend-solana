@@ -2,49 +2,46 @@
 
 ## Task Objective
 
-Convergence Task 2: align ZK circuit constants, frontend proof constants, and artifact-generation status around the synced ShieldedPool program id.
+Status reconciliation after Convergence Task 1 and Convergence Task 2.
 
 ## Current Status
 
-**ZK constants pass complete; proving keys remain blocked.**
+**Documentation/status reconciliation complete; implementation still pre-alpha.**
 
-- Verified repo state on branch `convergence/zk-constants-artifacts`.
-- `anchor keys list` reports `shielded_pool: 9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE`.
-- The task prompt had uppercase `VVF`; Anchor/`Anchor.toml` use lowercase `VvF`, and base58 is case-sensitive.
-- BN254 field element for the synced Anchor id: `11254132154452147490799744423140604481167841310631133650094460832786634327021`.
-- `circuits/constants.json` and `circuits/constants.circom` now use the synced Anchor id.
-- `npm run circuits:compile` completed after creating `build/circuits`.
-- `node scripts/generate-zk-artifacts.mjs` completed compilation and copied browser WASM files.
-- `circuits/artifact_manifest.json` now has WASM hashes and keeps `zkey`/`vkey` hashes as `null`.
-- No `.ptau`, `.zkey`, or `_vkey.json` files exist locally.
+- `docs/IMPLEMENTATION_STATUS.md` created as the canonical local implementation ledger.
+- README current build, privacy status, ZK circuits, pre-alpha status, and getting started sections were updated to match local source truth.
+- C1 state recorded: Solana CLI + Anchor 0.30.1 available; program IDs synced in Anchor config and `declare_id!`; `anchor build --no-idl` passes; `.so` artifacts exist.
+- C2 state recorded: ShieldedPool ZK field constant aligned; browser WASM artifacts generated; `.ptau`, `.zkey`, and `_vkey.json` missing.
+- No devnet deployment, full IDL generation, zkey/vkey generation, or external privacy rail wiring was performed.
+- IKA relay signer privacy, PER batching, Private Payments, Umbra exits, Encrypt/FHE, production trusted setup, on-chain Groth16 verification, and full private repayment/borrow/withdraw are explicitly NOT LIVE.
+- Local source truth also shows `frontend/src/lib/contracts.ts` still has old placeholder program IDs and `shielded_pool` still has a stale internal `LENDING_POOL_PROGRAM_ID` constant. These were documented, not fixed.
 
 ## Files Changed
 
 - `.ai/CURRENT_TASK.md`
-- `.ai/CONTEXT_INDEX.md`
 - `.ai/DECISIONS.md`
 - `.ai/SESSION_HANDOFF.md`
 - `.ai/TASK_LOG.md`
-- `audit-reports/ZK_ARTIFACT_BLOCKERS.md`
-- `audit-reports/ZK_GENERATION_NOTES.md`
-- `circuits/CEREMONY.md`
-- `circuits/artifact_manifest.json`
-- `circuits/constants.circom`
-- `circuits/constants.json`
-- `frontend/public/circuits/*.wasm`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
 
 ## Verification
 
-- `npm run circuits:compile` — passed after `build/circuits` was created.
-- `node scripts/generate-zk-artifacts.mjs` — passed; skipped zkey/vkey generation because no `.ptau` was found.
-- Full validation to run before commit: `npm run typecheck:frontend`, `npm run build:frontend`, `cargo test --workspace`, `anchor build --no-idl`.
+- `cargo fmt --all -- --check` — passed.
+- `cargo test --workspace` — passed, 21 tests.
+- `npm run typecheck:frontend` — passed.
+- `npm run build:frontend` — passed with existing dependency warning.
+- `anchor build --no-idl` — passed with existing Anchor/SBF warnings.
 
 ## Current Blockers
 
-1. No reviewed BN254 Powers of Tau `.ptau` file exists locally.
-2. Groth16 `.zkey` files and verification keys are not generated.
-3. On-chain `groth16-solana` verification is not wired.
-4. Full Anchor IDL generation is still blocked by the separate Anchor/proc-macro2 compatibility issue and was intentionally not attempted.
+1. Full Anchor IDL generation blocked by Anchor/proc-macro2 compatibility.
+2. No reviewed BN254 Powers of Tau `.ptau` file exists locally.
+3. Groth16 `.zkey` files and verification keys are not generated.
+4. Proof-generation smoke test and on-chain `groth16-solana` verification are not live.
+5. Devnet deployment is not done.
+6. MagicBlock Private Payments URL missing, Umbra network/config not set, IKA relay not wired, PER not wired.
+7. Frontend program IDs and one internal ShieldedPool lending-program constant need code follow-up.
 
 ## Do Not Claim Publicly Until Implemented
 
@@ -56,7 +53,7 @@ Convergence Task 2: align ZK circuit constants, frontend proof constants, and ar
 
 ## Next Steps
 
-1. Provide a reviewed `.ptau` file.
-2. Rerun `node scripts/generate-zk-artifacts.mjs` to create `.zkey` and `_vkey.json` files.
-3. Verify generated keys and proofs before wiring `groth16-solana`.
-4. Handle Anchor IDL compatibility in a separate task.
+1. Fix stale local program-ID references in a scoped code task.
+2. Handle Anchor IDL compatibility in a separate task.
+3. Provide a reviewed `.ptau`, then generate and verify zkeys/vkeys.
+4. Deploy to devnet only after IDL/program-ID/frontend config status is clean.
