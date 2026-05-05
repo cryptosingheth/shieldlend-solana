@@ -1,17 +1,44 @@
 {
   "withdraw": {
-    "wasm": { "path": "/circuits/withdraw_ring.wasm", "sha256": null },
-    "zkey": { "path": "/circuits/withdraw_ring.zkey", "sha256": null },
-    "vkey": { "path": "/circuits/withdraw_ring_vkey.json", "sha256": null }
+    "wasm": {
+      "path": "/circuits/withdraw_ring.wasm",
+      "sha256": "d674b773b61480fb754fd3e59eb0e267b5cabda876f02d21f1bd277aa7091dd8"
+    },
+    "zkey": {
+      "path": "/circuits/withdraw_ring.zkey",
+      "sha256": null
+    },
+    "vkey": {
+      "path": "/circuits/withdraw_ring_vkey.json",
+      "sha256": null
+    }
   },
   "collateral": {
-    "wasm": { "path": "/circuits/collateral_ring.wasm", "sha256": null },
-    "zkey": { "path": "/circuits/collateral_ring.zkey", "sha256": null },
-    "vkey": { "path": "/circuits/collateral_ring_vkey.json", "sha256": null }
+    "wasm": {
+      "path": "/circuits/collateral_ring.wasm",
+      "sha256": "aea5b64a706135118c9ef6e30a42e24eea7360b862026904ed1caea92c0bf938"
+    },
+    "zkey": {
+      "path": "/circuits/collateral_ring.zkey",
+      "sha256": null
+    },
+    "vkey": {
+      "path": "/circuits/collateral_ring_vkey.json",
+      "sha256": null
+    }
   },
   "repay": {
-    "wasm": { "path": "/circuits/repay_ring.wasm", "sha256": null },
-    "zkey": { "path": "/circuits/repay_ring.zkey", "sha256": null },
-    "vkey": { "path": "/circuits/repay_ring_vkey.json", "sha256": null }
+    "wasm": {
+      "path": "/circuits/repay_ring.wasm",
+      "sha256": "e00a728fc3438f16773ffda437762fec964f6f1b30e744e8aee9e12b06a81a4f"
+    },
+    "zkey": {
+      "path": "/circuits/repay_ring.zkey",
+      "sha256": null
+    },
+    "vkey": {
+      "path": "/circuits/repay_ring_vkey.json",
+      "sha256": null
+    }
   }
 }

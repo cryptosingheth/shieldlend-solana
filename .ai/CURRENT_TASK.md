@@ -1,45 +1,44 @@
 # Current Task
 
-## Status: Backend remediation pass complete.
+## Status: ZK constants aligned; proving keys still blocked.
 
 ## Active Objective
 
-Continue post-backend remediation from `audit-reports/FINAL_AUDIT_REPORT.md` without overstating privacy readiness. Backend Anchor invariants and CPI scaffolding have been patched on `fix/backend-critical`; frontend and circuit fixes remain separate work.
+Continue post-convergence remediation without overstating privacy readiness. Program IDs are synced, Anchor CLI is available, and ZK constants now point at the current local ShieldedPool program id. Browser WASM artifacts exist for all three circuits, but Groth16 zkeys and verification keys remain blocked because no reviewed BN254 Powers of Tau file is present locally.
 
-## Completed In Backend Pass
+## Completed In ZK Constants Pass
 
-1. `nullifier_registry::spend` now requires `Locked -> Spent`.
-2. `shielded_pool::is_known_root` rejects `[0;32]` and all roots before `next_index > 0`.
-3. `lending_pool::verify_liquidation_reveal` binds ciphertext handle and loan PDA.
-4. `lending_pool::repay` binds `outstanding_balance` to on-chain accrued amount and resets liquidation state.
-5. `Withdraw`, `Borrow`, and `Repay` contexts now carry nullifier-registry accounts and registry-writer PDAs.
-6. `withdraw`, `borrow`, and `repay` have nullifier-registry CPI scaffolding placed after existing fail-closed verifier gates.
-7. `shielded_pool::disburse` now requires the lending-pool PDA signer.
-8. `audit-reports/BACKEND_FIX_NOTES.md` records scope, tests, and blockers.
+1. Verified branch `convergence/zk-constants-artifacts` and synced program IDs with `anchor keys list`.
+2. Confirmed ShieldedPool program id is `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE`.
+3. Derived BN254 field element `11254132154452147490799744423140604481167841310631133650094460832786634327021`.
+4. Updated `circuits/constants.json` and `circuits/constants.circom`.
+5. Ran `npm run circuits:compile` successfully after creating `build/circuits`.
+6. Ran `node scripts/generate-zk-artifacts.mjs`; browser WASM files were generated and hashed.
+7. Updated `circuits/CEREMONY.md`, `audit-reports/ZK_GENERATION_NOTES.md`, and `audit-reports/ZK_ARTIFACT_BLOCKERS.md`.
 
 ## Immediate Next Actions
 
-1. Install/enable Anchor CLI and run `anchor build`.
-2. Integration-test CPI signer/account constraints with local validator or deployed localnet programs.
-3. Keep frontend and circuit fixes as separate scoped passes:
-   - `frontend/src/lib/circuits.ts` commitment parameter order.
-   - `frontend/src/lib/protocolAdapters.ts` PER health default.
-   - `circuits/collateral_ring.circom` numeric range checks.
-   - README privacy-claim downgrade if explicitly authorized.
+1. Provide or generate a reviewed BN254 Powers of Tau `.ptau` file before zkey generation.
+2. Rerun `node scripts/generate-zk-artifacts.mjs` to generate `.zkey` and `_vkey.json` files.
+3. Wire verification keys into the planned `groth16-solana` verifier path before claiming live ZK privacy.
+4. Keep full `anchor build` IDL generation out of scope until the Anchor/proc-macro2 compatibility issue is handled separately.
 
 ## Relevant Files
 
 | File | Role |
 |---|---|
-| `audit-reports/FINAL_AUDIT_REPORT.md` | Single source of truth for all 43 issues; sections 4, 10, 11 |
-| `programs/nullifier_registry/src/lib.rs` | Phase 0 fix #1 |
-| `programs/shielded_pool/src/lib.rs` | Phase 0 fix #2 |
-| `programs/lending_pool/src/lib.rs` | Phase 0 fix #3 |
-| `audit-reports/BACKEND_FIX_NOTES.md` | Backend pass notes and verification |
+| `circuits/constants.json` | Shared ShieldedPool program id field element |
+| `circuits/constants.circom` | Circom compile-time program id field constant |
+| `circuits/artifact_manifest.json` | Browser artifact paths and hashes |
+| `circuits/CEREMONY.md` | Ceremony/proving-key status |
+| `audit-reports/ZK_GENERATION_NOTES.md` | Commands, derived constants, and artifact status |
+| `audit-reports/ZK_ARTIFACT_BLOCKERS.md` | Remaining blockers |
+| `frontend/src/lib/circuits.ts` | Frontend imports constants and artifact manifest |
 
 ## Hard Constraints
 
-- Do not start frontend privacy testing until blockers in `FINAL_AUDIT_REPORT.md` Section 1 are cleared
 - Do not push without explicit instruction
-- Do not claim depositor-hidden, K=16, IKA FutureSign, PER batching, or double-spend prevention publicly
+- Do not run full `anchor build` with IDL in this task
+- Do not deploy
+- Do not fake zkeys, verification keys, or proof verification
 - Preserve fail-closed behavior until real Groth16, IKA, Encrypt, MagicBlock, and Umbra integrations are wired and tested

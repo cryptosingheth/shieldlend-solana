@@ -11,7 +11,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | Canonical path | `/Users/opinderpreetsingh/Projects/shieldlend-solana` |
 | Old paths (do not use) | iCloud/Codex Workspace copies archived; `~/shieldlend-solana` archived |
 | EVM repo (separate) | `~/shieldlend-v2` — do not modify unless explicitly asked |
-| Branch | `main` |
+| Branch | `convergence/zk-constants-artifacts` |
 | Remote: origin | `https://github.com/cryptosingheth/shieldlend-solana.git` |
 
 ## Agent Instructions
@@ -36,11 +36,11 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `anchor build` | Compiles Anchor programs + generates IDLs (requires Anchor CLI) |
 | `anchor keys list` | Shows program IDs (use to replace placeholders) |
 
-**CLI prerequisites** (none installed yet):
-- `solana` CLI
-- `anchor` CLI (via `avm`)
-- `circom`
-- `snarkjs` (npm package, already in deps)
+**CLI prerequisites**:
+- `solana` CLI installed
+- `anchor` CLI installed (`0.30.1`)
+- `circom` installed (`2.2.3`)
+- `snarkjs` available (`0.7.6`; `--version` prints usage and exits non-zero)
 
 ---
 
@@ -48,9 +48,9 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 | Path | ID (placeholder) | Role |
 |---|---|---|
-| `programs/shielded_pool/` | `EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7` | SOL custody; Poseidon Merkle; epoch deposit queue; VRF flush |
-| `programs/lending_pool/` | `2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
-| `programs/nullifier_registry/` | `HsaVmvSd88h8w5LVtD9byiTu8N6zZrpu3KxuXH592GRL` | PDA nullifier set; Active/Locked/Spent state machine |
+| `programs/shielded_pool/` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | SOL custody; Poseidon Merkle; epoch deposit queue; VRF flush |
+| `programs/lending_pool/` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
+| `programs/nullifier_registry/` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | PDA nullifier set; Active/Locked/Spent state machine |
 | `Anchor.toml` | — | Workspace config; cluster = Localnet; wallet = `~/.config/solana/id.json` |
 | `Cargo.toml` | — | Root workspace; `anchor-lang = "0.30.1"` |
 
@@ -60,10 +60,10 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 | Path | Status |
 |---|---|
-| `circuits/withdraw_ring.circom` | Updated — has `leaf_index`, new nullifier formula; WASM/zkey need recompile |
-| `circuits/collateral_ring.circom` | Updated — same as withdraw |
-| `circuits/repay_ring.circom` | New — proves collateral nullifier knowledge + receipt binding |
-| `frontend/public/circuits/*.wasm` | Stale — must recompile via `npm run circuits:compile` |
+| `circuits/withdraw_ring.circom` | Compiles; browser WASM generated; zkey/vkey blocked without `.ptau` |
+| `circuits/collateral_ring.circom` | Compiles; browser WASM generated; zkey/vkey blocked without `.ptau` |
+| `circuits/repay_ring.circom` | Compiles; browser WASM generated; zkey/vkey blocked without `.ptau` |
+| `frontend/public/circuits/*.wasm` | Generated 2026-05-05 by `scripts/generate-zk-artifacts.mjs` |
 
 ---
 
@@ -156,5 +156,5 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 ## Needs Confirmation
 
-- Program IDs are documented as placeholders in current handoff/decision/security docs, despite one task-log line saying generated IDs were used.
 - Current external protocol availability/status may have changed since these local files were written.
+- Full Anchor IDL generation remains blocked by Anchor/proc-macro2 compatibility and should be handled separately.

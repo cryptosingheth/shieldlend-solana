@@ -184,19 +184,19 @@ UI must reflect degraded mode clearly.
 
 ---
 
-## Program IDs (placeholders — replace after anchor build)
+## Program IDs (synced with Anchor keys)
 
-| Program | Placeholder ID |
+| Program | Program ID |
 |---|---|
-| shielded_pool | `EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7` |
-| lending_pool | `2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT` |
-| nullifier_registry | `HsaVmvSd88h8w5LVtD9byiTu8N6zZrpu3KxuXH592GRL` |
+| shielded_pool | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
+| lending_pool | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
+| nullifier_registry | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 
-Replace with real IDs from `anchor keys list` after `anchor build`. Update `Anchor.toml` and each program's `declare_id!`.
+Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!` during Convergence Task 2 on 2026-05-05.
 
 ## Needs confirmation
 
-- `.ai/TASK_LOG.md` says program IDs were replaced with generated IDs during the implementation pass, but the current handoff, decision log, and security checklist still classify them as placeholders. Treat the listed IDs as placeholders until Anchor tooling confirms.
+- Deployment status remains separate from local program-id sync. Do not claim deployed program readiness without localnet/devnet deployment verification.
 
 ---
 

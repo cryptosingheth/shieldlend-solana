@@ -106,3 +106,20 @@ Append-only. Most recent entry at the bottom.
 - Added borrow financial-parameter validation against amount, bucket, max configured interest rate, repayment vault, nullifier hash, and proof signal hash.
 - Created `audit-reports/BACKEND_FIX_NOTES.md`.
 - Verification: `cargo test --workspace` passed (21 tests); `anchor build` blocked because Anchor CLI was not installed/on PATH.
+
+---
+
+## 2026-05-05 — Convergence Task 2: ZK Constants + Artifact Status
+
+- Verified canonical repo on branch `convergence/zk-constants-artifacts`; initial status was clean.
+- Confirmed `anchor keys list` program IDs:
+  - `shielded_pool`: `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE`
+  - `lending_pool`: `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`
+  - `nullifier_registry`: `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF`
+- Noted that the task prompt's uppercase `VVF` ShieldedPool id differs from the synced Anchor id's lowercase `VvF`; base58 is case-sensitive, so constants use the Anchor-synced id.
+- Derived ShieldedPool BN254 field element: `11254132154452147490799744423140604481167841310631133650094460832786634327021`.
+- Updated `circuits/constants.json` and `circuits/constants.circom`; frontend reads the same constant through `frontend/src/lib/circuits.ts`.
+- Ran `npm run circuits:compile`; first attempt failed with `invalid output path`, then passed after creating `build/circuits`.
+- Ran `node scripts/generate-zk-artifacts.mjs`; generated browser WASM artifacts and hashes, but skipped zkey/vkey because no `.ptau` file exists locally.
+- Updated `circuits/CEREMONY.md`, `audit-reports/ZK_GENERATION_NOTES.md`, and `audit-reports/ZK_ARTIFACT_BLOCKERS.md` to reflect current status.
+- Remaining blocker: no reviewed BN254 Powers of Tau file, no `.zkey`, no `_vkey.json`, and no live Groth16 verifier integration.
