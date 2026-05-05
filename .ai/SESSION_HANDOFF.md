@@ -48,11 +48,12 @@ Convergence Task 2B: generate DEV/TEST Groth16 proving and verification artifact
 
 ## Do Not Claim Publicly Until Implemented
 
-- Production ZK proof artifacts are live
-- Trusted setup ceremony completed
-- Verification keys are ready
-- On-chain Groth16 verification is wired
-- Production privacy from the current WASM-only artifact set
+Do NOT claim any of the following yet:
+- Production ZK proof artifacts are live.
+- A production trusted setup ceremony has been completed.
+- Verification keys are production-ready.
+- On-chain Groth16 verification is wired/live.
+- Production privacy exists from the current DEV/TEST artifact set.
 
 ## Next Steps
 
