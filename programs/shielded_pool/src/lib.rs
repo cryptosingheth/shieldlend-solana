@@ -20,7 +20,7 @@ pub const MAX_EXIT_QUEUE: usize = 128;
 pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
 pub const LENDING_POOL_AUTHORITY_SEED: &[u8] = b"lending-pool-authority";
 pub const LENDING_POOL_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT");
+    anchor_lang::pubkey!("HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7");
 
 #[program]
 pub mod shielded_pool {

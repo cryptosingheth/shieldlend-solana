@@ -2,19 +2,19 @@
 
 ## Task Objective
 
-Status reconciliation after Convergence Task 1 and Convergence Task 2.
+Convergence Task 2A.5: fix stale program ID constants discovered after C1/C2 status reconciliation.
 
 ## Current Status
 
-**Documentation/status reconciliation complete; implementation still pre-alpha.**
+**Program ID constants aligned; implementation still pre-alpha.**
 
 - `docs/IMPLEMENTATION_STATUS.md` created as the canonical local implementation ledger.
 - README current build, privacy status, ZK circuits, pre-alpha status, and getting started sections were updated to match local source truth.
 - C1 state recorded: Solana CLI + Anchor 0.30.1 available; program IDs synced in Anchor config and `declare_id!`; `anchor build --no-idl` passes; `.so` artifacts exist.
 - C2 state recorded: ShieldedPool ZK field constant aligned; browser WASM artifacts generated; `.ptau`, `.zkey`, and `_vkey.json` missing.
+- C2A.5 state recorded: frontend `PROGRAM_IDS` and ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` now match local `anchor keys list`.
 - No devnet deployment, full IDL generation, zkey/vkey generation, or external privacy rail wiring was performed.
 - IKA relay signer privacy, PER batching, Private Payments, Umbra exits, Encrypt/FHE, production trusted setup, on-chain Groth16 verification, and full private repayment/borrow/withdraw are explicitly NOT LIVE.
-- Local source truth also shows `frontend/src/lib/contracts.ts` still has old placeholder program IDs and `shielded_pool` still has a stale internal `LENDING_POOL_PROGRAM_ID` constant. These were documented, not fixed.
 
 ## Files Changed
 
@@ -22,8 +22,9 @@ Status reconciliation after Convergence Task 1 and Convergence Task 2.
 - `.ai/DECISIONS.md`
 - `.ai/SESSION_HANDOFF.md`
 - `.ai/TASK_LOG.md`
-- `README.md`
 - `docs/IMPLEMENTATION_STATUS.md`
+- `frontend/src/lib/contracts.ts`
+- `programs/shielded_pool/src/lib.rs`
 
 ## Verification
 
@@ -41,7 +42,6 @@ Status reconciliation after Convergence Task 1 and Convergence Task 2.
 4. Proof-generation smoke test and on-chain `groth16-solana` verification are not live.
 5. Devnet deployment is not done.
 6. MagicBlock Private Payments URL missing, Umbra network/config not set, IKA relay not wired, PER not wired.
-7. Frontend program IDs and one internal ShieldedPool lending-program constant need code follow-up.
 
 ## Do Not Claim Publicly Until Implemented
 
@@ -53,7 +53,6 @@ Status reconciliation after Convergence Task 1 and Convergence Task 2.
 
 ## Next Steps
 
-1. Fix stale local program-ID references in a scoped code task.
-2. Handle Anchor IDL compatibility in a separate task.
-3. Provide a reviewed `.ptau`, then generate and verify zkeys/vkeys.
-4. Deploy to devnet only after IDL/program-ID/frontend config status is clean.
+1. Handle Anchor IDL compatibility in a separate task.
+2. Provide a reviewed `.ptau`, then generate and verify zkeys/vkeys.
+3. Deploy to devnet only after IDL/artifact/frontend config status is clean.

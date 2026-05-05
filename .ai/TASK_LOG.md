@@ -134,3 +134,16 @@ Append-only. Most recent entry at the bottom.
 - Explicitly marked not live: IKA relay signer privacy, MagicBlock PER, MagicBlock Private Payments, Umbra stealth exits, Encrypt/FHE oracle/health computation, on-chain Groth16 verification, production trusted setup, full private repayment, and end-to-end private borrow/withdraw.
 - Documented blockers: full Anchor IDL generation, missing `.ptau`, missing `.zkey`, missing `_vkey.json`, no proof smoke test, no on-chain verifier, no devnet deployment, missing Private Payments URL, Umbra config not set, IKA relay not wired, and PER not wired.
 - Noted local source-truth follow-up: frontend `contracts.ts` still has old program IDs, and `shielded_pool` has a stale internal `LENDING_POOL_PROGRAM_ID` constant. No code changes were made in this docs-only task.
+
+---
+
+## 2026-05-05 — Convergence Task 2A.5: Remaining Program ID Constants
+
+- Re-verified local `anchor keys list` and used its exact case-sensitive values:
+  - `shielded_pool`: `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE`
+  - `lending_pool`: `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`
+  - `nullifier_registry`: `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF`
+- Updated `frontend/src/lib/contracts.ts` so frontend program IDs match Anchor local keys.
+- Updated `programs/shielded_pool/src/lib.rs` so `LENDING_POOL_PROGRAM_ID` matches the synced `lending_pool` ID used for the lending-pool authority PDA.
+- Updated `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, and `.ai/DECISIONS.md` to remove the stale-constant blocker.
+- No deployment, full Anchor IDL generation, zkey/vkey generation, circuit logic change, or privacy overclaim was performed.

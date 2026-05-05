@@ -11,9 +11,9 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | Area | Current local status | Claim boundary |
 |---|---|---|
 | Anchor programs | Compile to SBF with `anchor build --no-idl`; `.so` files exist in `target/deploy/` | Not deployed; full IDL generation is blocked |
-| Program IDs | `Anchor.toml` and all three `declare_id!` values are synced with `anchor keys list` | Frontend `contracts.ts` still contains old placeholder IDs; do not use frontend program IDs as deployment truth |
+| Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` | Not deployed; synced local IDs are not proof of devnet readiness |
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; browser WASM files are generated and hashed | `.ptau`, `.zkey`, and `_vkey.json` are missing; no proof-generation smoke test or on-chain verification is live |
-| Frontend | Typechecks and builds; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs, stale frontend program IDs, and missing external rails |
+| Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
 | External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
 | Deployment | None | Do not claim devnet or production readiness |
 
@@ -39,12 +39,12 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `lending_pool` | `Anchor.toml`, `programs/lending_pool/src/lib.rs` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Synced |
 | `nullifier_registry` | `Anchor.toml`, `programs/nullifier_registry/src/lib.rs` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | Synced |
 
-Known program-ID follow-up:
+Additional synced references:
 
-- `frontend/src/lib/contracts.ts` still uses older placeholder IDs.
-- `programs/shielded_pool/src/lib.rs` still has an internal
-  `LENDING_POOL_PROGRAM_ID` constant pointing to the older lending-pool ID.
-- These were not changed in this docs-only reconciliation task.
+- `frontend/src/lib/contracts.ts` uses the same three IDs reported by local
+  `anchor keys list`.
+- `programs/shielded_pool/src/lib.rs` uses the synced `lending_pool` ID for
+  `LENDING_POOL_PROGRAM_ID`, which drives the lending-pool authority PDA.
 
 ## Anchor Build And Deployment
 
@@ -137,8 +137,6 @@ Artifact details:
 | No Groth16 proof smoke test | Cannot claim proofs are usable |
 | No on-chain verifier integration | Cannot claim withdrawal, collateral, or repay proofs are verified on-chain |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
-| Frontend program IDs stale | Frontend does not target the synced Anchor IDs yet |
-| ShieldedPool lending authority constant stale | Disburse PDA authority path needs a code follow-up before deployment |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |

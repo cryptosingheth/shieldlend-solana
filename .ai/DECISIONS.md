@@ -192,7 +192,7 @@ UI must reflect degraded mode clearly.
 | lending_pool | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
 | nullifier_registry | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 
-Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!` during Convergence Task 2 on 2026-05-05.
+Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!` during Convergence Task 2 on 2026-05-05. C2A.5 also aligned `frontend/src/lib/contracts.ts` and ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` to these local Anchor keys.
 
 ## Needs confirmation
 

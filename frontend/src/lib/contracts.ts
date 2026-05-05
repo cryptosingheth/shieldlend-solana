@@ -1,7 +1,7 @@
 export const PROGRAM_IDS = {
-  nullifierRegistry: "HsaVmvSd88h8w5LVtD9byiTu8N6zZrpu3KxuXH592GRL",
-  shieldedPool: "EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7",
-  lendingPool: "2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT",
+  nullifierRegistry: "E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF",
+  shieldedPool: "9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE",
+  lendingPool: "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7",
 } as const;
 
 export const DENOMINATIONS = [
