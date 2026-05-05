@@ -248,3 +248,23 @@ Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!`
 **Decision**: `[0;32]` zero-root must be excluded from `is_known_root()` before groth16 is wired.
 **Why**: All roots default to zero on fresh init, making `[0;32]` always a valid root. Once groth16 is live, an empty-tree proof would drain a fresh pool.
 **How to apply**: Add `if root == [0;32] { return false; }` guard in `is_known_root()` before wiring the verifier.
+
+---
+
+## groth16-solana API (pinned, C2D)
+
+**Decision**: Use `groth16-solana = "0.0.3"` in both on-chain programs. Do not use 0.2.0 or later.
+**Why**: The current workspace uses Anchor 0.30.1 + solana-program 1.18.x. Version 0.2.0 requires the Solana 2.x / agave SDK, which creates an incompatible dependency tree.
+**How to apply**: Keep `groth16-solana = "0.0.3"` pinned. When upgrading to Solana 2.x toolchain, re-evaluate the crate version at that time.
+
+**Decision**: The `vk_gamme_g2` field name in `Groth16Verifyingkey` (double-m, in 0.0.3) is intentional in the crate source.
+**Why**: It is a known typo in the published crate. Future versions may fix it. Using the wrong spelling (`vk_gamma_g2`) will cause a compile error against 0.0.3.
+**How to apply**: Generated `groth16_verifier.rs` files already use the correct spelling. Do not "fix" the double-m.
+
+**Decision**: `proof_a` must be passed as the **negated** G1 point: `(x, q − y) mod BN254_BASE_FIELD_PRIME`.
+**Why**: `groth16-solana` applies the negation convention required for on-chain Groth16 verification using the Solana alt_bn128 syscall (EIP-197 compatible). Passing the un-negated `pi_a` from snarkjs will produce a pairing mismatch.
+**How to apply**: `scripts/convert-vkeys.mjs::g1NegBytes()` handles this. The conversion script must be re-run whenever circuits or keys change.
+
+**Decision**: G2 points from snarkjs must be reordered from `[[c1,c0],[c1,c0]]` to `[c0||c1||c0||c1]` BE before passing to `groth16-solana`.
+**Why**: snarkjs stores the c1 coefficient at index [i][0] and c0 at [i][1]. Solana alt_bn128 / EIP-197 expects x_c0 first. Passing in snarkjs order will produce a pairing mismatch.
+**How to apply**: `scripts/convert-vkeys.mjs::g2Bytes()` handles this. Re-run the script when circuits or keys change.

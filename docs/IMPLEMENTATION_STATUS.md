@@ -86,14 +86,17 @@ Artifact details:
 - This local `.ptau` is not a production trusted setup.
 - Local witness generation, witness checks, proof generation, and Groth16
   verification passed for all three circuits.
-- No on-chain `groth16-solana` verification is wired.
+- `groth16-solana = "0.0.3"` added to both program Cargo.toml files.
+- Verifier modules generated (`programs/*/src/groth16_verifier.rs`) with real DEV/TEST vkeys and
+  6 smoke tests (3 circuits × verify + mutate). All pass.
+- No on-chain `groth16-solana` verification is wired to instruction handlers yet.
 
 ## Implemented Code
 
 | Area | Implemented locally |
 |---|---|
-| `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, fail-closed withdraw verifier, nullifier registry CPI scaffolding after verifier gate |
-| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, fail-closed proof/payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates |
+| `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, fail-closed withdraw verifier, nullifier registry CPI scaffolding after verifier gate; `groth16_verifier` module with real vkey and smoke tests |
+| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, fail-closed proof/payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke tests |
 | `nullifier_registry` | Authorized writer config, Active/Locked/Spent state machine, `spend` requires Locked, unit tests |
 | Frontend local security | AES-256-GCM note vault and encrypted history log |
 | Frontend circuit interface | Poseidon commitment/nullifier helpers, real-ring requirement, snarkjs fullProve calls using manifest paths |
@@ -134,11 +137,8 @@ Artifact details:
 |---|---|
 | Full Anchor IDL generation blocked | Cannot rely on generated IDLs until Anchor/proc-macro2 issue is fixed |
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
-| `groth16-solana` dep absent from all Cargo.toml files | On-chain verifier cannot be called; version and API not yet researched |
-| Instruction args lack proof bytes (`WithdrawArgs`, `BorrowArgs`, `RepayArgs`) | Verifier cannot receive proof points or public signals; ABI break required |
-| vkey conversion script missing | snarkjs JSON vkeys not converted to Solana BN254 byte encoding needed by verifier |
-| Missing Rust on-chain test vectors | No deterministic proof bytes in Rust tests; verifier correctness unverifiable before devnet |
-| Compute budget not handled for BN254 instructions | Withdraw/collateral verify calls will exceed default 200k CU limit without `set_compute_unit_limit` |
+| Instruction args lack proof bytes (`WithdrawArgs`, `BorrowArgs`, `RepayArgs`) | Verifier scaffold exists (`groth16_verifier.rs`) but cannot be called from handlers; ABI break required to pass proof bytes |
+| Compute budget not handled in client | Callers must prepend `ComputeBudgetProgram::set_compute_unit_limit(1_400_000)` before withdraw/collateral verify instructions |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |

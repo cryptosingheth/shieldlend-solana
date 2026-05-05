@@ -196,3 +196,27 @@ Append-only. Most recent entry at the bottom.
 - Ran local deterministic smoke tests for all circuits: witness generation, witness check, proof generation, and Groth16 verification all passed.
 - Updated artifact manifest, ceremony notes, ZK audit notes/blockers, implementation ledger, and shared `.ai/` memory.
 - No deployment, full Anchor IDL generation, Solana program logic change, production trusted setup claim, or on-chain verifier wiring was performed.
+
+---
+
+## 2026-05-05 — Convergence Task 2D: groth16-solana Dependency/API Spike + Verifier Scaffold
+
+- Confirmed `groth16-solana = "0.0.3"` is the correct version for Anchor 0.30.1 / solana-program 1.18.x. (0.2.0 requires Solana 2.x / agave SDK and conflicts.)
+- Added `groth16-solana = "0.0.3"` to `programs/shielded_pool/Cargo.toml` and `programs/lending_pool/Cargo.toml`. `cargo check` passes cleanly.
+- Confirmed groth16-solana 0.0.3 API from registry source:
+  - `vk_gamme_g2` field name (double-m typo, real in crate source).
+  - `verify(&mut self) -> Result<bool, Groth16Error>` (returns bool, not ()).
+  - G2 byte order: `x_c0 || x_c1 || y_c0 || y_c1` (Solana alt_bn128 / EIP-197 layout).
+- Written `scripts/convert-vkeys.mjs`:
+  - G1 negation: `(x, q − y) mod BASE_FIELD_PRIME` for `proof_a`.
+  - G2 reorder: snarkjs `[[c1,c0],[c1,c0]]` → Solana `c0||c1||c0||c1`.
+  - Reads three `_vkey.json` files and six smoke proof/public files from `build/circuits/smoke/`.
+  - Outputs two Rust files with static verifying keys and `pub const` test vectors.
+- Ran `node scripts/convert-vkeys.mjs`; generated:
+  - `programs/shielded_pool/src/groth16_verifier.rs`
+  - `programs/lending_pool/src/groth16_verifier.rs`
+- Added `pub mod groth16_verifier;` to both `lib.rs` files.
+- Created `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md`.
+- Updated `docs/IMPLEMENTATION_STATUS.md`: resolved 3 of 5 C2C blockers; 2 remain (ABI extension, compute budget).
+- Validations: `cargo fmt` pass, `cargo test --workspace` pass (27 tests; +6 Groth16 smoke), `npm run typecheck:frontend` pass, `npm run build:frontend` pass, `anchor build --no-idl` pass.
+- No instruction handler behavior changed. No fake wiring. Fail-closed stubs preserved.

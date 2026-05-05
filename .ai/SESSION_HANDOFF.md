@@ -2,53 +2,62 @@
 
 ## Task Objective
 
-Convergence Task 2C: determine whether on-chain Groth16 verifier wiring can proceed
-safely without requiring full Anchor IDL generation.
+Convergence Tasks 2C + 2D: analyze on-chain Groth16 verifier blockers (C2C), then complete
+the groth16-solana dependency/API spike and minimum verifier integration scaffold (C2D).
 
 ## Current Status
 
-**C2C analysis complete. On-chain verifier wiring is blocked (Outcome B). No code changed.**
+**C2D complete. groth16-solana scaffold is in place and all tests pass.**
 
-- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` created with full file/line evidence.
-- `docs/IMPLEMENTATION_STATUS.md` updated with five new blocker rows.
-- `.ai/CURRENT_TASK.md` and `.ai/SESSION_HANDOFF.md` updated.
-- `.ai/TASK_LOG.md` and `.ai/DECISIONS.md` updated.
-- C2B DEV/TEST Groth16 artifacts remain unchanged and correct.
-- No program code was modified. No dependency was added. No fake wiring was performed.
+- `groth16-solana = "0.0.3"` added to both program Cargo.toml files.
+- `scripts/convert-vkeys.mjs` written and executed — converts snarkjs vkey JSON to Rust
+  big-endian affine byte constants.
+- `programs/shielded_pool/src/groth16_verifier.rs` generated — WITHDRAW verifying key,
+  `verify_withdraw_groth16()`, smoke test vectors, 2 unit tests.
+- `programs/lending_pool/src/groth16_verifier.rs` generated — COLLATERAL + REPAY verifying
+  keys, two verify functions, smoke test vectors, 4 unit tests.
+- `pub mod groth16_verifier;` added to both program `lib.rs` files.
+- `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` written.
+- `docs/IMPLEMENTATION_STATUS.md` updated (resolved 3 of 5 C2C blockers; 2 remain).
 
-## Files Changed (this task)
+## Files Changed (C2D)
 
-- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — created
-- `docs/IMPLEMENTATION_STATUS.md` — known-blockers table expanded
-- `.ai/CURRENT_TASK.md` — updated
-- `.ai/SESSION_HANDOFF.md` — updated (this file)
-- `.ai/TASK_LOG.md` — appended
-- `.ai/DECISIONS.md` — appended
+- `programs/shielded_pool/Cargo.toml` — added `groth16-solana = "0.0.3"`
+- `programs/lending_pool/Cargo.toml` — added `groth16-solana = "0.0.3"`
+- `programs/shielded_pool/src/groth16_verifier.rs` — created
+- `programs/lending_pool/src/groth16_verifier.rs` — created
+- `programs/shielded_pool/src/lib.rs` — added `pub mod groth16_verifier;`
+- `programs/lending_pool/src/lib.rs` — added `pub mod groth16_verifier;`
+- `scripts/convert-vkeys.mjs` — created
+- `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` — created
+- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — created (C2C)
+- `docs/IMPLEMENTATION_STATUS.md` — updated
 
-## Verification
+## Verification (C2D)
 
-- `cargo fmt --all -- --check` — passed (no code changed)
-- `cargo test --workspace` — passed, 21 tests (no code changed)
-- `npm run typecheck:frontend` — passed (no frontend code changed)
-- `npm run build:frontend` — passed (no frontend code changed)
-- `anchor build --no-idl` — passed (no program code changed)
+- `cargo fmt --all -- --check` — passed
+- `cargo test --workspace` — passed, **27 tests** (21 prior + 6 new Groth16 smoke tests)
+  - `withdraw_smoke_proof_verifies` ✓
+  - `withdraw_mutated_proof_fails` ✓
+  - `collateral_smoke_proof_verifies` ✓
+  - `collateral_mutated_proof_fails` ✓
+  - `repay_smoke_proof_verifies` ✓
+  - `repay_mutated_proof_fails` ✓
+- `npm run typecheck:frontend` — passed
+- `npm run build:frontend` — passed
+- `anchor build --no-idl` — passed
 
-## Current Blockers
+## Remaining Blockers (on-chain verifier wiring)
 
-1. Full Anchor IDL generation blocked by Anchor/proc-macro2 compatibility. **Not a
-   prerequisite for verifier wiring.**
-2. Production trusted setup missing; current artifacts are DEV/TEST-only.
-3. On-chain Groth16 verification blocked by five concrete issues (see below).
-4. Devnet deployment not done.
-5. External privacy rails not wired.
-
-## On-Chain Verifier Specific Blockers (C2C)
-
-1. `groth16-solana` absent from all Cargo.toml files.
-2. `WithdrawArgs` / `BorrowArgs` / `RepayArgs` lack proof bytes and public signal arrays.
-3. vkey conversion script not written (snarkjs JSON → Solana BN254 byte encoding).
-4. No Rust on-chain test vectors.
-5. Compute budget not handled for BN254 pairing (~220k–260k CU).
+1. **Instruction args lack proof bytes** — `WithdrawArgs`, `BorrowArgs`, `RepayArgs` carry
+   only 32-byte hashes; need `proof_a/b/c` and full public signal arrays. This is a breaking
+   ABI change coordinated with frontend.
+2. **Compute budget not handled in client** — callers must prepend
+   `ComputeBudgetProgram::set_compute_unit_limit(1_400_000)`.
+3. Production trusted setup still missing — DEV/TEST `.ptau` only.
+4. Full Anchor IDL generation still blocked by proc-macro2 compatibility.
+5. No devnet deployment.
+6. External privacy rails not wired.
 
 ## Do Not Claim Publicly Until Implemented
 
@@ -57,12 +66,11 @@ safely without requiring full Anchor IDL generation.
 - Production trusted setup is complete.
 - Any privacy rail (IKA, MagicBlock, Umbra, Encrypt) is active.
 
-## Next Steps
+## Next Steps (in order)
 
-1. Research and pin `groth16-solana` crate version/API. Confirm BPF compatibility
-   with Anchor 0.30.1 / solana-program 1.18.x.
-2. Write vkey conversion script: snarkjs projective decimal → big-endian affine bytes.
-3. Extend `WithdrawArgs`, `BorrowArgs`, `RepayArgs` with proof fields and public signals.
-4. Implement the three fail-closed verifier stubs once above prereqs are satisfied.
-5. Add Rust test vectors + compute budget handling.
-6. Re-run full validation suite after each step.
+1. Confirm `fix/backend-critical` (zero-root guard + nullifier state machine fix) is merged.
+2. Extend `WithdrawArgs`, `BorrowArgs`, `RepayArgs` with proof bytes + public signal arrays.
+3. Update frontend to pass proof bytes from snarkjs `fullProve()` output.
+4. Replace `Groth16VerifierNotWired` stubs with calls to `groth16_verifier::verify_*()`.
+5. Add `ComputeBudgetProgram::set_compute_unit_limit` to client transaction builders.
+6. Run Anchor localnet integration test with a real proof end-to-end.

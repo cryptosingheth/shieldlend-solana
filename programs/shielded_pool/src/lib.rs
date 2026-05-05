@@ -6,6 +6,8 @@
 // Security: See security-checklist.md
 // ============================================================
 
+pub mod groth16_verifier;
+
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use nullifier_registry::{

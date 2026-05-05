@@ -1,12 +1,12 @@
 # Current Task
 
-## Status: C2C analysis complete — on-chain verifier wiring is blocked (Outcome B).
+## Status: C2D complete — groth16-solana scaffold and smoke tests passing.
 
 ## Active Objective
 
-Document the on-chain Groth16 verifier blockers precisely so they can be resolved
-sequentially in future tasks. Do not proceed to wiring until each blocker is cleared
-in the order listed in `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`.
+Converge Tasks 2C and 2D are complete. The on-chain verifier scaffold is in place but
+not yet wired to instruction handlers. Next task is extending instruction arg structs
+with proof bytes (breaking ABI change) and replacing the fail-closed stubs.
 
 ## Current Local Truth
 
@@ -15,61 +15,55 @@ in the order listed in `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`.
    ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` match `anchor keys list`.
 3. `anchor build --no-idl` passes and `.so` artifacts exist in `target/deploy/`.
 4. Full Anchor IDL generation remains blocked by Anchor/proc-macro2 compatibility.
-5. All three circuits compile and DEV/TEST browser WASM, zkey, and vkey artifacts are
+5. All three circuits compile; DEV/TEST browser WASM, zkey, and vkey artifacts are
    generated and hashed.
 6. Local DEV/TEST witness generation, witness checks, proof generation, and Groth16
    verification pass for all three circuits.
-7. On-chain Groth16 verification is **blocked** — five concrete blockers documented in
-   `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`.
-8. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE, and on-chain
-   Groth16 verification are not live.
-9. No devnet deployment has happened.
-10. Frontend `contracts.ts` now targets the local synced program IDs.
-11. `shielded_pool` now derives the lending-pool authority PDA using the synced
-    lending-pool program ID.
+7. `groth16-solana = "0.0.3"` is in both program Cargo.toml files.
+8. `programs/shielded_pool/src/groth16_verifier.rs` — withdraw verifying key, smoke tests.
+9. `programs/lending_pool/src/groth16_verifier.rs` — collateral + repay verifying keys, smoke tests.
+10. 6 new Groth16 smoke tests pass. Total workspace: 27 tests.
+11. On-chain Groth16 verification is still **not wired** — `Groth16VerifierNotWired` stubs remain.
+12. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE not wired.
+13. No devnet deployment.
 
-## On-Chain Verifier Blockers (C2C Result)
+## Remaining On-Chain Verifier Blockers (2 of 5 from C2C remain)
 
-1. `groth16-solana` absent from all Cargo.toml files — version/API not researched.
-2. Instruction args lack proof bytes — `WithdrawArgs`, `BorrowArgs`, `RepayArgs` carry
-   only hashes; they need `proof_a: [u8; 64]`, `proof_b: [u8; 128]`, `proof_c: [u8; 64]`,
-   and full public signal arrays. This is a breaking ABI change.
-3. vkey format conversion unscripted — snarkjs decimal projective format must be converted
-   to big-endian affine bytes for Solana BN254 syscalls.
-4. Missing Rust on-chain test vectors — no deterministic proof bytes in any Rust test.
-5. Compute budget not handled — BN254 pairing (~220k–260k CU) exceeds the 200k default
-   per-instruction limit; `set_compute_unit_limit` must be added.
+1. Instruction args lack proof bytes — `WithdrawArgs`, `BorrowArgs`, `RepayArgs` need
+   `proof_a: [u8; 64]`, `proof_b: [u8; 128]`, `proof_c: [u8; 64]`, and full public signal
+   arrays. Breaking ABI change coordinated with frontend.
+2. Compute budget not handled in client — must prepend `set_compute_unit_limit(1_400_000)`.
 
-Note: the Anchor IDL generation blocker is **not** a prerequisite for verifier wiring.
-`anchor build --no-idl` will continue to compile after these changes.
+(Resolved: dep absent, vkey script missing, no Rust test vectors.)
 
 ## Immediate Next Actions
 
-1. Research and pin `groth16-solana` crate version and API. Confirm BPF compatibility.
-2. Write vkey conversion script — snarkjs JSON → big-endian affine byte constants.
-3. Extend instruction arg structs with proof bytes and public signal arrays.
-4. Implement verifier calls in the three fail-closed stub functions.
-5. Add Rust test vectors derived from smoke proof outputs.
-6. Add compute budget handling.
+1. Confirm `fix/backend-critical` is merged (zero-root guard, nullifier state machine).
+2. Extend instruction arg structs with proof bytes.
+3. Update frontend proof submission to pass full proof bytes.
+4. Replace fail-closed stubs with `groth16_verifier::verify_*()` calls.
+5. Add compute budget to client.
+6. Localnet integration test with real proof.
 
 ## Relevant Files
 
 | File | Role |
 |---|---|
+| `programs/shielded_pool/src/groth16_verifier.rs` | Withdraw verifier module (new) |
+| `programs/lending_pool/src/groth16_verifier.rs` | Collateral + repay verifier module (new) |
+| `scripts/convert-vkeys.mjs` | vkey JSON → Rust byte constants (new) |
+| `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` | Full C2D integration plan (new) |
+| `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` | C2C blocker analysis |
 | `docs/IMPLEMENTATION_STATUS.md` | Canonical implementation ledger |
-| `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` | C2C blocker analysis with file/line evidence |
-| `audit-reports/ZK_GENERATION_NOTES.md` | ZK constant and artifact evidence |
-| `circuits/artifact_manifest.json` | Browser artifact paths and hashes |
-| `programs/shielded_pool/src/lib.rs:170` | `verify_withdraw_proof` — fail-closed stub |
-| `programs/lending_pool/src/lib.rs:274` | `verify_collateral_proof` — fail-closed stub |
-| `programs/lending_pool/src/lib.rs:278` | `verify_repay_proof` — fail-closed stub |
+| `programs/shielded_pool/src/lib.rs:170` | `verify_withdraw_proof` — still fail-closed |
+| `programs/lending_pool/src/lib.rs:274` | `verify_collateral_proof` — still fail-closed |
+| `programs/lending_pool/src/lib.rs:278` | `verify_repay_proof` — still fail-closed |
 
 ## Hard Constraints
 
 - Do not push without explicit instruction
 - Do not run full `anchor build` with IDL unless explicitly scoped
 - Do not deploy
-- Do not fake Groth16 verification (no "return Ok(())" stubs)
+- Do not fake Groth16 verification
 - Do not claim production trusted setup from the DEV/TEST `.ptau`
-- Do not add `groth16-solana` as a dep until its API is confirmed compatible
-- Preserve fail-closed behavior in all three verifier stubs until real verification is wired
+- Preserve fail-closed behavior in all three verifier stubs until real wiring is done

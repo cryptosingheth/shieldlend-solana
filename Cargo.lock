@@ -920,6 +920,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "groth16-solana"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acc65a9ef90161a41b67cd4611e113d09f3819a1d488e4effafde92fca70861d"
+dependencies = [
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff",
+ "ark-serialize",
+ "solana-program",
+ "thiserror",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1065,6 +1079,7 @@ name = "lending_pool"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "groth16-solana",
  "nullifier_registry",
 ]
 
@@ -1598,6 +1613,7 @@ name = "shielded_pool"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "groth16-solana",
  "nullifier_registry",
 ]
 

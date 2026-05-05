@@ -6,6 +6,8 @@
 // Security: See security-checklist.md
 // ============================================================
 
+pub mod groth16_verifier;
+
 use anchor_lang::prelude::*;
 use nullifier_registry::{
     self, cpi::accounts as registry_accounts, program::NullifierRegistry, NullifierAccount,
