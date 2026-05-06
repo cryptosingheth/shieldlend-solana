@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-06
 **Branch**: convergence/zk-constants-artifacts
-**Status**: C2E complete. Instruction args wired; DEV/TEST verifier calls live; tx size blocker documented (see B6).
+**Status**: C2F complete. Proof account PDA pattern implemented; B6 tx MTU blocker resolved; 47 tests pass.
 
 ---
 
@@ -122,25 +122,83 @@ let ok: bool = verifier.verify()?;
 
 ---
 
+## What Is Done (C2F — Proof Account PDA Pattern)
+
+### B6 Resolution: Proof Account Pattern
+
+`WithdrawArgs`, `BorrowArgs`, and `RepayArgs` were slimmed by removing inline proof bytes.
+Proof data is written to a PDA in a prior transaction; the main instruction reads from the account.
+
+**Slimmed arg struct sizes:**
+
+| Struct | C2E bytes | C2F bytes | Change |
+|---|---|---|---|
+| `WithdrawArgs` | ~976 | 144 | −832 |
+| `BorrowArgs` | ~1016 | 124 | −892 |
+| `RepayArgs` | ~456 | 144 | −312 |
+
+**New instructions:**
+
+| Program | Instruction | Public inputs | Est. tx size |
+|---|---|---|---|
+| `shielded_pool` | `store_withdraw_proof` | `[[u8;32];19]` | ~1109 bytes ✓ |
+| `lending_pool` | `store_collateral_proof` | `[[u8;32];20]` | ~1141 bytes ✓ |
+| `lending_pool` | `store_repay_proof` | `[[u8;32];6]` | ~693 bytes ✓ |
+
+**`ProofData` account layout:**
+
+| Program | Field | Bytes |
+|---|---|---|
+| both | discriminator | 8 |
+| both | `authority: Pubkey` | 32 |
+| both | `circuit_kind: ProofKind` | 1 |
+| both | `proof_a: [u8;64]` | 64 |
+| both | `proof_b: [u8;128]` | 128 |
+| both | `proof_c: [u8;64]` | 64 |
+| lending_pool only | `public_input_count: u8` | 1 |
+| shielded_pool | `public_inputs: [[u8;32];19]` | 608 |
+| lending_pool | `public_inputs: [[u8;32];20]` | 640 |
+| both | `consumed: bool` | 1 |
+| both | `bump: u8` | 1 |
+| **shielded_pool total** | | **908** |
+| **lending_pool total** | | **940** |
+
+**Security properties of the PDA design:**
+- `consumed` flag — prevents proof replay across two `withdraw`/`borrow` calls
+- `circuit_kind` discriminant (`Withdraw`, `Collateral`, `Repay`) — prevents cross-circuit substitution
+- `authority` field + constraint (`proof_data.authority == signer`) — prevents cross-user proof theft
+- PDA seeds: `[b"proof-data", authority, proof_nonce]` — per-use nonce prevents PDA reuse
+
+### Updated Frontend (`frontend/src/lib/solanaClient.ts`)
+
+- `WITHDRAW_PROOF_DATA_SPACE = 908`, `LENDING_PROOF_DATA_SPACE = 940`
+- `generateProofNonce()` — random 32-byte nonce
+- `getWithdrawProofDataPda(authority, proofNonce)` / `getLendingProofDataPda(authority, proofNonce)`
+- `buildStoreWithdrawProofInstruction(params)` — builds shielded_pool `store_withdraw_proof`
+- `buildStoreCollateralProofInstruction(params)` — builds lending_pool `store_collateral_proof`
+- `buildStoreRepayProofInstruction(params)` — builds lending_pool `store_repay_proof`
+
+### New Tests (9 new, total workspace 47)
+
+| Program | Test |
+|---|---|
+| `shielded_pool` | `proof_data_space_constant_matches_struct_layout` |
+| `shielded_pool` | `store_withdraw_proof_stores_expected_payload` |
+| `shielded_pool` | `withdraw_proof_with_consumed_proof_fails` |
+| `shielded_pool` | `withdraw_proof_with_wrong_kind_fails` |
+| `lending_pool` | `collateral_proof_with_consumed_proof_fails` |
+| `lending_pool` | `collateral_proof_with_wrong_kind_fails` |
+| `lending_pool` | `repay_proof_with_consumed_proof_fails` |
+| `lending_pool` | `repay_proof_with_wrong_kind_fails` |
+| `lending_pool` | `proof_data_space_constant_matches_struct_layout` |
+
+All 47 workspace tests pass.
+
 ## What Remains Blocked
 
-### Blocker 6 (new, C2E): Transaction MTU — withdraw instruction exceeds 1232-byte Solana limit
+**Blockers 1–6 from C2C/C2E are all resolved.** (B1 dep: done. B2 ABI: done. B3 vkey script: done. B4 test vectors: done. B5 compute budget: done. B6 tx MTU: done.)
 
-**`WithdrawArgs` serialized size**: ~976 bytes (32+32+8+32+8+64+128+64+608 for 19 public inputs).
-
-Full transaction: 8-byte discriminator + 976-byte args + ~300 bytes overhead (signature 64, 8–9 account keys at 32 each, blockhash 32, instruction framing) ≈ **~1284 bytes > 1232-byte MTU**.
-
-This does not affect Rust unit tests (no transaction overhead). It blocks on-chain execution of the `withdraw` instruction in its current form.
-
-**Resolution options (not yet implemented):**
-1. Proof account pattern — write proof bytes to a separate PDA before calling withdraw; handler reads from account.
-2. `remaining_accounts` + proof loader — pass proof account index in args; handler reads from account slice.
-3. Split transaction — not safe for atomic nullifier spending; do not use.
-
-`BorrowArgs` (~1016 bytes args) and `RepayArgs` (~456 bytes args) also need evaluation;
-repay is well within limit, borrow is marginal.
-
-**Blockers 1–5 from C2C are resolved.** (B1 dep: done. B2 ABI extension: done. B3 vkey script: done. B4 test vectors: done. B5 compute budget: done.)
+**B7 (new, C2F):** BPF stack frame warnings in `Borrow::try_accounts` and `Repay::try_accounts` — non-fatal at build time; need devnet validation before claiming runtime safety. See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B7.
 
 ---
 

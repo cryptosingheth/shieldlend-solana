@@ -261,6 +261,29 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 
 ## Implementation Status Ledger
 
+## Proof Account PDA Pattern (C2F)
+
+**Decision**: Proof bytes (`proof_a/b/c + public_inputs`) are written to a PDA in a prior transaction; the main instruction reads from the account. Arg structs carry only a 32-byte `proof_nonce` to seed the PDA.
+**Why**: `WithdrawArgs` inline was ~976 bytes → tx ~1388 bytes, exceeding the 1232-byte Solana MTU. The PDA pattern reduces `WithdrawArgs` to 144 bytes (tx ~524 bytes), `BorrowArgs` to 124 bytes.
+**Security properties of PDA design:**
+- `consumed: bool` — prevents proof replay across two transactions
+- `circuit_kind` discriminant — prevents cross-circuit proof substitution
+- `authority` binding + constraint — prevents cross-user proof theft
+- Per-use `proof_nonce` seed — prevents PDA reuse
+**How to apply**: Always generate a fresh nonce per operation (`generateProofNonce()`). Send `store_*_proof` in Tx 1 and `withdraw`/`borrow`/`repay` in Tx 2 using the same nonce. Do not reuse a nonce across two different proof operations.
+
+---
+
+## BPF Stack Frame Warning (B7, C2F)
+
+**Decision**: Treat B7 `cargo-build-sbf` stack-frame "Error:" diagnostics as non-fatal warnings until devnet testing confirms or denies runtime overflow.
+**Why**: The BPF linker's static analysis overstates actual runtime stack depth because Anchor's `Account::try_accounts` heap-allocates via Borsh. The build completes and `.so` artifacts are generated.
+**How to apply**: If `borrow` or `repay` crashes with a stack overflow on devnet, switch `proof_data: Account<'info, ProofData>` to `proof_data: Box<Account<'info, ProofData>>` in the `Borrow` and `Repay` contexts. This heap-allocates the account wrapper, removing it from the stack frame.
+
+---
+
+## Implementation Status Ledger
+
 **Decision**: `docs/IMPLEMENTATION_STATUS.md` is the canonical local source for current implementation readiness and privacy claim boundaries.
 **Why**: README and older docs can drift from local build/artifact state; a compact ledger prevents stale claims after convergence tasks.
 **How to apply**: Update the ledger whenever build readiness, artifacts, deployment status, external rails, or privacy claims change. Do not claim live privacy from target-architecture docs.

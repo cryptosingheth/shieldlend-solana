@@ -91,6 +91,153 @@ export function serializeProofBytes(result: {
   return { proof_a, proof_b, proof_c, public_inputs };
 }
 
+// ── Proof account pattern (B6 MTU fix) ──────────────────────────────────────
+// WithdrawArgs inline was ~976 bytes → tx ~1388 bytes, exceeding the 1232-byte
+// Solana MTU. Fix: write proof bytes to a PDA first, then reference by address.
+//
+// Two-transaction flow:
+//   Tx 1: store_*_proof  — creates proof PDA, writes proof_a/b/c + public_inputs
+//   Tx 2: withdraw/borrow/repay — reads from PDA, marks consumed; args now ~124–144 bytes
+//
+// ProofData PDA on shielded_pool:
+//   8 disc + 32 authority + 1 kind + 64+128+64 proof + 19×32 inputs + 2 flags = 908 bytes
+export const WITHDRAW_PROOF_DATA_SPACE = 908;
+// ProofData PDA on lending_pool:
+//   8 disc + 32 authority + 1 kind + 64+128+64 proof + 1 count + 20×32 inputs + 2 flags = 940 bytes
+export const LENDING_PROOF_DATA_SPACE = 940;
+
+const PROOF_DATA_SEED = "proof-data";
+
+/** Returns a fresh random 32-byte nonce for proof PDA seed derivation. */
+export function generateProofNonce(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(32));
+}
+
+export function getWithdrawProofDataPda(authority: PublicKey, proofNonce: Uint8Array): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PROOF_DATA_SEED), authority.toBytes(), proofNonce],
+    new PublicKey(PROGRAM_IDS.shieldedPool)
+  )[0];
+}
+
+export function getLendingProofDataPda(authority: PublicKey, proofNonce: Uint8Array): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PROOF_DATA_SEED), authority.toBytes(), proofNonce],
+    new PublicKey(PROGRAM_IDS.lendingPool)
+  )[0];
+}
+
+/**
+ * Builds the store_withdraw_proof instruction for shielded_pool.
+ * Send this in Tx 1 before the withdraw instruction (Tx 2).
+ * Use generateProofNonce() once; pass the same nonce to both transactions.
+ */
+export async function buildStoreWithdrawProofInstruction(params: {
+  authority: PublicKey;
+  proofNonce: Uint8Array;
+  proof: SerializedProof;
+  publicInputs: Uint8Array[]; // exactly 19 elements
+}): Promise<TransactionInstruction> {
+  if (params.publicInputs.length !== 19) {
+    throw new Error(
+      `store_withdraw_proof expects 19 public inputs, got ${params.publicInputs.length}`
+    );
+  }
+  const proofDataPda = getWithdrawProofDataPda(params.authority, params.proofNonce);
+  // disc(8) + proof_nonce(32) + proof_a(64) + proof_b(128) + proof_c(64) + inputs(19×32) = 904
+  const data = new Uint8Array(8 + 32 + 64 + 128 + 64 + 19 * 32);
+  let offset = 0;
+  data.set(await anchorDiscriminator("store_withdraw_proof"), offset); offset += 8;
+  data.set(params.proofNonce, offset); offset += 32;
+  data.set(params.proof.proof_a, offset); offset += 64;
+  data.set(params.proof.proof_b, offset); offset += 128;
+  data.set(params.proof.proof_c, offset); offset += 64;
+  for (const input of params.publicInputs) { data.set(input, offset); offset += 32; }
+  return new TransactionInstruction({
+    programId: new PublicKey(PROGRAM_IDS.shieldedPool),
+    keys: [
+      { pubkey: params.authority, isSigner: true, isWritable: true },
+      { pubkey: proofDataPda, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+/**
+ * Builds the store_collateral_proof instruction for lending_pool.
+ * Send this in Tx 1 before the borrow instruction (Tx 2).
+ * Use generateProofNonce() once; pass the same nonce as BorrowArgs.proof_nonce.
+ */
+export async function buildStoreCollateralProofInstruction(params: {
+  authority: PublicKey;
+  proofNonce: Uint8Array;
+  proof: SerializedProof;
+  publicInputs: Uint8Array[]; // exactly 20 elements
+}): Promise<TransactionInstruction> {
+  if (params.publicInputs.length !== 20) {
+    throw new Error(
+      `store_collateral_proof expects 20 public inputs, got ${params.publicInputs.length}`
+    );
+  }
+  const proofDataPda = getLendingProofDataPda(params.authority, params.proofNonce);
+  // disc(8) + proof_nonce(32) + proof_a(64) + proof_b(128) + proof_c(64) + inputs(20×32) = 936
+  const data = new Uint8Array(8 + 32 + 64 + 128 + 64 + 20 * 32);
+  let offset = 0;
+  data.set(await anchorDiscriminator("store_collateral_proof"), offset); offset += 8;
+  data.set(params.proofNonce, offset); offset += 32;
+  data.set(params.proof.proof_a, offset); offset += 64;
+  data.set(params.proof.proof_b, offset); offset += 128;
+  data.set(params.proof.proof_c, offset); offset += 64;
+  for (const input of params.publicInputs) { data.set(input, offset); offset += 32; }
+  return new TransactionInstruction({
+    programId: new PublicKey(PROGRAM_IDS.lendingPool),
+    keys: [
+      { pubkey: params.authority, isSigner: true, isWritable: true },
+      { pubkey: proofDataPda, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+/**
+ * Builds the store_repay_proof instruction for lending_pool.
+ * Send this in Tx 1 before the repay instruction (Tx 2).
+ * Use generateProofNonce() once; pass the same nonce as RepayArgs.proof_nonce.
+ */
+export async function buildStoreRepayProofInstruction(params: {
+  authority: PublicKey;
+  proofNonce: Uint8Array;
+  proof: SerializedProof;
+  publicInputs: Uint8Array[]; // exactly 6 elements
+}): Promise<TransactionInstruction> {
+  if (params.publicInputs.length !== 6) {
+    throw new Error(
+      `store_repay_proof expects 6 public inputs, got ${params.publicInputs.length}`
+    );
+  }
+  const proofDataPda = getLendingProofDataPda(params.authority, params.proofNonce);
+  // disc(8) + proof_nonce(32) + proof_a(64) + proof_b(128) + proof_c(64) + inputs(6×32) = 488
+  const data = new Uint8Array(8 + 32 + 64 + 128 + 64 + 6 * 32);
+  let offset = 0;
+  data.set(await anchorDiscriminator("store_repay_proof"), offset); offset += 8;
+  data.set(params.proofNonce, offset); offset += 32;
+  data.set(params.proof.proof_a, offset); offset += 64;
+  data.set(params.proof.proof_b, offset); offset += 128;
+  data.set(params.proof.proof_c, offset); offset += 64;
+  for (const input of params.publicInputs) { data.set(input, offset); offset += 32; }
+  return new TransactionInstruction({
+    programId: new PublicKey(PROGRAM_IDS.lendingPool),
+    keys: [
+      { pubkey: params.authority, isSigner: true, isWritable: true },
+      { pubkey: proofDataPda, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
 export interface SolanaWalletProvider {
   isPhantom?: boolean;
   publicKey?: PublicKey;

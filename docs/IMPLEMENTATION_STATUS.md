@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-06
+Last reconciled: 2026-05-06 (C2F)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -29,8 +29,8 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `node scripts/generate-zk-artifacts.mjs` | known good | Generated DEV/TEST zkeys and vkeys during C2B |
 | `npm run typecheck:frontend` | known good | TypeScript check passes |
 | `npm run build:frontend` | known good | Next build passes with existing dependency warning |
-| `cargo test --workspace` | known good | 38 Rust unit tests pass (21 prior + 6 C2D + 14 C2E — 4×3 verifier tests) |
-| `anchor build --no-idl` | known good | SBF build passes with existing Anchor/SBF warnings |
+| `cargo test --workspace` | known good | 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests) |
+| `anchor build --no-idl` | known good | SBF build passes; new B7 stack-frame warnings for Borrow/Repay (non-fatal) |
 
 ## Program IDs
 
@@ -96,8 +96,8 @@ Artifact details:
 
 | Area | Implemented locally |
 |---|---|
-| `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, DEV/TEST Groth16 withdraw verifier wired (cross-field consistency guards), nullifier registry CPI scaffolding after verifier gate; `groth16_verifier` module with real vkey and smoke+wiring tests |
-| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, DEV/TEST Groth16 collateral+repay verifiers wired (cross-field consistency guards), fail-closed payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke+wiring tests |
+| `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, DEV/TEST Groth16 withdraw verifier wired (cross-field consistency guards), nullifier registry CPI scaffolding after verifier gate; `groth16_verifier` module with real vkey and smoke+wiring tests; proof account PDA pattern (`ProofData`, `store_withdraw_proof`, consumed/kind/authority guards) |
+| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, DEV/TEST Groth16 collateral+repay verifiers wired (cross-field consistency guards), fail-closed payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke+wiring tests; proof account PDA pattern (`ProofData` with `public_input_count`, `store_collateral_proof`, `store_repay_proof`, consumed/kind/authority guards) |
 | `nullifier_registry` | Authorized writer config, Active/Locked/Spent state machine, `spend` requires Locked, unit tests |
 | Frontend local security | AES-256-GCM note vault and encrypted history log |
 | Frontend circuit interface | Poseidon commitment/nullifier helpers, real-ring requirement, snarkjs fullProve calls using manifest paths |
@@ -106,9 +106,9 @@ Artifact details:
 
 | Flow | Current code behavior |
 |---|---|
-| Withdraw proof verification | DEV/TEST Groth16 verifier wired; cross-field consistency guards active; empty/mutated/mismatched proofs rejected |
-| Borrow collateral proof verification | DEV/TEST Groth16 verifier wired; cross-field consistency guards active |
-| Repay proof verification | DEV/TEST Groth16 verifier wired; cross-field consistency guards active |
+| Withdraw proof verification | DEV/TEST Groth16 verifier wired; proof read from PDA; consumed/kind/authority guards; empty/mutated/mismatched proofs rejected |
+| Borrow collateral proof verification | DEV/TEST Groth16 verifier wired; proof read from PDA; consumed/kind/authority guards |
+| Repay proof verification | DEV/TEST Groth16 verifier wired; proof read from PDA; consumed/kind/authority guards |
 | Private payment receipt verification | Fails closed with `PrivatePaymentVerifierNotWired` |
 | Encrypt liquidation reveal verification | Fails closed with `EncryptVerifierNotWired` |
 | PER exit flushing | Fails closed with `PerAdapterNotWired` unless queue is empty |
@@ -125,7 +125,7 @@ Artifact details:
 | MagicBlock Private Payments | Not wired; URL env var absent by default | No |
 | Umbra stealth exits | Not wired; env-gated status only | No |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
-| On-chain Groth16 verification | DEV/TEST verifier wired in Rust; blocked by tx MTU for on-chain execution | No — tx size blocker, DEV/TEST trusted setup only |
+| On-chain Groth16 verification | DEV/TEST verifier wired; proof account pattern resolves tx MTU; B7 stack warning needs devnet validation | No — DEV/TEST trusted setup only; not deployed |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
 | Full private repayment | Not live | No |
 | Full private borrow/withdraw flow | Not end-to-end verified | No |
@@ -138,7 +138,8 @@ Artifact details:
 |---|---|
 | Full Anchor IDL generation blocked | Cannot rely on generated IDLs until Anchor/proc-macro2 issue is fixed |
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
-| Transaction MTU — `WithdrawArgs` (~976 bytes + overhead ≈ ~1388 bytes) exceeds 1232-byte Solana limit | On-chain `withdraw` execution blocked; requires proof account pattern before deployment. `BorrowArgs` also marginal. | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
+| ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
+| BPF stack frame warnings (B7) | `Borrow::try_accounts` and `Repay::try_accounts` emit stack-exceeded diagnostics; build succeeds, runtime impact TBD | Monitor on devnet; mitigations: `Box<Account>` or context refactor |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |

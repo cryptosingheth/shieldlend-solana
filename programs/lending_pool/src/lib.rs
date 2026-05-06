@@ -20,6 +20,7 @@ pub const KINK_COUNT: usize = 11;
 pub const BPS_DENOMINATOR: u128 = 10_000;
 pub const SLOTS_PER_YEAR: u128 = 78_840_000;
 pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
+pub const PROOF_DATA_SEED: &[u8] = b"proof-data";
 
 #[program]
 pub mod lending_pool {
@@ -40,9 +41,71 @@ pub mod lending_pool {
         Ok(())
     }
 
+    /// Write a Groth16 collateral proof to a PDA before calling borrow.
+    ///
+    /// Two-transaction flow (B6 MTU fix):
+    ///   1. store_collateral_proof — writes proof bytes to a proof PDA.
+    ///   2. borrow                — reads proof from PDA; marks it consumed.
+    ///
+    /// The proof_nonce seeds the PDA; pass the same nonce as BorrowArgs.proof_nonce.
+    /// Transaction size: ~1141 bytes (within 1232-byte Solana MTU).
+    pub fn store_collateral_proof(
+        ctx: Context<StoreLendingProof>,
+        proof_nonce: [u8; 32],
+        proof_a: [u8; 64],
+        proof_b: [u8; 128],
+        proof_c: [u8; 64],
+        public_inputs: [[u8; 32]; 20],
+    ) -> Result<()> {
+        let p = &mut ctx.accounts.proof_data;
+        p.authority = ctx.accounts.authority.key();
+        p.circuit_kind = LendingProofKind::Collateral;
+        p.proof_a = proof_a;
+        p.proof_b = proof_b;
+        p.proof_c = proof_c;
+        p.public_input_count = 20;
+        p.public_inputs = public_inputs;
+        p.consumed = false;
+        p.bump = ctx.bumps.proof_data;
+        let _ = proof_nonce; // consumed by #[instruction] macro for PDA seed derivation
+        Ok(())
+    }
+
+    /// Write a Groth16 repay proof to a PDA before calling repay.
+    ///
+    /// Two-transaction flow (B6 MTU fix):
+    ///   1. store_repay_proof — writes proof bytes (6 public signals) to a proof PDA.
+    ///   2. repay             — reads proof from PDA; marks it consumed.
+    ///
+    /// The proof_nonce seeds the PDA; pass the same nonce as RepayArgs.proof_nonce.
+    /// Transaction size: ~693 bytes (within 1232-byte Solana MTU).
+    pub fn store_repay_proof(
+        ctx: Context<StoreLendingProof>,
+        proof_nonce: [u8; 32],
+        proof_a: [u8; 64],
+        proof_b: [u8; 128],
+        proof_c: [u8; 64],
+        public_inputs: [[u8; 32]; 6],
+    ) -> Result<()> {
+        let p = &mut ctx.accounts.proof_data;
+        p.authority = ctx.accounts.authority.key();
+        p.circuit_kind = LendingProofKind::Repay;
+        p.proof_a = proof_a;
+        p.proof_b = proof_b;
+        p.proof_c = proof_c;
+        p.public_input_count = 6;
+        p.public_inputs[..6].copy_from_slice(&public_inputs);
+        p.consumed = false;
+        p.bump = ctx.bumps.proof_data;
+        let _ = proof_nonce; // consumed by #[instruction] macro for PDA seed derivation
+        Ok(())
+    }
+
     pub fn borrow(ctx: Context<Borrow>, args: BorrowArgs) -> Result<()> {
         validate_borrow_args(&args, &ctx.accounts.interest_model)?;
-        verify_collateral_proof(&args)?;
+        verify_collateral_proof(&args, &ctx.accounts.proof_data)?;
+        // Mark consumed before CPI to prevent re-entrancy on the proof account.
+        ctx.accounts.proof_data.consumed = true;
         lock_collateral_nullifier(&ctx)?;
 
         let clock = Clock::get()?;
@@ -89,7 +152,8 @@ pub mod lending_pool {
             loan.repayment_vault
         };
 
-        verify_repay_proof(&args)?;
+        verify_repay_proof(&args, &ctx.accounts.proof_data)?;
+        ctx.accounts.proof_data.consumed = true;
         verify_private_payment_receipt(&args, repayment_vault)?;
         unlock_collateral_nullifier(&ctx)?;
 
@@ -177,10 +241,6 @@ fn validate_borrow_args(args: &BorrowArgs, interest_model: &InterestRateModel) -
     require!(
         args.collateral_nullifier_hash != [0; 32],
         LendingError::InvalidNullifierHash
-    );
-    require!(
-        args.proof_a != [0u8; 64],
-        LendingError::Groth16VerificationFailed
     );
     Ok(())
 }
@@ -273,14 +333,22 @@ fn accrue_outstanding_balance(loan: &LoanAccount, current_slot: u64) -> Result<u
         .ok_or(error!(LendingError::ArithmeticOverflow))
 }
 
-fn verify_collateral_proof(args: &BorrowArgs) -> Result<()> {
+fn verify_collateral_proof(args: &BorrowArgs, proof: &ProofData) -> Result<()> {
+    require!(!proof.consumed, LendingError::ProofAccountConsumed);
     require!(
-        args.proof_a != [0u8; 64],
+        proof.circuit_kind == LendingProofKind::Collateral,
+        LendingError::WrongProofKind
+    );
+    require!(
+        proof.public_input_count == 20,
+        LendingError::Groth16VerificationFailed
+    );
+    require!(
+        proof.proof_a != [0u8; 64],
         LendingError::Groth16VerificationFailed
     );
 
-    // Cross-field consistency: proof must commit to the same nullifier_hash,
-    // borrow_amount, and borrow_bucket that the instruction args declare.
+    // Cross-field consistency: proof public signals must match instruction args.
     // collateral_ring public signal ordering (see circuits/public_signals.json):
     //   [0..15]  ring[0..15]
     //   [16]     nullifierHash
@@ -288,41 +356,49 @@ fn verify_collateral_proof(args: &BorrowArgs) -> Result<()> {
     //   [18]     borrowed  (u64 as BE u256)
     //   [19]     minRatioBps  (u16 as BE u256)
     require!(
-        args.public_inputs[16] == args.collateral_nullifier_hash,
+        proof.public_inputs[16] == args.collateral_nullifier_hash,
         LendingError::Groth16VerificationFailed
     );
     let mut expected_borrow = [0u8; 32];
     expected_borrow[24..32].copy_from_slice(&args.borrow_amount.to_be_bytes());
     require!(
-        args.public_inputs[18] == expected_borrow,
+        proof.public_inputs[18] == expected_borrow,
         LendingError::Groth16VerificationFailed
     );
     let mut expected_ratio = [0u8; 32];
     expected_ratio[30..32].copy_from_slice(&args.borrow_bucket.to_be_bytes());
     require!(
-        args.public_inputs[19] == expected_ratio,
+        proof.public_inputs[19] == expected_ratio,
         LendingError::Groth16VerificationFailed
     );
 
     let ok = groth16_verifier::verify_collateral_groth16(
-        &args.proof_a,
-        &args.proof_b,
-        &args.proof_c,
-        &args.public_inputs,
+        &proof.proof_a,
+        &proof.proof_b,
+        &proof.proof_c,
+        &proof.public_inputs,
     )
     .map_err(|_| error!(LendingError::Groth16VerificationFailed))?;
     require!(ok, LendingError::Groth16VerificationFailed);
     Ok(())
 }
 
-fn verify_repay_proof(args: &RepayArgs) -> Result<()> {
+fn verify_repay_proof(args: &RepayArgs, proof: &ProofData) -> Result<()> {
+    require!(!proof.consumed, LendingError::ProofAccountConsumed);
     require!(
-        args.proof_a != [0u8; 64],
+        proof.circuit_kind == LendingProofKind::Repay,
+        LendingError::WrongProofKind
+    );
+    require!(
+        proof.public_input_count == 6,
+        LendingError::Groth16VerificationFailed
+    );
+    require!(
+        proof.proof_a != [0u8; 64],
         LendingError::Groth16VerificationFailed
     );
 
-    // Cross-field consistency: proof must commit to the same nullifier_hash,
-    // loan_id, outstanding_balance, settlement_receipt_hash, and receipt_binding_hash.
+    // Cross-field consistency: proof public signals must match instruction args.
     // repay_ring public signal ordering (see circuits/public_signals.json):
     //   [0]  nullifierHash
     //   [1]  loanId         (u64 as BE u256)
@@ -331,35 +407,39 @@ fn verify_repay_proof(args: &RepayArgs) -> Result<()> {
     //   [4]  repaymentVault  (Pubkey as field element — not cross-checked here)
     //   [5]  receiptBindingHash
     require!(
-        args.public_inputs[0] == args.nullifier_hash,
+        proof.public_inputs[0] == args.nullifier_hash,
         LendingError::Groth16VerificationFailed
     );
     let mut expected_loan_id = [0u8; 32];
     expected_loan_id[24..32].copy_from_slice(&args.loan_id.to_be_bytes());
     require!(
-        args.public_inputs[1] == expected_loan_id,
+        proof.public_inputs[1] == expected_loan_id,
         LendingError::Groth16VerificationFailed
     );
     let mut expected_balance = [0u8; 32];
     expected_balance[24..32].copy_from_slice(&args.outstanding_balance.to_be_bytes());
     require!(
-        args.public_inputs[2] == expected_balance,
+        proof.public_inputs[2] == expected_balance,
         LendingError::Groth16VerificationFailed
     );
     require!(
-        args.public_inputs[3] == args.settlement_receipt_hash,
+        proof.public_inputs[3] == args.settlement_receipt_hash,
         LendingError::Groth16VerificationFailed
     );
     require!(
-        args.public_inputs[5] == args.receipt_binding_hash,
+        proof.public_inputs[5] == args.receipt_binding_hash,
         LendingError::Groth16VerificationFailed
     );
 
+    // Copy the first 6 signals from the 20-slot account array into a fixed-size local.
+    let mut inputs_6 = [[0u8; 32]; 6];
+    inputs_6.copy_from_slice(&proof.public_inputs[..6]);
+
     let ok = groth16_verifier::verify_repay_groth16(
-        &args.proof_a,
-        &args.proof_b,
-        &args.proof_c,
-        &args.public_inputs,
+        &proof.proof_a,
+        &proof.proof_b,
+        &proof.proof_c,
+        &inputs_6,
     )
     .map_err(|_| error!(LendingError::Groth16VerificationFailed))?;
     require!(ok, LendingError::Groth16VerificationFailed);
@@ -386,6 +466,24 @@ pub struct Initialize<'info> {
         bump
     )]
     pub interest_model: Account<'info, InterestRateModel>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Context for store_collateral_proof and store_repay_proof.
+/// proof_nonce is the PDA seed component; pass the same value to borrow/repay.
+#[derive(Accounts)]
+#[instruction(proof_nonce: [u8; 32])]
+pub struct StoreLendingProof<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(
+        init,
+        payer = authority,
+        space = ProofData::SPACE,
+        seeds = [PROOF_DATA_SEED, authority.key().as_ref(), proof_nonce.as_ref()],
+        bump
+    )]
+    pub proof_data: Account<'info, ProofData>,
     pub system_program: Program<'info, System>,
 }
 
@@ -422,6 +520,16 @@ pub struct Borrow<'info> {
     pub registry_writer: UncheckedAccount<'info>,
     pub nullifier_registry_program: Program<'info, NullifierRegistry>,
     pub system_program: Program<'info, System>,
+    /// Collateral proof account written by store_collateral_proof; consumed after use.
+    #[account(
+        mut,
+        seeds = [PROOF_DATA_SEED, payer.key().as_ref(), args.proof_nonce.as_ref()],
+        bump = proof_data.bump,
+        constraint = proof_data.authority == payer.key() @ LendingError::ProofAccountOwnerMismatch,
+        constraint = !proof_data.consumed @ LendingError::ProofAccountConsumed,
+        constraint = proof_data.circuit_kind == LendingProofKind::Collateral @ LendingError::WrongProofKind,
+    )]
+    pub proof_data: Account<'info, ProofData>,
 }
 
 #[derive(Accounts)]
@@ -451,6 +559,16 @@ pub struct Repay<'info> {
     #[account(seeds = [REGISTRY_WRITER_SEED], bump)]
     pub registry_writer: UncheckedAccount<'info>,
     pub nullifier_registry_program: Program<'info, NullifierRegistry>,
+    /// Repay proof account written by store_repay_proof; consumed after use.
+    #[account(
+        mut,
+        seeds = [PROOF_DATA_SEED, relay.key().as_ref(), args.proof_nonce.as_ref()],
+        bump = proof_data.bump,
+        constraint = proof_data.authority == relay.key() @ LendingError::ProofAccountOwnerMismatch,
+        constraint = !proof_data.consumed @ LendingError::ProofAccountConsumed,
+        constraint = proof_data.circuit_kind == LendingProofKind::Repay @ LendingError::WrongProofKind,
+    )]
+    pub proof_data: Account<'info, ProofData>,
 }
 
 #[derive(Accounts)]
@@ -527,6 +645,37 @@ impl LoanAccount {
         8 + 32 + 1 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 1 + 1 + 1 + 8 + 1 + 8 + 8 + 32 + 32 + 1;
 }
 
+/// Proof account for DEV/TEST Groth16 lending proofs (collateral or repay).
+/// Written by store_collateral_proof / store_repay_proof; consumed by borrow / repay.
+/// Space: ProofData::SPACE bytes.
+#[account]
+pub struct ProofData {
+    pub authority: Pubkey,
+    pub circuit_kind: LendingProofKind,
+    pub proof_a: [u8; 64],
+    pub proof_b: [u8; 128],
+    pub proof_c: [u8; 64],
+    /// Actual number of valid public signals stored (20 for collateral, 6 for repay).
+    pub public_input_count: u8,
+    /// Up to 20 public signals; only public_input_count slots are meaningful.
+    pub public_inputs: [[u8; 32]; 20],
+    pub consumed: bool,
+    pub bump: u8,
+}
+
+impl ProofData {
+    // discriminator(8) + authority(32) + circuit_kind(1) +
+    // proof_a(64) + proof_b(128) + proof_c(64) + public_input_count(1) +
+    // public_inputs(20*32=640) + consumed(1) + bump(1)
+    pub const SPACE: usize = 8 + 32 + 1 + 64 + 128 + 64 + 1 + (20 * 32) + 1 + 1;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LendingProofKind {
+    Collateral,
+    Repay,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum LoanStatus {
     Active,
@@ -544,14 +693,9 @@ pub struct BorrowArgs {
     pub interest_rate_bps: u64,
     pub repayment_vault: Pubkey,
     pub future_sign_authorized: bool,
-    // DEV/TEST Groth16 collateral proof (groth16-solana encoding).
-    // proof_a must be the NEGATED pi_a.
-    // Compute budget: prepend ComputeBudgetProgram::set_compute_unit_limit(1_400_000).
-    pub proof_a: [u8; 64],
-    pub proof_b: [u8; 128],
-    pub proof_c: [u8; 64],
-    // 20 public signals in collateral_ring order (see circuits/public_signals.json).
-    pub public_inputs: [[u8; 32]; 20],
+    /// PDA nonce used to locate the collateral proof account written by store_collateral_proof.
+    /// Compute budget: prepend ComputeBudgetProgram::set_compute_unit_limit(1_400_000).
+    pub proof_nonce: [u8; 32],
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -561,13 +705,8 @@ pub struct RepayArgs {
     pub outstanding_balance: u64,
     pub settlement_receipt_hash: [u8; 32],
     pub receipt_binding_hash: [u8; 32],
-    // DEV/TEST Groth16 repay proof (groth16-solana encoding).
-    // proof_a must be the NEGATED pi_a.
-    pub proof_a: [u8; 64],
-    pub proof_b: [u8; 128],
-    pub proof_c: [u8; 64],
-    // 6 public signals in repay_ring order (see circuits/public_signals.json).
-    pub public_inputs: [[u8; 32]; 6],
+    /// PDA nonce used to locate the repay proof account written by store_repay_proof.
+    pub proof_nonce: [u8; 32],
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -626,6 +765,12 @@ pub enum LendingError {
     BreachNotConfirmed,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
+    #[msg("Proof account authority does not match signer")]
+    ProofAccountOwnerMismatch,
+    #[msg("Proof account has already been consumed")]
+    ProofAccountConsumed,
+    #[msg("Proof account is for the wrong circuit")]
+    WrongProofKind,
 }
 
 #[cfg(test)]
@@ -678,6 +823,71 @@ mod tests {
         }
     }
 
+    fn make_collateral_proof_data(
+        proof_a: [u8; 64],
+        proof_b: [u8; 128],
+        proof_c: [u8; 64],
+        public_inputs: [[u8; 32]; 20],
+    ) -> ProofData {
+        ProofData {
+            authority: Pubkey::new_unique(),
+            circuit_kind: LendingProofKind::Collateral,
+            proof_a,
+            proof_b,
+            proof_c,
+            public_input_count: 20,
+            public_inputs,
+            consumed: false,
+            bump: 255,
+        }
+    }
+
+    fn make_repay_proof_data(
+        proof_a: [u8; 64],
+        proof_b: [u8; 128],
+        proof_c: [u8; 64],
+        sig6: [[u8; 32]; 6],
+    ) -> ProofData {
+        let mut public_inputs = [[0u8; 32]; 20];
+        public_inputs[..6].copy_from_slice(&sig6);
+        ProofData {
+            authority: Pubkey::new_unique(),
+            circuit_kind: LendingProofKind::Repay,
+            proof_a,
+            proof_b,
+            proof_c,
+            public_input_count: 6,
+            public_inputs,
+            consumed: false,
+            bump: 255,
+        }
+    }
+
+    fn base_borrow_args() -> BorrowArgs {
+        BorrowArgs {
+            collateral_nullifier_hash: [3; 32],
+            collateral_denomination_class: 1,
+            loan_id: 42,
+            borrow_amount: 500_000_000,
+            borrow_bucket: 5_000,
+            interest_rate_bps: 1_000,
+            repayment_vault: Pubkey::new_unique(),
+            future_sign_authorized: true,
+            proof_nonce: [1u8; 32],
+        }
+    }
+
+    fn base_repay_args() -> RepayArgs {
+        RepayArgs {
+            nullifier_hash: [3; 32],
+            loan_id: 42,
+            outstanding_balance: 510_000_000,
+            settlement_receipt_hash: [5; 32],
+            receipt_binding_hash: [6; 32],
+            proof_nonce: [1u8; 32],
+        }
+    }
+
     #[test]
     fn rate_model_requires_sorted_kinks_and_monotonic_rates() {
         assert!(validate_rate_model(&valid_kinks(), &valid_rates()).is_ok());
@@ -705,25 +915,6 @@ mod tests {
         let outstanding = accrue_outstanding_balance(&loan, loan.last_accrual_slot).unwrap();
 
         assert_eq!(outstanding, loan.borrow_amount);
-    }
-
-    fn base_borrow_args() -> BorrowArgs {
-        let mut proof_a = [0u8; 64];
-        proof_a[0] = 1; // non-zero so empty-proof guard passes
-        BorrowArgs {
-            collateral_nullifier_hash: [3; 32],
-            collateral_denomination_class: 1,
-            loan_id: 42,
-            borrow_amount: 500_000_000,
-            borrow_bucket: 5_000,
-            interest_rate_bps: 1_000,
-            repayment_vault: Pubkey::new_unique(),
-            future_sign_authorized: true,
-            proof_a,
-            proof_b: [0u8; 128],
-            proof_c: [0u8; 64],
-            public_inputs: [[0u8; 32]; 20],
-        }
     }
 
     #[test]
@@ -796,20 +987,6 @@ mod tests {
         assert_eq!(loan.is_liquidatable_handle, [0; 32]);
     }
 
-    fn base_repay_args() -> RepayArgs {
-        RepayArgs {
-            nullifier_hash: [3; 32],
-            loan_id: 42,
-            outstanding_balance: 510_000_000,
-            settlement_receipt_hash: [5; 32],
-            receipt_binding_hash: [6; 32],
-            proof_a: [0u8; 64],
-            proof_b: [0u8; 128],
-            proof_c: [0u8; 64],
-            public_inputs: [[0u8; 32]; 6],
-        }
-    }
-
     #[test]
     fn unimplemented_verifiers_still_fail_closed() {
         let repay_args = base_repay_args();
@@ -821,6 +998,33 @@ mod tests {
         };
         assert!(verify_private_payment_receipt(&repay_args, Pubkey::new_unique()).is_err());
         assert!(verify_encrypt_reveal(&reveal_args).is_err());
+    }
+
+    #[test]
+    fn proof_data_space_constant_matches_struct_layout() {
+        // discriminator(8) + authority(32) + circuit_kind(1) +
+        // proof_a(64) + proof_b(128) + proof_c(64) + public_input_count(1) +
+        // public_inputs(20*32=640) + consumed(1) + bump(1) = 940
+        assert_eq!(ProofData::SPACE, 940);
+    }
+
+    #[test]
+    fn store_lending_proof_stores_expected_payload() {
+        use crate::groth16_verifier::tests::{
+            COLLATERAL_SMOKE_PROOF_A, COLLATERAL_SMOKE_PROOF_B, COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        };
+        let proof = make_collateral_proof_data(
+            COLLATERAL_SMOKE_PROOF_A,
+            COLLATERAL_SMOKE_PROOF_B,
+            COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert_eq!(proof.circuit_kind, LendingProofKind::Collateral);
+        assert_eq!(proof.public_input_count, 20);
+        assert_eq!(proof.proof_a, COLLATERAL_SMOKE_PROOF_A);
+        assert_eq!(proof.public_inputs, COLLATERAL_SMOKE_PUBLIC_SIGNALS);
+        assert!(!proof.consumed);
     }
 
     #[test]
@@ -839,12 +1043,15 @@ mod tests {
             interest_rate_bps: 1_000,
             repayment_vault: Pubkey::new_unique(),
             future_sign_authorized: true,
-            proof_a: COLLATERAL_SMOKE_PROOF_A,
-            proof_b: COLLATERAL_SMOKE_PROOF_B,
-            proof_c: COLLATERAL_SMOKE_PROOF_C,
-            public_inputs: COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_collateral_proof(&args).is_ok());
+        let proof = make_collateral_proof_data(
+            COLLATERAL_SMOKE_PROOF_A,
+            COLLATERAL_SMOKE_PROOF_B,
+            COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_collateral_proof(&args, &proof).is_ok());
     }
 
     #[test]
@@ -859,12 +1066,15 @@ mod tests {
             interest_rate_bps: 1_000,
             repayment_vault: Pubkey::new_unique(),
             future_sign_authorized: true,
-            proof_a: [0u8; 64],
-            proof_b: [0u8; 128],
-            proof_c: [0u8; 64],
-            public_inputs: COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_collateral_proof(&args).is_err());
+        let proof = make_collateral_proof_data(
+            [0u8; 64],
+            [0u8; 128],
+            [0u8; 64],
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_collateral_proof(&args, &proof).is_err());
     }
 
     #[test]
@@ -884,12 +1094,15 @@ mod tests {
             interest_rate_bps: 1_000,
             repayment_vault: Pubkey::new_unique(),
             future_sign_authorized: true,
-            proof_a: bad_a,
-            proof_b: COLLATERAL_SMOKE_PROOF_B,
-            proof_c: COLLATERAL_SMOKE_PROOF_C,
-            public_inputs: COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_collateral_proof(&args).is_err());
+        let proof = make_collateral_proof_data(
+            bad_a,
+            COLLATERAL_SMOKE_PROOF_B,
+            COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_collateral_proof(&args, &proof).is_err());
     }
 
     #[test]
@@ -908,12 +1121,69 @@ mod tests {
             interest_rate_bps: 1_000,
             repayment_vault: Pubkey::new_unique(),
             future_sign_authorized: true,
-            proof_a: COLLATERAL_SMOKE_PROOF_A,
-            proof_b: COLLATERAL_SMOKE_PROOF_B,
-            proof_c: COLLATERAL_SMOKE_PROOF_C,
-            public_inputs: COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_collateral_proof(&args).is_err());
+        let proof = make_collateral_proof_data(
+            COLLATERAL_SMOKE_PROOF_A,
+            COLLATERAL_SMOKE_PROOF_B,
+            COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_collateral_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn collateral_proof_with_consumed_proof_fails() {
+        use crate::groth16_verifier::tests::{
+            COLLATERAL_SMOKE_PROOF_A, COLLATERAL_SMOKE_PROOF_B, COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = BorrowArgs {
+            collateral_nullifier_hash: COLLATERAL_SMOKE_PUBLIC_SIGNALS[16],
+            collateral_denomination_class: 1,
+            loan_id: 42,
+            borrow_amount: 50_000_000,
+            borrow_bucket: 15_000,
+            interest_rate_bps: 1_000,
+            repayment_vault: Pubkey::new_unique(),
+            future_sign_authorized: true,
+            proof_nonce: [1u8; 32],
+        };
+        let mut proof = make_collateral_proof_data(
+            COLLATERAL_SMOKE_PROOF_A,
+            COLLATERAL_SMOKE_PROOF_B,
+            COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        proof.consumed = true;
+        assert!(verify_collateral_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn collateral_proof_with_wrong_kind_fails() {
+        use crate::groth16_verifier::tests::{
+            COLLATERAL_SMOKE_PROOF_A, COLLATERAL_SMOKE_PROOF_B, COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = BorrowArgs {
+            collateral_nullifier_hash: COLLATERAL_SMOKE_PUBLIC_SIGNALS[16],
+            collateral_denomination_class: 1,
+            loan_id: 42,
+            borrow_amount: 50_000_000,
+            borrow_bucket: 15_000,
+            interest_rate_bps: 1_000,
+            repayment_vault: Pubkey::new_unique(),
+            future_sign_authorized: true,
+            proof_nonce: [1u8; 32],
+        };
+        let mut proof = make_collateral_proof_data(
+            COLLATERAL_SMOKE_PROOF_A,
+            COLLATERAL_SMOKE_PROOF_B,
+            COLLATERAL_SMOKE_PROOF_C,
+            COLLATERAL_SMOKE_PUBLIC_SIGNALS,
+        );
+        proof.circuit_kind = LendingProofKind::Repay; // wrong kind
+        assert!(verify_collateral_proof(&args, &proof).is_err());
     }
 
     #[test]
@@ -929,12 +1199,15 @@ mod tests {
             outstanding_balance: 50_000_000,
             settlement_receipt_hash: REPAY_SMOKE_PUBLIC_SIGNALS[3],
             receipt_binding_hash: REPAY_SMOKE_PUBLIC_SIGNALS[5],
-            proof_a: REPAY_SMOKE_PROOF_A,
-            proof_b: REPAY_SMOKE_PROOF_B,
-            proof_c: REPAY_SMOKE_PROOF_C,
-            public_inputs: REPAY_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_repay_proof(&args).is_ok());
+        let proof = make_repay_proof_data(
+            REPAY_SMOKE_PROOF_A,
+            REPAY_SMOKE_PROOF_B,
+            REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_repay_proof(&args, &proof).is_ok());
     }
 
     #[test]
@@ -946,12 +1219,11 @@ mod tests {
             outstanding_balance: 50_000_000,
             settlement_receipt_hash: REPAY_SMOKE_PUBLIC_SIGNALS[3],
             receipt_binding_hash: REPAY_SMOKE_PUBLIC_SIGNALS[5],
-            proof_a: [0u8; 64],
-            proof_b: [0u8; 128],
-            proof_c: [0u8; 64],
-            public_inputs: REPAY_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_repay_proof(&args).is_err());
+        let proof =
+            make_repay_proof_data([0u8; 64], [0u8; 128], [0u8; 64], REPAY_SMOKE_PUBLIC_SIGNALS);
+        assert!(verify_repay_proof(&args, &proof).is_err());
     }
 
     #[test]
@@ -968,12 +1240,15 @@ mod tests {
             outstanding_balance: 50_000_000,
             settlement_receipt_hash: REPAY_SMOKE_PUBLIC_SIGNALS[3],
             receipt_binding_hash: REPAY_SMOKE_PUBLIC_SIGNALS[5],
-            proof_a: bad_a,
-            proof_b: REPAY_SMOKE_PROOF_B,
-            proof_c: REPAY_SMOKE_PROOF_C,
-            public_inputs: REPAY_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_repay_proof(&args).is_err());
+        let proof = make_repay_proof_data(
+            bad_a,
+            REPAY_SMOKE_PROOF_B,
+            REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_repay_proof(&args, &proof).is_err());
     }
 
     #[test]
@@ -989,11 +1264,62 @@ mod tests {
             outstanding_balance: 50_000_000,
             settlement_receipt_hash: REPAY_SMOKE_PUBLIC_SIGNALS[3],
             receipt_binding_hash: REPAY_SMOKE_PUBLIC_SIGNALS[5],
-            proof_a: REPAY_SMOKE_PROOF_A,
-            proof_b: REPAY_SMOKE_PROOF_B,
-            proof_c: REPAY_SMOKE_PROOF_C,
-            public_inputs: REPAY_SMOKE_PUBLIC_SIGNALS,
+            proof_nonce: [1u8; 32],
         };
-        assert!(verify_repay_proof(&args).is_err());
+        let proof = make_repay_proof_data(
+            REPAY_SMOKE_PROOF_A,
+            REPAY_SMOKE_PROOF_B,
+            REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_repay_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn repay_proof_with_consumed_proof_fails() {
+        use crate::groth16_verifier::tests::{
+            REPAY_SMOKE_PROOF_A, REPAY_SMOKE_PROOF_B, REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = RepayArgs {
+            nullifier_hash: REPAY_SMOKE_PUBLIC_SIGNALS[0],
+            loan_id: 42,
+            outstanding_balance: 50_000_000,
+            settlement_receipt_hash: REPAY_SMOKE_PUBLIC_SIGNALS[3],
+            receipt_binding_hash: REPAY_SMOKE_PUBLIC_SIGNALS[5],
+            proof_nonce: [1u8; 32],
+        };
+        let mut proof = make_repay_proof_data(
+            REPAY_SMOKE_PROOF_A,
+            REPAY_SMOKE_PROOF_B,
+            REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        );
+        proof.consumed = true;
+        assert!(verify_repay_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn repay_proof_with_wrong_kind_fails() {
+        use crate::groth16_verifier::tests::{
+            REPAY_SMOKE_PROOF_A, REPAY_SMOKE_PROOF_B, REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = RepayArgs {
+            nullifier_hash: REPAY_SMOKE_PUBLIC_SIGNALS[0],
+            loan_id: 42,
+            outstanding_balance: 50_000_000,
+            settlement_receipt_hash: REPAY_SMOKE_PUBLIC_SIGNALS[3],
+            receipt_binding_hash: REPAY_SMOKE_PUBLIC_SIGNALS[5],
+            proof_nonce: [1u8; 32],
+        };
+        let mut proof = make_repay_proof_data(
+            REPAY_SMOKE_PROOF_A,
+            REPAY_SMOKE_PROOF_B,
+            REPAY_SMOKE_PROOF_C,
+            REPAY_SMOKE_PUBLIC_SIGNALS,
+        );
+        proof.circuit_kind = LendingProofKind::Collateral; // wrong kind
+        assert!(verify_repay_proof(&args, &proof).is_err());
     }
 }

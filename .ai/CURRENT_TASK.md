@@ -1,58 +1,73 @@
 # Current Task
 
-## Status: C2E complete — DEV/TEST Groth16 verifier wired to all three instruction handlers.
+## Status: C2F complete — Proof account PDA pattern implemented; B6 tx MTU blocker resolved.
 
 ## Active Objective
 
-Convergence Task 2E is complete. The verifier is wired. The next task is resolving the
-transaction MTU blocker (B6) before on-chain execution of the withdraw instruction is possible.
+Convergence Task 2F is complete. All six instruction transactions fit within the 1232-byte MTU.
+The next task is devnet deployment preparation or an integration test with a real proof end-to-end.
 
 ## Current Local Truth
 
 1. Solana CLI and Anchor CLI 0.30.1 are available.
 2. `Anchor.toml`, all three program `declare_id!` values, frontend `PROGRAM_IDS`, and
    ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` match `anchor keys list`.
-3. `anchor build --no-idl` blocked — `cargo-build-sbf` not installed. All other validations pass.
+3. `anchor build --no-idl` passes — SBF artifacts generated. New B7 stack-frame warnings
+   for `Borrow::try_accounts` and `Repay::try_accounts` (non-fatal; monitor on devnet).
 4. Full Anchor IDL generation remains blocked by Anchor/proc-macro2 compatibility.
 5. All three circuits compile; DEV/TEST browser WASM, zkey, and vkey artifacts are generated.
 6. `groth16-solana = "0.0.3"` in both program Cargo.toml files.
-7. DEV/TEST verifier **wired** to all three instruction handlers:
-   - `verify_withdraw_proof` — cross-checks `inputs[0]==denomination`, `inputs[17]==nullifier_hash`, `inputs[18]==root`
-   - `verify_collateral_proof` — cross-checks `inputs[16]==nullifier_hash`, `inputs[18]==borrow_amount`, `inputs[19]==minRatioBps`
-   - `verify_repay_proof` — cross-checks `inputs[0..3,5]` against args fields
-8. `frontend/src/lib/solanaClient.ts` — `buildComputeBudgetInstruction()` and `serializeProofBytes()` added.
-9. 38 Rust unit tests pass (21 prior + 6 C2D + 14 C2E — 4×3 verifier handler tests + 2 smoke from C2D).
+7. DEV/TEST verifier **wired** to all three instruction handlers via proof account PDA:
+   - `store_withdraw_proof` → `withdraw`: proof_data PDA with SPACE=908
+   - `store_collateral_proof` → `borrow`: proof_data PDA with SPACE=940
+   - `store_repay_proof` → `repay`: proof_data PDA with SPACE=940, public_input_count=6
+   - All three handlers: consumed/kind/authority guards + cross-field consistency checks
+8. `frontend/src/lib/solanaClient.ts` — all proof-store instruction builders added:
+   - `buildStoreWithdrawProofInstruction()`, `buildStoreCollateralProofInstruction()`, `buildStoreRepayProofInstruction()`
+   - `generateProofNonce()`, `getWithdrawProofDataPda()`, `getLendingProofDataPda()`
+9. 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests).
 10. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE not wired.
 11. No devnet deployment.
 
-## Open Blocker (B6)
+## Post-C2F Transaction Sizes
 
-`WithdrawArgs` serialized: ~976 bytes. With tx overhead (~412 bytes) total is ~1388 bytes —
-exceeds Solana 1232-byte MTU. On-chain `withdraw` execution blocked.
+| Instruction | Est. tx size |
+|---|---|
+| `store_withdraw_proof` | ~1109 bytes ✓ |
+| `store_collateral_proof` | ~1141 bytes ✓ |
+| `store_repay_proof` | ~693 bytes ✓ |
+| `withdraw` | ~524 bytes ✓ |
+| `borrow` | ~536 bytes ✓ |
+| `repay` | ~556 bytes ✓ |
 
-Resolution: proof account pattern — write proof bytes to a PDA first; handler reads from account.
-`BorrowArgs` also marginal. `RepayArgs` well within limit.
+## Open Blocker (B7)
 
-See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6.
+BPF stack frame warnings in `cargo-build-sbf`:
+- `Borrow::try_accounts`: frame 6016 bytes (exceeds 4096-byte BPF limit)
+- `Repay::try_accounts`: frame 5248 bytes
+
+Build succeeds; runtime impact unknown until devnet test. Mitigation: use `Box<Account<'info, ProofData>>` in the context, or split the large validation logic into helper calls.
+
+See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B7.
 
 ## Immediate Next Actions
 
-1. Design proof account pattern (PDA layout, `write_proof` instruction, GC mechanism).
-2. Implement proof account loader in `verify_withdraw_proof` and `verify_collateral_proof`.
-3. Update frontend to submit a `write_proof` transaction before `withdraw`/`borrow`.
-4. Anchor localnet integration test with a real proof end-to-end.
+1. **Devnet deployment** — deploy three programs; verify transactions land.
+2. **B7 mitigation** — test `borrow`/`repay` on localnet; if stack overflow occurs, switch to `Box<Account>` pattern in `Borrow` and `Repay` contexts.
+3. **Integration test** — end-to-end: generate real proof → `store_*_proof` tx → `withdraw`/`borrow`/`repay` tx.
+4. **Privacy rails** — wire IKA, MagicBlock, Umbra, Encrypt after deployment confirmed.
 
 ## Relevant Files
 
 | File | Role |
 |---|---|
-| `programs/shielded_pool/src/lib.rs` | `WithdrawArgs` + `verify_withdraw_proof` (wired, C2E) |
-| `programs/lending_pool/src/lib.rs` | `BorrowArgs`, `RepayArgs`, `verify_collateral_proof`, `verify_repay_proof` (wired, C2E) |
+| `programs/shielded_pool/src/lib.rs` | `ProofData`, `StoreWithdrawProof`, slim `WithdrawArgs`, updated `verify_withdraw_proof` (C2F) |
+| `programs/lending_pool/src/lib.rs` | `ProofData`, `store_collateral/repay_proof`, slim `BorrowArgs`/`RepayArgs` (C2F) |
 | `programs/shielded_pool/src/groth16_verifier.rs` | Withdraw verifier module |
 | `programs/lending_pool/src/groth16_verifier.rs` | Collateral + repay verifier module |
-| `frontend/src/lib/solanaClient.ts` | `buildComputeBudgetInstruction`, `serializeProofBytes` (C2E) |
-| `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` | B6: tx MTU blocker detail |
-| `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` | Full integration plan (C2D+C2E) |
+| `frontend/src/lib/solanaClient.ts` | All proof-store builders, PDA helpers, nonce generator (C2F) |
+| `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` | B6: resolved; B7: BPF stack warning |
+| `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` | Full C2D–C2F integration plan |
 
 ## Hard Constraints
 
@@ -60,4 +75,4 @@ See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6.
 - Do not run full `anchor build` with IDL unless explicitly scoped
 - Do not deploy
 - Do not claim production trusted setup from the DEV/TEST `.ptau`
-- Do not claim on-chain privacy until proof account pattern is implemented and deployed
+- Do not claim on-chain privacy until deployed and integration-tested

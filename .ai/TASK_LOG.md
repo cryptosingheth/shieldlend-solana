@@ -244,3 +244,33 @@ Append-only. Most recent entry at the bottom.
 - Updated: `GROTH16_SOLANA_INTEGRATION_PLAN.md`, `ONCHAIN_VERIFIER_BLOCKERS.md`, `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`.
 - Validations: `cargo fmt` pass, `cargo test --workspace` pass (38 tests), `tsc --noEmit` pass, `npm run build` pass, `anchor build --no-idl` blocked (cargo-build-sbf missing — pre-existing).
 - Commit: `feat: wire dev groth16 verifier paths`
+
+---
+
+## 2026-05-06 — Convergence Task 2F: Proof Account PDA Pattern (B6 MTU Fix)
+
+- Resolved B6: `WithdrawArgs` inline was ~976 bytes → tx ~1388 bytes > 1232-byte Solana MTU.
+- Implemented proof account PDA pattern for all three instruction flows.
+- `programs/shielded_pool/src/lib.rs`:
+  - Added `ProofData` account (SPACE=908): authority, circuit_kind, proof_a/b/c, public_inputs(19), consumed, bump.
+  - Added `StoreWithdrawProof` context and `store_withdraw_proof` instruction (tx ~1109 bytes).
+  - Slimmed `WithdrawArgs`: removed 6 proof fields, added `proof_nonce: [u8;32]` → 144 bytes (tx ~524 bytes).
+  - Updated `Withdraw` context: `proof_data` account with consumed/kind/authority constraints.
+  - Updated `verify_withdraw_proof(args, proof)` — reads from ProofData, marks consumed.
+  - Added `PoolError::{ProofAccountOwnerMismatch, ProofAccountConsumed, WrongProofKind}`.
+  - Added `Debug` derive to `ProofKind` enum.
+- `programs/lending_pool/src/lib.rs`:
+  - Added `ProofData` account (SPACE=940): same + `public_input_count: u8` + 20-slot inputs.
+  - Added `StoreLendingProof` context, `store_collateral_proof` (tx ~1141 bytes), `store_repay_proof` (tx ~693 bytes).
+  - Slimmed `BorrowArgs` → 124 bytes, `RepayArgs` → 144 bytes.
+  - Updated `Borrow`/`Repay` contexts with proof_data account constraints.
+  - Updated `verify_collateral_proof(args, proof)` and `verify_repay_proof(args, proof)`.
+  - Added `LendingError::{ProofAccountOwnerMismatch, ProofAccountConsumed, WrongProofKind}`.
+  - Added `Debug` derive to `LendingProofKind` enum.
+- `frontend/src/lib/solanaClient.ts`:
+  - Added proof account constants, PDA helpers, `generateProofNonce()`.
+  - Added `buildStoreWithdrawProofInstruction()`, `buildStoreCollateralProofInstruction()`, `buildStoreRepayProofInstruction()`.
+- Discovered new non-fatal B7: BPF stack-frame warnings for `Borrow::try_accounts` (6016 bytes) and `Repay::try_accounts` (5248 bytes). Build succeeds. Mitigation: `Box<Account>` if runtime overflow occurs.
+- Updated: `GROTH16_SOLANA_INTEGRATION_PLAN.md`, `ONCHAIN_VERIFIER_BLOCKERS.md`, `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`.
+- Validations: `cargo fmt` pass, `cargo test --workspace` pass (47 tests), `tsc --noEmit` pass, `npm run build` pass, `anchor build --no-idl` pass (B7 warnings, non-fatal).
+- Commit: `feat: add proof account flow for groth16 payloads`
