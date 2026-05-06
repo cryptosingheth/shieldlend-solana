@@ -383,6 +383,20 @@ After C2F introduced `ProofData` accounts in all three instruction contexts, `an
 - Signature: `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`
 - Wallet balance after: 1.18485432 SOL
 
-### lending_pool Deployment Blocker
+### Additional Findings During C2G-B
 
-`lending_pool` requires ~2.48 SOL to deploy. After deploying nullifier_registry and shielded_pool, the devnet wallet had 1.19 SOL remaining. Three airdrop attempts failed (devnet rate limiting). Deployment is unblocked pending additional devnet SOL (~1.29 SOL needed).
+**shielded_pool::initialize realloc blocker:**
+`ShieldedPoolState::SPACE` was 14500 bytes. Solana's realloc limit in CPI is 10240 bytes. Anchor's `init` constraint uses realloc internally, so `initialize` failed with "Account data size realloc limited to 10240 in inner instructions". Resolution: `MAX_EPOCH_COMMITMENTS` and `MAX_EXIT_QUEUE` reduced 128→8, SPACE 14500→1900 bytes. shielded_pool rebuilt and upgraded on devnet.
+
+**end-to-end smoke result (devnet-e2e.mjs):**
+- `nullifier_registry::initialize` — confirmed (sig `2of4jzbt...`)
+- `shielded_pool::initialize` — confirmed after upgrade (sig `QMVjEr1d...`)
+- `shielded_pool::store_withdraw_proof` — confirmed (sig `5YRBBhwJ...`)
+- `shielded_pool::withdraw` — failed with `UnknownRoot` (error 6007, `0x1777`) at `lib.rs:140`
+  - EXPECTED: pool freshly initialized with all-zero roots; smoke proof's root signal[18] is not zero and not in history
+  - All account layout, PDA derivation, and proof_data guards passed before the root check
+  - Remaining gap: a real deposit → flush_epoch cycle is needed to populate the Merkle root before withdraw can succeed
+
+### Wallet After C2G-B
+
+Balance: 3.670413760 SOL

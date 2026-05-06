@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-06
 **Branch**: convergence/zk-constants-artifacts
-**Status**: C2G-B in progress. shielded_pool and nullifier_registry deployed to devnet. store_withdraw_proof smoke tx confirmed. lending_pool blocked by insufficient devnet SOL.
+**Status**: C2G-B complete. All three programs deployed. initialize confirmed. store_withdraw_proof confirmed. withdraw hits UnknownRoot as expected (no deposit). Remaining gap: deposit → flush_epoch → full round-trip.
 
 ---
 
@@ -239,16 +239,26 @@ All BPF stack-frame "Error:" diagnostics eliminated from `anchor build --no-idl`
 - Signature: `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`
 - Result: CONFIRMED on devnet
 
-**lending_pool deployment blocked:** wallet has 1.18485432 SOL; lending_pool requires ~2.48 SOL.
+**lending_pool deployed:** sig `KNmLmqDJ...` (after wallet refill to 6.18 SOL).
+
+**shielded_pool Vec-capacity upgrade:** `MAX_EPOCH_COMMITMENTS` / `MAX_EXIT_QUEUE` 128→8; SPACE 14500→1900 bytes. Required because Anchor `init` realloc limit is 10240 bytes.
+
+**End-to-end smoke (`scripts/devnet-e2e.mjs`) result:**
+- `nullifier_registry::initialize` — confirmed (registry-config PDA `E3eLfrrp...`)
+- `shielded_pool::initialize` — confirmed (pool-state PDA `8MhWYz9a...`)
+- `store_withdraw_proof` — confirmed (proof-data PDA seeded with random nonce)
+- `withdraw` — failed with `UnknownRoot` error 6007 at `lib.rs:140` — EXPECTED
 
 ---
 
 ## Recommended Wiring Sequence
 
-1. Fund devnet wallet (~1.29 SOL) and deploy `lending_pool`.
-2. Run `initialize` on `shielded_pool` to create the pool state account.
-3. End-to-end integration test: snarkjs fullProve → store_*_proof tx → withdraw/borrow/repay tx.
-4. Wire privacy rails (IKA, MagicBlock, Umbra, Encrypt) after deployment confirmed.
+1. Generate a real withdrawal proof with snarkjs fullProve (withdraw_ring circuit).
+2. Deposit the matching commitment into shielded_pool.
+3. Call flush_epoch to insert commitment into the Merkle tree and update current_root.
+4. Call store_withdraw_proof with the snarkjs proof output.
+5. Call withdraw with the now-known root — all guards should pass and the Groth16 verifier should run on-chain.
+6. Wire privacy rails (IKA, MagicBlock, Umbra, Encrypt) after round-trip confirmed.
 
 ---
 

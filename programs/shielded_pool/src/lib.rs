@@ -17,8 +17,10 @@ use nullifier_registry::{
 declare_id!("9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE");
 
 pub const ROOT_HISTORY_SIZE: usize = 30;
-pub const MAX_EPOCH_COMMITMENTS: usize = 128;
-pub const MAX_EXIT_QUEUE: usize = 128;
+// Reduced from 128 for devnet: Anchor init realloc is limited to 10240 bytes per CPI.
+// Production path: start with base SPACE and use realloc constraints on Deposit/FlushEpoch.
+pub const MAX_EPOCH_COMMITMENTS: usize = 8;
+pub const MAX_EXIT_QUEUE: usize = 8;
 pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
 pub const LENDING_POOL_AUTHORITY_SEED: &[u8] = b"lending-pool-authority";
 pub const PROOF_DATA_SEED: &[u8] = b"proof-data";

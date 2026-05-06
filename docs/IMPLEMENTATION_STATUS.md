@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-06 (C2G-B)
+Last reconciled: 2026-05-06 (C2G-B complete)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -61,9 +61,12 @@ Additional synced references:
 | `.so` artifacts | Generated | `target/deploy/shielded_pool.so`, `lending_pool.so`, `nullifier_registry.so` |
 | Full `anchor build` with IDL | Blocked | Anchor/proc-macro2 compatibility issue, intentionally out of scope |
 | `nullifier_registry` devnet deploy | **Deployed** | Slot 460526750; ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
-| `shielded_pool` devnet deploy | **Deployed** | Slot 460526822; ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
+| `shielded_pool` devnet deploy | **Deployed + upgraded** | Initial slot 460526822; upgraded (Vec capacity fix); ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
 | `lending_pool` devnet deploy | **Blocked** | Insufficient devnet SOL (~1.29 more needed); program otherwise build-ready |
 | `store_withdraw_proof` smoke tx | **Confirmed** | `scripts/devnet-smoke.mjs`; sig `66Bmcz54...`; devnet |
+| `shielded_pool::initialize` | **Confirmed** | sig `QMVjEr1d...`; pool state PDA created; devnet |
+| `shielded_pool` Vec-capacity upgrade | **Deployed** | MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8; SPACE 14500→1900 bytes |
+| End-to-end smoke (`devnet-e2e.mjs`) | **Confirmed** | init + store_proof + withdraw UnknownRoot guard; `scripts/devnet-e2e.mjs` |
 
 ## ZK Constants And Artifacts
 
@@ -147,7 +150,7 @@ Artifact details:
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
 | ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
-| `lending_pool` not deployed | Frontend borrow/repay/liquidation paths cannot execute on devnet; ~1.29 SOL needed |
+| No integration test past UnknownRoot | Full round-trip (deposit → flush → withdraw) requires real snarkjs proof matching pool Merkle root |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |

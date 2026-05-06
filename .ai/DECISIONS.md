@@ -344,3 +344,11 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: Smoke test uses `scripts/devnet-smoke.mjs` with the DEV/TEST proof vectors from `groth16_verifier.rs`. A fresh random `proof_nonce` per run ensures the PDA init succeeds even on repeated runs.
 **Why**: The `store_*_proof` instructions use `init` on the proof_data PDA. Re-using the same nonce on a second run would fail with "account already in use." Randomized nonces avoid this and mirror real-world usage.
 **How to apply**: Always generate a fresh `randomBytes(32)` nonce when calling `store_*_proof`. Never hardcode a nonce in production paths.
+
+---
+
+## ShieldedPoolState Vec Capacity (C2G-B devnet fix)
+
+**Decision**: Reduce `MAX_EPOCH_COMMITMENTS` and `MAX_EXIT_QUEUE` from 128 to 8 for devnet. `ShieldedPoolState::SPACE` goes from ~14500 bytes to 1900 bytes.
+**Why**: Solana's CPI realloc limit is 10240 bytes per call. Anchor's `init` constraint uses `create_account` + internal `realloc` to initialize accounts. With SPACE=14500, the realloc step fails with "Account data size realloc limited to 10240 in inner instructions". The 128-slot pre-allocation design is incompatible with Anchor's init on current devnet.
+**How to apply**: Production path must use `space = BASE_SPACE` (fixed fields only, empty Vecs) at init + explicit `realloc` constraints on `Deposit` and `FlushEpoch` contexts to grow the account as commitments are added. For devnet smoke testing, cap=8 is sufficient.

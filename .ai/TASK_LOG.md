@@ -340,3 +340,41 @@ Append-only. Most recent entry at the bottom.
 - Fund devnet wallet (~1.29 SOL) and deploy `lending_pool`.
 - Initialize `shielded_pool` state PDA.
 - End-to-end integration test.
+
+---
+
+## C2G-B (continued) — lending_pool deploy + e2e smoke (2026-05-06)
+
+**Branch**: convergence/zk-constants-artifacts
+**Objective**: Complete C2G-B: deploy lending_pool, verify all IDs, initialize, e2e smoke.
+
+### Steps Completed
+
+1. Deployed `lending_pool`:
+   - ID: `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`
+   - Sig: `KNmLmqDJ...`
+
+2. Verified all three program IDs match Anchor.toml + declare_id! + anchor keys list.
+
+3. Ran `node scripts/devnet-e2e.mjs`:
+   - `nullifier_registry::initialize` — skipped (already done prev session)
+   - `shielded_pool::initialize` — FAILED: Anchor init realloc limit (SPACE=14500 > 10240)
+
+4. Bug fix: reduced MAX_EPOCH_COMMITMENTS and MAX_EXIT_QUEUE 128→8 (SPACE: 14500→1900 bytes).
+   - cargo test --workspace: 47 tests pass
+   - anchor build --no-idl: zero stack-frame errors
+
+5. Upgraded shielded_pool on devnet (sig `4tv5kxR9...`).
+
+6. Re-ran `node scripts/devnet-e2e.mjs`:
+   - `shielded_pool::initialize` — CONFIRMED (sig `QMVjEr1d...`)
+   - `store_withdraw_proof` — CONFIRMED (sig `5YRBBhwJ...`)
+   - `withdraw` — EXPECTED FAIL: UnknownRoot (6007) at lib.rs:140
+
+### Result
+
+C2G-B complete. All three programs deployed and verified. initialize + store_proof + UnknownRoot guard confirmed on devnet. The withdraw UnknownRoot failure is correct behavior — a real deposit→flush_epoch cycle is required before withdraw can proceed past the root check.
+
+### Wallet After
+
+Balance: 3.670413760 SOL

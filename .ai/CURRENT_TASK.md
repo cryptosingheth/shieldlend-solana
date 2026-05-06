@@ -1,6 +1,6 @@
 # Current Task
 
-## Status: C2G-B in progress — shielded_pool + nullifier_registry deployed to devnet; store_withdraw_proof smoke test confirmed; lending_pool blocked by insufficient SOL.
+## Status: C2G-B complete — all three programs deployed; initialize confirmed; e2e smoke (init + store_proof + UnknownRoot withdraw guard) confirmed on devnet.
 
 ## Active Objective
 
@@ -35,14 +35,17 @@ Convergence Task 2G-B: Devnet deployment and first runtime validation.
 11. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE not wired.
 12. `nullifier_registry` deployed to devnet (slot 460526750).
 13. `shielded_pool` deployed to devnet (slot 460526822).
-14. `lending_pool` NOT deployed — insufficient devnet SOL (~1.29 more needed).
-15. `store_withdraw_proof` smoke tx confirmed on devnet.
-16. `scripts/devnet-smoke.mjs` written and verified.
+14. `lending_pool` deployed to devnet (sig `KNmLmqDJ...`).
+15. `shielded_pool` upgraded: MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8 to fix Anchor init realloc limit.
+16. `shielded_pool::initialize` confirmed on devnet (sig `QMVjEr1d...`).
+17. `shielded_pool::store_withdraw_proof` confirmed on devnet (sig `5YRBBhwJ...`).
+18. `shielded_pool::withdraw` confirmed to fire `UnknownRoot` (6007) — expected, correct behavior.
+19. `scripts/devnet-e2e.mjs` — full e2e smoke script written and verified.
 
 ## Active Wallet
 
 - Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V`
-- Balance: 1.18485432 SOL on devnet (after deploying 2 programs + smoke tx)
+- Balance: 3.670413760 SOL on devnet (after all C2G-B work)
 - Cluster: devnet configured
 
 ## Post-C2F Transaction Sizes (unchanged)
@@ -58,15 +61,17 @@ Convergence Task 2G-B: Devnet deployment and first runtime validation.
 
 ## Known Blockers
 
-- `lending_pool` deployment: ~1.29 more devnet SOL needed. Options: wait for airdrop rate limit reset, use `devnet-pow mine`, or fund from another wallet.
-- Prior resolved: B6 (tx MTU) → C2F; B7 (BPF stack frame) → C2G-A.
+None blocking further work. All C2G-B goals achieved:
+- B6 (tx MTU): resolved C2F
+- B7 (BPF stack frame): resolved C2G-A
+- Deployment: all three programs on devnet
+- Runtime: initialize + store_proof + withdraw UnknownRoot guard all confirmed
 
 ## Immediate Next Actions
 
-1. **Fund devnet wallet** — acquire ~1.29 SOL (airdrop, PoW faucet, or transfer) and deploy `lending_pool`.
-2. **Initialize shielded_pool** — run `initialize` instruction to create pool state PDA before any deposit/withdraw.
-3. **Integration test** — end-to-end: snarkjs fullProve → `store_*_proof` tx → `withdraw`/`borrow`/`repay` tx.
-4. **Privacy rails** — wire IKA, MagicBlock, Umbra, Encrypt after all programs deployed.
+1. **Full round-trip integration test** — generate real snarkjs proof for a known commitment, deposit, flush_epoch, store_withdraw_proof, withdraw. Exercises on-chain Groth16 verifier.
+2. **Production realloc design** — ShieldedPoolState should use realloc constraints for production-scale capacity.
+3. **Privacy rails** — wire IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt.
 
 ## Relevant Files
 
