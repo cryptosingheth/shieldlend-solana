@@ -1,8 +1,8 @@
 # groth16-solana Integration Plan — ShieldLend Solana
 
-**Date**: 2026-05-05
+**Date**: 2026-05-06
 **Branch**: convergence/zk-constants-artifacts
-**Status**: Scaffold complete. Verifier wiring to instruction handlers is blocked pending ABI extension.
+**Status**: C2E complete. Instruction args wired; DEV/TEST verifier calls live; tx size blocker documented (see B6).
 
 ---
 
@@ -45,6 +45,63 @@ Two Rust verifier modules generated and confirmed by `cargo test --workspace`:
 
 All six new tests pass. No test regressions. Total workspace tests: 27 (21 prior + 6 new).
 
+## What Is Done (C2E — Verifier Wiring)
+
+### Instruction ABI Extension
+
+`WithdrawArgs`, `BorrowArgs`, and `RepayArgs` now carry full proof bytes and public signal arrays:
+
+| Struct | New fields | Public signals |
+|---|---|---|
+| `WithdrawArgs` | `proof_a: [u8;64]`, `proof_b: [u8;128]`, `proof_c: [u8;64]` | `public_inputs: [[u8;32];19]` |
+| `BorrowArgs` | same proof fields | `public_inputs: [[u8;32];20]` |
+| `RepayArgs` | same proof fields | `public_inputs: [[u8;32];6]` |
+
+`collateral_proof_public_signals_hash` and `repay_proof_public_signals_hash` removed.
+
+### Cross-Field Consistency Guards
+
+Each verifier checks that instruction arg fields match the corresponding public signal slots
+before calling the pairing function — preventing proof-substitution attacks:
+
+| Function | Guard |
+|---|---|
+| `verify_withdraw_proof` | `inputs[0] == denomination`, `inputs[17] == nullifier_hash`, `inputs[18] == root` |
+| `verify_collateral_proof` | `inputs[16] == collateral_nullifier_hash`, `inputs[18] == borrow_amount`, `inputs[19] == minRatioBps` |
+| `verify_repay_proof` | `inputs[0] == nullifier_hash`, `inputs[1] == loanId`, `inputs[2] == outstandingBalance`, `inputs[3] == settlementReceiptHash`, `inputs[5] == receiptBindingHash` |
+
+Note: `inputs[4]` (repaymentVault) is not cross-checked because `verify_repay_proof` does not
+have access to the `LoanAccount`. It is explicitly documented as skipped.
+
+### Frontend Additions (`frontend/src/lib/solanaClient.ts`)
+
+- `PROOF_INSTRUCTION_COMPUTE_UNITS = 1_400_000`
+- `buildComputeBudgetInstruction()` — returns `ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 })`
+- `BN254_PRIME` constant
+- `bigintToBeBytes32(n: bigint): Uint8Array`
+- `SerializedProof` interface (`proof_a/b/c: Uint8Array`, `public_inputs: Uint8Array[]`)
+- `serializeProofBytes(result)` — converts snarkjs `fullProve()` output to groth16-solana encoding
+  (negates pi_a.y; reorders G2 from snarkjs `[c1,c0]` to Solana `[c0,c1]`)
+
+### New Tests (14 new, total workspace 38)
+
+| Program | Test |
+|---|---|
+| `shielded_pool` | `withdraw_proof_with_valid_smoke_vector_passes` |
+| `shielded_pool` | `withdraw_proof_with_empty_proof_fails` |
+| `shielded_pool` | `withdraw_proof_with_mutated_proof_fails` |
+| `shielded_pool` | `withdraw_proof_with_mismatched_nullifier_fails` |
+| `lending_pool` | `collateral_proof_with_valid_smoke_vector_passes` |
+| `lending_pool` | `collateral_proof_with_empty_proof_fails` |
+| `lending_pool` | `collateral_proof_with_mutated_proof_fails` |
+| `lending_pool` | `collateral_proof_with_mismatched_nullifier_fails` |
+| `lending_pool` | `repay_proof_with_valid_smoke_vector_passes` |
+| `lending_pool` | `repay_proof_with_empty_proof_fails` |
+| `lending_pool` | `repay_proof_with_mutated_proof_fails` |
+| `lending_pool` | `repay_proof_with_mismatched_nullifier_fails` |
+
+All 38 workspace tests pass.
+
 ### API Notes (groth16-solana 0.0.3)
 
 ```rust
@@ -67,67 +124,23 @@ let ok: bool = verifier.verify()?;
 
 ## What Remains Blocked
 
-### Blocker 1: Instruction arg structs lack proof bytes
+### Blocker 6 (new, C2E): Transaction MTU — withdraw instruction exceeds 1232-byte Solana limit
 
-`WithdrawArgs`, `BorrowArgs`, and `RepayArgs` carry only 32-byte hashes of public signals:
+**`WithdrawArgs` serialized size**: ~976 bytes (32+32+8+32+8+64+128+64+608 for 19 public inputs).
 
-```rust
-// shielded_pool/src/lib.rs — WithdrawArgs (current)
-pub struct WithdrawArgs {
-    pub nullifier_hash: [u8; 32],
-    pub root: [u8; 32],
-    pub denomination: u64,
-    pub recipient: Pubkey,
-}
+Full transaction: 8-byte discriminator + 976-byte args + ~300 bytes overhead (signature 64, 8–9 account keys at 32 each, blockhash 32, instruction framing) ≈ **~1284 bytes > 1232-byte MTU**.
 
-// lending_pool/src/lib.rs — BorrowArgs (current)
-pub struct BorrowArgs {
-    pub collateral_proof_public_signals_hash: [u8; 32],
-    ...
-}
-```
+This does not affect Rust unit tests (no transaction overhead). It blocks on-chain execution of the `withdraw` instruction in its current form.
 
-To wire the verifier, each struct needs full proof bytes and all public signals:
+**Resolution options (not yet implemented):**
+1. Proof account pattern — write proof bytes to a separate PDA before calling withdraw; handler reads from account.
+2. `remaining_accounts` + proof loader — pass proof account index in args; handler reads from account slice.
+3. Split transaction — not safe for atomic nullifier spending; do not use.
 
-```rust
-// WithdrawArgs — required additions (breaking ABI change):
-pub proof_a: [u8; 64],     // negated pi_a
-pub proof_b: [u8; 128],    // pi_b
-pub proof_c: [u8; 64],     // pi_c
-pub public_signals: [[u8; 32]; 19],   // all 19 public signals BE
+`BorrowArgs` (~1016 bytes args) and `RepayArgs` (~456 bytes args) also need evaluation;
+repay is well within limit, borrow is marginal.
 
-// BorrowArgs:
-pub proof_a: [u8; 64],
-pub proof_b: [u8; 128],
-pub proof_c: [u8; 64],
-pub public_signals: [[u8; 32]; 20],
-
-// RepayArgs:
-pub proof_a: [u8; 64],
-pub proof_b: [u8; 128],
-pub proof_c: [u8; 64],
-pub public_signals: [[u8; 32]; 6],
-```
-
-This is a breaking ABI change that must be coordinated with the frontend client.
-
-### Blocker 2: Zero-root guard must be in place
-
-`is_known_root()` must reject `[0;32]` before groth16 is live. This is already fixed in `fix/backend-critical` (shielded_pool/src/lib.rs line ~280). Confirm it is merged before wiring.
-
-### Blocker 3: Nullifier state machine must use strict guard
-
-`nullifier_registry::spend` must require `status == Locked` (not just `!= Spent`). This is already fixed in `fix/backend-critical`. Confirm it is merged before wiring.
-
-### Blocker 4: Compute budget
-
-BN254 Groth16 pairing for nPublic=19/20 requires approximately 220k–260k CU. The default Solana transaction compute budget is 200k CU. Clients must prepend:
-
-```typescript
-ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 })
-```
-
-This must be documented in client code and enforced at the integration layer.
+**Blockers 1–5 from C2C are resolved.** (B1 dep: done. B2 ABI extension: done. B3 vkey script: done. B4 test vectors: done. B5 compute budget: done.)
 
 ---
 

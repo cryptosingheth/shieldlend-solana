@@ -353,7 +353,7 @@ pub fn verify_repay_groth16(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     // DEV/TEST smoke proof vectors for collateral_ring.

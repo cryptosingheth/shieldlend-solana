@@ -223,6 +223,42 @@ Confirmed by `anchor keys list`, `Anchor.toml`, and each program's `declare_id!`
 
 ---
 
+## Groth16 Instruction ABI Design (C2E)
+
+**Decision**: Instruction arg structs (`WithdrawArgs`, `BorrowArgs`, `RepayArgs`) carry full proof bytes
+(`proof_a: [u8;64]`, `proof_b: [u8;128]`, `proof_c: [u8;64]`) and full public signal arrays
+(`public_inputs: [[u8;32];N]`). The old `*_proof_public_signals_hash` fields are removed.
+**Why**: On-chain Groth16 verification requires the actual proof points and all public signals
+as instruction data. A 32-byte hash is not verifiable by the pairing check.
+**How to apply**: Any future instruction that calls a verifier must include full proof bytes.
+Do not reintroduce hash-only stubs.
+
+---
+
+## Cross-Field Consistency Guards (C2E)
+
+**Decision**: Every verifier call checks that instruction arg fields match the corresponding
+public signal slots before calling the pairing function.
+**Why**: Without this, a caller can submit a valid proof for nullifier hash H while claiming
+a different hash H' in the instruction args — spending a different nullifier than the proof
+authorizes (proof-substitution attack).
+**How to apply**: Each `verify_*_proof()` function must contain a guard for every field that
+appears in both args and public signals. Currently skipped: `repay public_inputs[4]`
+(repaymentVault) — handler does not have loan account access at that call site. Document when added.
+
+---
+
+## Transaction MTU Blocker (B6, C2E)
+
+**Decision**: The `WithdrawArgs` struct totals ~976 bytes in instruction data; with tx overhead
+the full transaction ≈ ~1388 bytes > 1232-byte Solana MTU. On-chain withdraw is blocked.
+**Why**: Discovered during C2E ABI extension. Rust unit tests are unaffected (no tx size limit).
+**How to apply**: Implement proof account pattern before deploying `withdraw`. Write
+`proof_a/b/c/public_inputs` to a PDA in a separate transaction; handler reads from the account.
+Do not attempt to land the current ABI in a devnet transaction — it will be rejected at the RPC layer.
+
+---
+
 ## Implementation Status Ledger
 
 **Decision**: `docs/IMPLEMENTATION_STATUS.md` is the canonical local source for current implementation readiness and privacy claim boundaries.

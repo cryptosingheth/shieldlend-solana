@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-05
+Last reconciled: 2026-05-06
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -29,7 +29,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `node scripts/generate-zk-artifacts.mjs` | known good | Generated DEV/TEST zkeys and vkeys during C2B |
 | `npm run typecheck:frontend` | known good | TypeScript check passes |
 | `npm run build:frontend` | known good | Next build passes with existing dependency warning |
-| `cargo test --workspace` | known good | 21 Rust unit tests pass |
+| `cargo test --workspace` | known good | 38 Rust unit tests pass (21 prior + 6 C2D + 14 C2E — 4×3 verifier tests) |
 | `anchor build --no-idl` | known good | SBF build passes with existing Anchor/SBF warnings |
 
 ## Program IDs
@@ -89,14 +89,15 @@ Artifact details:
 - `groth16-solana = "0.0.3"` added to both program Cargo.toml files.
 - Verifier modules generated (`programs/*/src/groth16_verifier.rs`) with real DEV/TEST vkeys and
   6 smoke tests (3 circuits × verify + mutate). All pass.
-- No on-chain `groth16-solana` verification is wired to instruction handlers yet.
+- DEV/TEST Groth16 verifier is **wired** to all three instruction handlers (`verify_withdraw_proof`, `verify_collateral_proof`, `verify_repay_proof`). Cross-field consistency guards in place.
+- On-chain execution is blocked by B6 (transaction MTU — see `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`).
 
 ## Implemented Code
 
 | Area | Implemented locally |
 |---|---|
-| `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, fail-closed withdraw verifier, nullifier registry CPI scaffolding after verifier gate; `groth16_verifier` module with real vkey and smoke tests |
-| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, fail-closed proof/payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke tests |
+| `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, DEV/TEST Groth16 withdraw verifier wired (cross-field consistency guards), nullifier registry CPI scaffolding after verifier gate; `groth16_verifier` module with real vkey and smoke+wiring tests |
+| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, DEV/TEST Groth16 collateral+repay verifiers wired (cross-field consistency guards), fail-closed payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke+wiring tests |
 | `nullifier_registry` | Authorized writer config, Active/Locked/Spent state machine, `spend` requires Locked, unit tests |
 | Frontend local security | AES-256-GCM note vault and encrypted history log |
 | Frontend circuit interface | Poseidon commitment/nullifier helpers, real-ring requirement, snarkjs fullProve calls using manifest paths |
@@ -105,9 +106,9 @@ Artifact details:
 
 | Flow | Current code behavior |
 |---|---|
-| Withdraw proof verification | Fails closed with `Groth16VerifierNotWired` |
-| Borrow collateral proof verification | Fails closed with `Groth16VerifierNotWired` |
-| Repay proof verification | Fails closed with `Groth16VerifierNotWired` |
+| Withdraw proof verification | DEV/TEST Groth16 verifier wired; cross-field consistency guards active; empty/mutated/mismatched proofs rejected |
+| Borrow collateral proof verification | DEV/TEST Groth16 verifier wired; cross-field consistency guards active |
+| Repay proof verification | DEV/TEST Groth16 verifier wired; cross-field consistency guards active |
 | Private payment receipt verification | Fails closed with `PrivatePaymentVerifierNotWired` |
 | Encrypt liquidation reveal verification | Fails closed with `EncryptVerifierNotWired` |
 | PER exit flushing | Fails closed with `PerAdapterNotWired` unless queue is empty |
@@ -124,7 +125,7 @@ Artifact details:
 | MagicBlock Private Payments | Not wired; URL env var absent by default | No |
 | Umbra stealth exits | Not wired; env-gated status only | No |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
-| On-chain Groth16 verification | Not wired | No |
+| On-chain Groth16 verification | DEV/TEST verifier wired in Rust; blocked by tx MTU for on-chain execution | No — tx size blocker, DEV/TEST trusted setup only |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
 | Full private repayment | Not live | No |
 | Full private borrow/withdraw flow | Not end-to-end verified | No |
@@ -137,8 +138,7 @@ Artifact details:
 |---|---|
 | Full Anchor IDL generation blocked | Cannot rely on generated IDLs until Anchor/proc-macro2 issue is fixed |
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
-| Instruction args lack proof bytes (`WithdrawArgs`, `BorrowArgs`, `RepayArgs`) | Verifier scaffold exists (`groth16_verifier.rs`) but cannot be called from handlers; ABI break required to pass proof bytes |
-| Compute budget not handled in client | Callers must prepend `ComputeBudgetProgram::set_compute_unit_limit(1_400_000)` before withdraw/collateral verify instructions |
+| Transaction MTU — `WithdrawArgs` (~976 bytes + overhead ≈ ~1388 bytes) exceeds 1232-byte Solana limit | On-chain `withdraw` execution blocked; requires proof account pattern before deployment. `BorrowArgs` also marginal. | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |

@@ -1,34 +1,42 @@
 # On-Chain Groth16 Verifier — Blockers Analysis
 
-Date: 2026-05-05
+Date: 2026-05-05 (updated 2026-05-06 after C2E)
 Task: Convergence 2C — verify whether on-chain groth16-solana wiring can proceed safely.
-Outcome: B — verifier wiring is blocked. No fake wiring performed.
+Outcome (C2C): B — verifier wiring was blocked. No fake wiring performed.
+Update (C2E): Blockers B1–B5 resolved. New blocker B6 (tx MTU) discovered during ABI extension.
 
 ---
 
-## Result Summary
+## Result Summary (C2C, now superseded by C2E update below)
 
 On-chain Groth16 verification **cannot be safely wired** in the current state.
 The Anchor IDL generation blocker is **not** a prerequisite — `anchor build --no-idl`
 compiles and would continue to compile after any of the changes below. But three
 hard blockers prevent safe wiring independent of IDL generation.
 
+## C2E Update (2026-05-06)
+
+Blockers B1–B5 are resolved. The DEV/TEST verifier is wired. A new blocker (B6) was
+discovered during ABI extension: the `WithdrawArgs` struct now totals ~976 bytes,
+which combined with transaction overhead exceeds the 1232-byte Solana packet MTU.
+See B6 below for details and resolution options.
+
 ---
 
-## Confirmed State
+## Confirmed State (C2C snapshot — see C2E Update for current state)
 
-| Item | Evidence |
-|---|---|
-| `groth16-solana` in any Cargo.toml | Not present |
-| `groth16-solana` in Cargo.lock | Not present |
-| `ark-bn254` in Cargo.lock | Present (transitive dep of `solana-program` 1.18.26) |
-| Solana BN254 native syscalls available | Yes — `solana_program::alt_bn128::*` via solana-program 1.18.26 |
-| Proof bytes in `WithdrawArgs` | No — only `root`, `nullifier_hash`, `denomination_lamports`, `stealth_address`, `relay_nonce` |
-| Proof bytes in `BorrowArgs` | No — only a `collateral_proof_public_signals_hash: [u8; 32]` (hash only) |
-| Proof bytes in `RepayArgs` | No — only a `repay_proof_public_signals_hash: [u8; 32]` (hash only) |
-| Vkey conversion script for Solana BN254 encoding | Not present |
-| Rust test vector using real proof bytes | Not present |
-| Compute budget handled in any instruction | Not present |
+| Item | C2C Evidence | C2E Status |
+|---|---|---|
+| `groth16-solana` in any Cargo.toml | Not present | **Resolved** — `0.0.3` in both |
+| `groth16-solana` in Cargo.lock | Not present | **Resolved** |
+| `ark-bn254` in Cargo.lock | Present (transitive) | Unchanged |
+| Solana BN254 native syscalls available | Yes | Unchanged |
+| Proof bytes in `WithdrawArgs` | No | **Resolved** — `proof_a/b/c` + `[[u8;32];19]` |
+| Proof bytes in `BorrowArgs` | No | **Resolved** — `proof_a/b/c` + `[[u8;32];20]` |
+| Proof bytes in `RepayArgs` | No | **Resolved** — `proof_a/b/c` + `[[u8;32];6]` |
+| Vkey conversion script | Not present | **Resolved** — `scripts/convert-vkeys.mjs` |
+| Rust test vector using real proof bytes | Not present | **Resolved** — 14 new tests |
+| Compute budget handled in client | Not present | **Resolved** — `buildComputeBudgetInstruction()` |
 
 ---
 
@@ -256,3 +264,56 @@ Unblock in this order:
 
 7. **Validate.** Run `cargo fmt`, `cargo test --workspace`, `npm run typecheck:frontend`,
    `npm run build:frontend`, `anchor build --no-idl`.
+
+---
+
+## Blocker 6 — Withdraw instruction exceeds 1232-byte Solana transaction MTU (new, C2E)
+
+**Type:** transaction size / ABI
+
+**Status:** Open. Rust unit tests are unaffected. Blocks on-chain execution of `withdraw`.
+
+### Size breakdown
+
+| Field | Bytes |
+|---|---|
+| `root` | 32 |
+| `nullifier_hash` | 32 |
+| `denomination_lamports` | 8 |
+| `stealth_address` | 32 |
+| `relay_nonce` | 8 |
+| `proof_a` | 64 |
+| `proof_b` | 128 |
+| `proof_c` | 64 |
+| `public_inputs: [[u8;32];19]` | 608 |
+| **WithdrawArgs subtotal** | **976** |
+| Anchor discriminator | 8 |
+| Account keys (~9 × 32) | ~288 |
+| Signature | 64 |
+| Blockhash | 32 |
+| Instruction framing | ~20 |
+| **Estimated total** | **~1388 bytes** |
+
+Solana MTU: **1232 bytes**. Estimated overage: **~156 bytes**.
+
+`BorrowArgs` serialized: ~1016 bytes args — also likely over limit.
+`RepayArgs` serialized: ~456 bytes args — well within limit.
+
+### Resolution options
+
+1. **Proof account pattern (preferred):** write `proof_a/b/c + public_inputs` to a separate PDA
+   before calling `withdraw`. Handler reads from the account, not from instruction data. Eliminates
+   ~864 bytes from the instruction payload. This requires a `write_proof_account` instruction and
+   a cleanup/GC mechanism.
+
+2. **`remaining_accounts` loader:** pass the proof PDA as a remaining account and a 1-byte index
+   in args. Handler reads from `ctx.remaining_accounts[idx]`. Simpler account model than option 1
+   but tighter coupling between client and handler.
+
+3. **Split transaction:** not safe for atomic nullifier spending — the nullifier must be registered
+   in the same transaction as proof verification. Do not use.
+
+### Impact on current code
+
+The C2E wiring is correct. Unit tests all pass. The tx size issue is a deployment prerequisite,
+not a correctness issue. No code needs to change before the proof account pattern is designed.

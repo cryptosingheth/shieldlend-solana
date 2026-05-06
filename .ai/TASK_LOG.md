@@ -220,3 +220,27 @@ Append-only. Most recent entry at the bottom.
 - Updated `docs/IMPLEMENTATION_STATUS.md`: resolved 3 of 5 C2C blockers; 2 remain (ABI extension, compute budget).
 - Validations: `cargo fmt` pass, `cargo test --workspace` pass (27 tests; +6 Groth16 smoke), `npm run typecheck:frontend` pass, `npm run build:frontend` pass, `anchor build --no-idl` pass.
 - No instruction handler behavior changed. No fake wiring. Fail-closed stubs preserved.
+
+---
+
+## 2026-05-06 — Convergence Task 2E: Groth16 Verifier ABI Extension + Handler Wiring
+
+- Extended `WithdrawArgs` with `proof_a: [u8;64]`, `proof_b: [u8;128]`, `proof_c: [u8;64]`, `public_inputs: [[u8;32];19]`.
+- Extended `BorrowArgs` with same proof fields + `public_inputs: [[u8;32];20]`; removed `collateral_proof_public_signals_hash`.
+- Extended `RepayArgs` with same proof fields + `public_inputs: [[u8;32];6]`; removed `repay_proof_public_signals_hash`.
+- Replaced `verify_withdraw_proof` fail-closed stub with real call:
+  - Cross-checks `inputs[0] == denomination` (BE u256), `inputs[17] == nullifier_hash`, `inputs[18] == root`.
+  - Calls `groth16_verifier::verify_withdraw_groth16(...)`.
+- Replaced `verify_collateral_proof` fail-closed stub with real call:
+  - Cross-checks `inputs[16] == collateral_nullifier_hash`, `inputs[18] == borrow_amount`, `inputs[19] == minRatioBps` (u16 → BE u256).
+  - Calls `groth16_verifier::verify_collateral_groth16(...)`.
+- Replaced `verify_repay_proof` fail-closed stub with real call:
+  - Cross-checks `inputs[0..3,5]` against args fields. Signal[4] (repaymentVault) explicitly skipped.
+  - Calls `groth16_verifier::verify_repay_groth16(...)`.
+- Changed `#[cfg(test)] mod tests` to `#[cfg(test)] pub(crate) mod tests` in both `groth16_verifier.rs` files to expose smoke constants to lib test modules.
+- Added `frontend/src/lib/solanaClient.ts`: `buildComputeBudgetInstruction()`, `serializeProofBytes()`, `BN254_PRIME`, `bigintToBeBytes32()`, `SerializedProof` interface.
+- Added 14 new Rust unit tests (4 per circuit: valid/empty/mutated/mismatched nullifier).
+- Discovered new blocker B6: `WithdrawArgs` ~976 bytes; with tx overhead ~1388 bytes > 1232-byte MTU. Documented in `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6. Rust tests unaffected.
+- Updated: `GROTH16_SOLANA_INTEGRATION_PLAN.md`, `ONCHAIN_VERIFIER_BLOCKERS.md`, `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`.
+- Validations: `cargo fmt` pass, `cargo test --workspace` pass (38 tests), `tsc --noEmit` pass, `npm run build` pass, `anchor build --no-idl` blocked (cargo-build-sbf missing — pre-existing).
+- Commit: `feat: wire dev groth16 verifier paths`

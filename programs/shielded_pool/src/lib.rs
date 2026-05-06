@@ -168,8 +168,43 @@ fn require_valid_denomination(amount: u64) -> Result<()> {
     Ok(())
 }
 
-fn verify_withdraw_proof(_args: &WithdrawArgs) -> Result<()> {
-    err!(PoolError::Groth16VerifierNotWired)
+fn verify_withdraw_proof(args: &WithdrawArgs) -> Result<()> {
+    require!(
+        args.proof_a != [0u8; 64],
+        PoolError::Groth16VerificationFailed
+    );
+
+    // Cross-field consistency: proof must commit to the same nullifier_hash,
+    // root, and denomination that the instruction args declare.
+    // withdraw_ring public signal ordering (see circuits/public_signals.json):
+    //   [0]     denomination  (u64 as BE u256)
+    //   [1..16] ring[0..15]
+    //   [17]    nullifierHash
+    //   [18]    root
+    let mut expected_denom = [0u8; 32];
+    expected_denom[24..32].copy_from_slice(&args.denomination_lamports.to_be_bytes());
+    require!(
+        args.public_inputs[0] == expected_denom,
+        PoolError::Groth16VerificationFailed
+    );
+    require!(
+        args.public_inputs[17] == args.nullifier_hash,
+        PoolError::Groth16VerificationFailed
+    );
+    require!(
+        args.public_inputs[18] == args.root,
+        PoolError::Groth16VerificationFailed
+    );
+
+    let ok = groth16_verifier::verify_withdraw_groth16(
+        &args.proof_a,
+        &args.proof_b,
+        &args.proof_c,
+        &args.public_inputs,
+    )
+    .map_err(|_| error!(PoolError::Groth16VerificationFailed))?;
+    require!(ok, PoolError::Groth16VerificationFailed);
+    Ok(())
 }
 
 fn register_and_spend_withdraw_nullifier(
@@ -385,6 +420,14 @@ pub struct WithdrawArgs {
     pub denomination_lamports: u64,
     pub stealth_address: Pubkey,
     pub relay_nonce: u64,
+    // DEV/TEST Groth16 proof bytes (groth16-solana encoding).
+    // proof_a must be the NEGATED pi_a (caller negates y: q - y mod p).
+    // Compute budget: prepend ComputeBudgetProgram::set_compute_unit_limit(1_400_000).
+    pub proof_a: [u8; 64],
+    pub proof_b: [u8; 128],
+    pub proof_c: [u8; 64],
+    // 19 public signals in withdraw_ring order (see circuits/public_signals.json).
+    pub public_inputs: [[u8; 32]; 19],
 }
 
 #[error_code]
@@ -407,6 +450,8 @@ pub enum PoolError {
     UnknownRoot,
     #[msg("Groth16 verifier is not wired yet")]
     Groth16VerifierNotWired,
+    #[msg("Groth16 proof verification failed")]
+    Groth16VerificationFailed,
     #[msg("PER exit adapter is not wired yet")]
     PerAdapterNotWired,
     #[msg("Protocol is in emergency mode")]
@@ -489,13 +534,81 @@ mod tests {
     }
 
     #[test]
-    fn verifier_guards_fail_closed_until_real_verifier_is_configured() {
+    fn withdraw_proof_with_valid_smoke_vector_passes() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
         let args = WithdrawArgs {
-            root: [1; 32],
-            nullifier_hash: [2; 32],
+            root: WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            nullifier_hash: WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
             denomination_lamports: 100_000_000,
             stealth_address: Pubkey::new_unique(),
             relay_nonce: 1,
+            proof_a: WITHDRAW_SMOKE_PROOF_A,
+            proof_b: WITHDRAW_SMOKE_PROOF_B,
+            proof_c: WITHDRAW_SMOKE_PROOF_C,
+            public_inputs: WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        assert!(verify_withdraw_proof(&args).is_ok());
+    }
+
+    #[test]
+    fn withdraw_proof_with_empty_proof_fails() {
+        use crate::groth16_verifier::tests::WITHDRAW_SMOKE_PUBLIC_SIGNALS;
+        let args = WithdrawArgs {
+            root: WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            nullifier_hash: WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
+            denomination_lamports: 100_000_000,
+            stealth_address: Pubkey::new_unique(),
+            relay_nonce: 1,
+            proof_a: [0u8; 64],
+            proof_b: [0u8; 128],
+            proof_c: [0u8; 64],
+            public_inputs: WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        assert!(verify_withdraw_proof(&args).is_err());
+    }
+
+    #[test]
+    fn withdraw_proof_with_mutated_proof_fails() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        let mut bad_a = WITHDRAW_SMOKE_PROOF_A;
+        bad_a[32] ^= 0xff;
+        let args = WithdrawArgs {
+            root: WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            nullifier_hash: WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
+            denomination_lamports: 100_000_000,
+            stealth_address: Pubkey::new_unique(),
+            relay_nonce: 1,
+            proof_a: bad_a,
+            proof_b: WITHDRAW_SMOKE_PROOF_B,
+            proof_c: WITHDRAW_SMOKE_PROOF_C,
+            public_inputs: WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        assert!(verify_withdraw_proof(&args).is_err());
+    }
+
+    #[test]
+    fn withdraw_proof_with_mismatched_nullifier_fails() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        // args.nullifier_hash disagrees with public_inputs[17]; caught by cross-check.
+        let args = WithdrawArgs {
+            root: WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            nullifier_hash: [0xde; 32],
+            denomination_lamports: 100_000_000,
+            stealth_address: Pubkey::new_unique(),
+            relay_nonce: 1,
+            proof_a: WITHDRAW_SMOKE_PROOF_A,
+            proof_b: WITHDRAW_SMOKE_PROOF_B,
+            proof_c: WITHDRAW_SMOKE_PROOF_C,
+            public_inputs: WITHDRAW_SMOKE_PUBLIC_SIGNALS,
         };
         assert!(verify_withdraw_proof(&args).is_err());
     }
