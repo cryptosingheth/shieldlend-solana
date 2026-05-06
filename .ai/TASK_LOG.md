@@ -291,3 +291,52 @@ Append-only. Most recent entry at the bottom.
 - Validations: `cargo fmt` pass, `cargo test --workspace` pass (47 tests), `tsc --noEmit` pass, `npm run build` pass, `anchor build --no-idl` pass (zero B7 warnings).
 - Updated: `ONCHAIN_VERIFIER_BLOCKERS.md`, `GROTH16_SOLANA_INTEGRATION_PLAN.md`, `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`.
 - Commit: `fix: reduce proof account stack usage`
+
+---
+
+## C2G-B — Devnet Deployment and Smoke Test (2026-05-06)
+
+**Branch**: convergence/zk-constants-artifacts
+**Objective**: Deploy three programs to devnet; run store_withdraw_proof smoke test.
+
+### Steps Completed
+
+1. Pre-deploy checks:
+   - `cargo fmt --all -- --check` — passed
+   - `cargo test --workspace` — passed, 47 tests
+   - `npm run typecheck:frontend` — passed
+   - `npm run build:frontend` — passed
+   - `anchor build --no-idl` — passed, zero stack-frame errors
+
+2. Deployed `nullifier_registry`:
+   - ID: `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF`
+   - Slot: 460526750
+   - Cost: ~1.619 SOL
+
+3. Deployed `shielded_pool`:
+   - ID: `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE`
+   - Slot: 460526822
+   - Cost: ~2.182 SOL
+
+4. `lending_pool` deployment **failed** — insufficient SOL.
+   - Required: ~2.48 SOL; balance remaining: 1.19 SOL.
+   - Three `solana airdrop` attempts: all rate-limited.
+
+5. Wrote `scripts/devnet-smoke.mjs`:
+   - Builds and sends `store_withdraw_proof` to devnet
+   - Uses DEV/TEST smoke vectors from `groth16_verifier.rs`
+   - Generates fresh random `proof_nonce` per run (avoids PDA re-init collision)
+
+6. Smoke test confirmed:
+   - Signature: `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`
+   - Instruction data: 904 bytes
+
+### Wallet After
+
+- Balance: 1.18485432 SOL
+
+### Next
+
+- Fund devnet wallet (~1.29 SOL) and deploy `lending_pool`.
+- Initialize `shielded_pool` state PDA.
+- End-to-end integration test.

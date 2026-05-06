@@ -1,10 +1,12 @@
 # On-Chain Groth16 Verifier — Blockers Analysis
 
-Date: 2026-05-05 (updated 2026-05-06 after C2E, C2F)
+Date: 2026-05-05 (updated 2026-05-06 after C2E, C2F, C2G-A, C2G-B)
 Task: Convergence 2C — verify whether on-chain groth16-solana wiring can proceed safely.
 Outcome (C2C): B — verifier wiring was blocked. No fake wiring performed.
 Update (C2E): Blockers B1–B5 resolved. New blocker B6 (tx MTU) discovered during ABI extension.
 Update (C2F): B6 resolved via proof account PDA pattern. New non-fatal warning B7 (BPF stack frame) noted.
+Update (C2G-A): B7 resolved. Box<Account> applied to four Anchor contexts; zero stack-frame errors.
+Update (C2G-B): shielded_pool and nullifier_registry deployed to devnet. store_withdraw_proof smoke test confirmed on-chain (tx 66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ). lending_pool deployment blocked by insufficient devnet SOL.
 
 ---
 
@@ -359,3 +361,28 @@ After C2F introduced `ProofData` accounts in all three instruction contexts, `an
 - `npm run typecheck:frontend` — passed
 - `npm run build:frontend` — passed (pre-existing ffjavascript warning only)
 - `anchor build --no-idl` — passed; zero stack/frame/error diagnostics; only pre-existing Anchor `cfg` warnings remain
+
+---
+
+## C2G-B — Devnet Deployment and Smoke Test (2026-05-06)
+
+### Deployed Programs
+
+| Program | Program ID | Deploy slot | SO size | Deploy cost |
+|---|---|---|---|---|
+| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | 460526750 | ~232 KB | ~1.619 SOL |
+| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | 460526822 | ~313 KB | ~2.182 SOL |
+| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | — | ~348 KB | ~2.48 SOL (blocked) |
+
+### Smoke Test — store_withdraw_proof
+
+- Instruction: `store_withdraw_proof` on `shielded_pool` (`9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE`)
+- Script: `scripts/devnet-smoke.mjs`
+- Vectors: DEV/TEST smoke proof from `programs/shielded_pool/src/groth16_verifier.rs`
+- Result: **CONFIRMED on devnet**
+- Signature: `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`
+- Wallet balance after: 1.18485432 SOL
+
+### lending_pool Deployment Blocker
+
+`lending_pool` requires ~2.48 SOL to deploy. After deploying nullifier_registry and shielded_pool, the devnet wallet had 1.19 SOL remaining. Three airdrop attempts failed (devnet rate limiting). Deployment is unblocked pending additional devnet SOL (~1.29 SOL needed).

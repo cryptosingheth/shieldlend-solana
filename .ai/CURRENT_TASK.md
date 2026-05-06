@@ -1,11 +1,15 @@
 # Current Task
 
-## Status: C2G-A complete — B7 stack-frame warnings fully resolved. Devnet deployment unblocked.
+## Status: C2G-B in progress — shielded_pool + nullifier_registry deployed to devnet; store_withdraw_proof smoke test confirmed; lending_pool blocked by insufficient SOL.
 
 ## Active Objective
 
-Convergence Task 2G-A is complete. All BPF stack-frame "Error:" diagnostics eliminated from
-`anchor build --no-idl`. The next task is devnet deployment of all three programs.
+Convergence Task 2G-B: Devnet deployment and first runtime validation.
+
+- `nullifier_registry` deployed: `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` (slot 460526750)
+- `shielded_pool` deployed: `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` (slot 460526822)
+- `lending_pool`: NOT deployed — needs ~1.29 more SOL on devnet
+- `store_withdraw_proof` smoke tx: CONFIRMED (sig `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`)
 
 ## Current Local Truth
 
@@ -29,12 +33,16 @@ Convergence Task 2G-A is complete. All BPF stack-frame "Error:" diagnostics elim
 9. `frontend/src/lib/solanaClient.ts` — all proof-store instruction builders added.
 10. 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests).
 11. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE not wired.
-12. No devnet deployment yet.
+12. `nullifier_registry` deployed to devnet (slot 460526750).
+13. `shielded_pool` deployed to devnet (slot 460526822).
+14. `lending_pool` NOT deployed — insufficient devnet SOL (~1.29 more needed).
+15. `store_withdraw_proof` smoke tx confirmed on devnet.
+16. `scripts/devnet-smoke.mjs` written and verified.
 
 ## Active Wallet
 
 - Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V`
-- Balance: 5 SOL on devnet (confirmed by Explorer)
+- Balance: 1.18485432 SOL on devnet (after deploying 2 programs + smoke tx)
 - Cluster: devnet configured
 
 ## Post-C2F Transaction Sizes (unchanged)
@@ -50,15 +58,15 @@ Convergence Task 2G-A is complete. All BPF stack-frame "Error:" diagnostics elim
 
 ## Known Blockers
 
-None blocking devnet deployment. All resolved:
-- B6 (tx MTU): resolved C2F — proof account PDA pattern
-- B7 (BPF stack frame): resolved C2G-A — Box<Account> on four contexts
+- `lending_pool` deployment: ~1.29 more devnet SOL needed. Options: wait for airdrop rate limit reset, use `devnet-pow mine`, or fund from another wallet.
+- Prior resolved: B6 (tx MTU) → C2F; B7 (BPF stack frame) → C2G-A.
 
 ## Immediate Next Actions
 
-1. **Devnet deployment** — deploy three programs; verify transactions land.
-2. **Integration test** — end-to-end: generate real proof → `store_*_proof` tx → `withdraw`/`borrow`/`repay` tx.
-3. **Privacy rails** — wire IKA, MagicBlock, Umbra, Encrypt after deployment confirmed.
+1. **Fund devnet wallet** — acquire ~1.29 SOL (airdrop, PoW faucet, or transfer) and deploy `lending_pool`.
+2. **Initialize shielded_pool** — run `initialize` instruction to create pool state PDA before any deposit/withdraw.
+3. **Integration test** — end-to-end: snarkjs fullProve → `store_*_proof` tx → `withdraw`/`borrow`/`repay` tx.
+4. **Privacy rails** — wire IKA, MagicBlock, Umbra, Encrypt after all programs deployed.
 
 ## Relevant Files
 

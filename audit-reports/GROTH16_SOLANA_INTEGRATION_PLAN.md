@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-06
 **Branch**: convergence/zk-constants-artifacts
-**Status**: C2F complete. Proof account PDA pattern implemented; B6 tx MTU blocker resolved; 47 tests pass.
+**Status**: C2G-B in progress. shielded_pool and nullifier_registry deployed to devnet. store_withdraw_proof smoke tx confirmed. lending_pool blocked by insufficient devnet SOL.
 
 ---
 
@@ -223,14 +223,32 @@ All BPF stack-frame "Error:" diagnostics eliminated from `anchor build --no-idl`
 
 ---
 
+## What Is Done (C2G-B — Devnet Deployment and Smoke Test)
+
+**shielded_pool deployed to devnet:**
+- Program ID: `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` (matches `declare_id!` and `Anchor.toml`)
+- Deploy slot: 460526822
+
+**nullifier_registry deployed to devnet:**
+- Program ID: `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` (matches `declare_id!` and `Anchor.toml`)
+- Deploy slot: 460526750
+
+**store_withdraw_proof smoke test confirmed:**
+- Script: `scripts/devnet-smoke.mjs`
+- Instruction data: 904 bytes (8 discriminator + 32 nonce + 64 proof_a + 128 proof_b + 64 proof_c + 608 public_inputs)
+- Signature: `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`
+- Result: CONFIRMED on devnet
+
+**lending_pool deployment blocked:** wallet has 1.18485432 SOL; lending_pool requires ~2.48 SOL.
+
+---
+
 ## Recommended Wiring Sequence
 
-1. Merge `fix/backend-critical` fixes (zero-root guard, nullifier state machine).
-2. Extend `WithdrawArgs` / `BorrowArgs` / `RepayArgs` with proof bytes and public signal arrays.
-3. Update frontend to construct and pass proof bytes from snarkjs `fullProve()` output.
-4. Replace the `Groth16VerifierNotWired` stubs in `verify_withdraw_proof`, `verify_collateral_proof`, `verify_repay_proof` with calls to the verifier module functions.
-5. Add `ComputeBudgetProgram::set_compute_unit_limit` to client transaction builders.
-6. Run Anchor localnet test with a real proof end-to-end.
+1. Fund devnet wallet (~1.29 SOL) and deploy `lending_pool`.
+2. Run `initialize` on `shielded_pool` to create the pool state account.
+3. End-to-end integration test: snarkjs fullProve → store_*_proof tx → withdraw/borrow/repay tx.
+4. Wire privacy rails (IKA, MagicBlock, Umbra, Encrypt) after deployment confirmed.
 
 ---
 

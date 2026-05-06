@@ -328,3 +328,19 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: G2 points from snarkjs must be reordered from `[[c1,c0],[c1,c0]]` to `[c0||c1||c0||c1]` BE before passing to `groth16-solana`.
 **Why**: snarkjs stores the c1 coefficient at index [i][0] and c0 at [i][1]. Solana alt_bn128 / EIP-197 expects x_c0 first. Passing in snarkjs order will produce a pairing mismatch.
 **How to apply**: `scripts/convert-vkeys.mjs::g2Bytes()` handles this. Re-run the script when circuits or keys change.
+
+---
+
+## Devnet Deployment Strategy (C2G-B)
+
+**Decision**: Deploy programs one at a time using `anchor deploy --program-name <name> --provider.cluster devnet`. Do not rely on `anchor deploy` (all programs) when SOL balance is marginal.
+**Why**: Each program requires a buffer account sized to the `.so` binary for rent-exempt storage. Deploying smallest-first preserves balance and produces clearer error attribution if SOL runs out mid-sequence.
+**How to apply**: Deploy order: `nullifier_registry` (smallest) → `shielded_pool` → `lending_pool` (largest). Stop if balance is insufficient and document exact shortfall. Never deploy without checking `solana balance` first.
+
+---
+
+## Devnet Smoke Test Pattern (C2G-B)
+
+**Decision**: Smoke test uses `scripts/devnet-smoke.mjs` with the DEV/TEST proof vectors from `groth16_verifier.rs`. A fresh random `proof_nonce` per run ensures the PDA init succeeds even on repeated runs.
+**Why**: The `store_*_proof` instructions use `init` on the proof_data PDA. Re-using the same nonce on a second run would fail with "account already in use." Randomized nonces avoid this and mirror real-world usage.
+**How to apply**: Always generate a fresh `randomBytes(32)` nonce when calling `store_*_proof`. Never hardcode a nonce in production paths.

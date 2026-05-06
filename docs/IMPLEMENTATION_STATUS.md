@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-06 (C2F)
+Last reconciled: 2026-05-06 (C2G-B)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -15,7 +15,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST browser WASM, zkey, and vkey artifacts are generated and hashed; local proof smoke tests pass | Production trusted setup is missing; on-chain verification is not wired or live |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
 | External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
-| Deployment | None | Do not claim devnet or production readiness |
+| Deployment | `shielded_pool` and `nullifier_registry` deployed to devnet; `lending_pool` blocked by insufficient SOL (~1.29 SOL needed); `store_withdraw_proof` smoke tx confirmed | Do not claim full deployment; `lending_pool` not deployed |
 
 ## Verification Snapshot
 
@@ -31,6 +31,10 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `npm run build:frontend` | known good | Next build passes with existing dependency warning |
 | `cargo test --workspace` | known good | 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests) |
 | `anchor build --no-idl` | known good | SBF build passes; zero stack-frame error diagnostics after C2G-A Box<Account> fix |
+| `anchor deploy` (nullifier_registry) | **deployed** | Devnet slot 460526750; program ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
+| `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
+| `anchor deploy` (lending_pool) | **blocked** | Insufficient devnet SOL (~1.29 more needed) |
+| `node scripts/devnet-smoke.mjs` | **confirmed** | store_withdraw_proof tx on devnet; sig 66Bmcz54... |
 
 ## Program IDs
 
@@ -56,7 +60,10 @@ Additional synced references:
 | `anchor build --no-idl` | Passes | Builds SBF artifacts without IDL generation |
 | `.so` artifacts | Generated | `target/deploy/shielded_pool.so`, `lending_pool.so`, `nullifier_registry.so` |
 | Full `anchor build` with IDL | Blocked | Anchor/proc-macro2 compatibility issue, intentionally out of scope |
-| Devnet deployment | Not done | No deployed program accounts verified |
+| `nullifier_registry` devnet deploy | **Deployed** | Slot 460526750; ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
+| `shielded_pool` devnet deploy | **Deployed** | Slot 460526822; ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
+| `lending_pool` devnet deploy | **Blocked** | Insufficient devnet SOL (~1.29 more needed); program otherwise build-ready |
+| `store_withdraw_proof` smoke tx | **Confirmed** | `scripts/devnet-smoke.mjs`; sig `66Bmcz54...`; devnet |
 
 ## ZK Constants And Artifacts
 
@@ -140,7 +147,7 @@ Artifact details:
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
 | ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
-| No devnet deployment | Frontend transactions cannot execute against deployed programs |
+| `lending_pool` not deployed | Frontend borrow/repay/liquidation paths cannot execute on devnet; ~1.29 SOL needed |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |
