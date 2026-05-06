@@ -521,6 +521,8 @@ pub struct Borrow<'info> {
     pub nullifier_registry_program: Program<'info, NullifierRegistry>,
     pub system_program: Program<'info, System>,
     /// Collateral proof account written by store_collateral_proof; consumed after use.
+    /// Box<Account> keeps the 940-byte ProofData on the heap, reducing the try_accounts
+    /// stack frame below the 4096-byte BPF limit (B7 mitigation).
     #[account(
         mut,
         seeds = [PROOF_DATA_SEED, payer.key().as_ref(), args.proof_nonce.as_ref()],
@@ -529,7 +531,7 @@ pub struct Borrow<'info> {
         constraint = !proof_data.consumed @ LendingError::ProofAccountConsumed,
         constraint = proof_data.circuit_kind == LendingProofKind::Collateral @ LendingError::WrongProofKind,
     )]
-    pub proof_data: Account<'info, ProofData>,
+    pub proof_data: Box<Account<'info, ProofData>>,
 }
 
 #[derive(Accounts)]
@@ -560,6 +562,8 @@ pub struct Repay<'info> {
     pub registry_writer: UncheckedAccount<'info>,
     pub nullifier_registry_program: Program<'info, NullifierRegistry>,
     /// Repay proof account written by store_repay_proof; consumed after use.
+    /// Box<Account> keeps the 940-byte ProofData on the heap, reducing the try_accounts
+    /// stack frame below the 4096-byte BPF limit (B7 mitigation).
     #[account(
         mut,
         seeds = [PROOF_DATA_SEED, relay.key().as_ref(), args.proof_nonce.as_ref()],
@@ -568,7 +572,7 @@ pub struct Repay<'info> {
         constraint = !proof_data.consumed @ LendingError::ProofAccountConsumed,
         constraint = proof_data.circuit_kind == LendingProofKind::Repay @ LendingError::WrongProofKind,
     )]
-    pub proof_data: Account<'info, ProofData>,
+    pub proof_data: Box<Account<'info, ProofData>>,
 }
 
 #[derive(Accounts)]

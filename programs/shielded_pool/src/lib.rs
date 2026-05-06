@@ -352,8 +352,10 @@ pub struct StoreWithdrawProof<'info> {
 pub struct Withdraw<'info> {
     #[account(mut)]
     pub relay: Signer<'info>,
+    /// Box<Account> keeps ShieldedPoolState (~1100 bytes) on the heap, reducing
+    /// try_accounts and the entry-point stack frame (B7 mitigation).
     #[account(mut, seeds = [b"shielded-pool-state"], bump = state.bump)]
-    pub state: Account<'info, ShieldedPoolState>,
+    pub state: Box<Account<'info, ShieldedPoolState>>,
     /// CHECK: created and mutated by the nullifier registry CPI.
     #[account(
         mut,
@@ -375,6 +377,7 @@ pub struct Withdraw<'info> {
     pub system_program: Program<'info, System>,
     /// Proof account written by store_withdraw_proof; consumed after use.
     /// PDA seeds must match: [PROOF_DATA_SEED, relay, args.proof_nonce].
+    /// Box<Account> keeps the 908-byte ProofData on the heap (B7 mitigation).
     #[account(
         mut,
         seeds = [PROOF_DATA_SEED, relay.key().as_ref(), args.proof_nonce.as_ref()],
@@ -383,7 +386,7 @@ pub struct Withdraw<'info> {
         constraint = !proof_data.consumed @ PoolError::ProofAccountConsumed,
         constraint = proof_data.circuit_kind == ProofKind::Withdraw @ PoolError::WrongProofKind,
     )]
-    pub proof_data: Account<'info, ProofData>,
+    pub proof_data: Box<Account<'info, ProofData>>,
 }
 
 #[derive(Accounts)]

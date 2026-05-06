@@ -319,19 +319,43 @@ Proof bytes moved to a PDA account written in a prior transaction. Args carry on
 
 ---
 
-## Blocker 7 — BPF stack frame warnings in Borrow/Repay try_accounts (new, C2F)
+## Blocker 7 — BPF stack frame warnings (C2F → RESOLVED C2G-A)
 
 **Type:** BPF linker / runtime risk
 
-**Status:** Non-fatal at build time. Monitor before devnet deployment.
+**Status: RESOLVED (C2G-A).** All stack-frame "Error:" diagnostics eliminated. `anchor build --no-idl` emits zero stack/frame/error messages.
 
-`anchor build --no-idl` emits two "Error: Function ... Stack offset exceeded" diagnostics:
+### Original diagnostics (C2F)
 
+After C2F introduced `ProofData` accounts in all three instruction contexts, `anchor build --no-idl` emitted:
+
+**lending_pool:**
 - `Borrow::try_accounts`: frame 6016 bytes (exceeds 4096-byte BPF limit by 1920 bytes)
 - `Repay::try_accounts`: frame 5248 bytes (exceeds 4096-byte BPF limit by 1152 bytes)
 
-These are from the BPF linker's static stack analysis of the Anchor-generated `try_accounts` functions. The large `ProofData` struct (940 bytes) on the stack triggers the warning. The build still produces `.so` artifacts.
+**shielded_pool (pre-existing, first surfaced in C2G-A analysis):**
+- `Withdraw::try_accounts`: frame 6464 bytes (exceeds 4096-byte BPF limit by 1336 bytes)
+- `__private::__global::withdraw` entry point: frame 4544 bytes (exceeds limit by 304 bytes)
 
-**Runtime risk assessment:** Anchor's `Account::try_accounts` heap-allocates the deserialized struct via Borsh; the static analysis overstates actual runtime stack depth. However, stack overflow at runtime would cause a program crash.
+### Resolution implemented (C2G-A)
 
-**Resolution options:** Split large account validation across helper functions; use `Box<Account<...>>` for the proof_data account; or restructure the `Borrow`/`Repay` context to reduce stack frame depth. Defer until devnet testing confirms or denies a runtime issue.
+`Box<Account<'info, T>>` applied to all affected large accounts:
+
+| Program | Context | Account boxed | Type | In-memory size |
+|---|---|---|---|---|
+| `lending_pool` | `Borrow` | `proof_data` | `ProofData` | 940 bytes |
+| `lending_pool` | `Repay` | `proof_data` | `ProofData` | 940 bytes |
+| `shielded_pool` | `Withdraw` | `proof_data` | `ProofData` | 908 bytes |
+| `shielded_pool` | `Withdraw` | `state` | `ShieldedPoolState` | ~1100 bytes (Vec contents on heap) |
+
+`Box<Account<'info, T>>` heap-allocates the deserialized account struct, replacing an N-byte inline value on the stack frame with an 8-byte pointer. All Anchor constraints (`constraint =`, `bump =`, `has_one =`), field accesses, mutations, and account exit serialization work identically through Rust's `Deref`/`DerefMut` coercion chains.
+
+`ShieldedPoolState` was boxed in the `Withdraw` context because its fixed-size `historical_roots: [[u8;32]; 30]` field (960 bytes) contributes to the frame even though its `Vec<QueuedDeposit>` and `Vec<QueuedExit>` contents are heap-allocated via the allocator.
+
+### Validation (C2G-A)
+
+- `cargo fmt --all -- --check` — passed
+- `cargo test --workspace` — passed, **47 tests** (no regressions)
+- `npm run typecheck:frontend` — passed
+- `npm run build:frontend` — passed (pre-existing ffjavascript warning only)
+- `anchor build --no-idl` — passed; zero stack/frame/error diagnostics; only pre-existing Anchor `cfg` warnings remain

@@ -198,7 +198,28 @@ All 47 workspace tests pass.
 
 **Blockers 1–6 from C2C/C2E are all resolved.** (B1 dep: done. B2 ABI: done. B3 vkey script: done. B4 test vectors: done. B5 compute budget: done. B6 tx MTU: done.)
 
-**B7 (new, C2F):** BPF stack frame warnings in `Borrow::try_accounts` and `Repay::try_accounts` — non-fatal at build time; need devnet validation before claiming runtime safety. See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B7.
+**B7 — RESOLVED (C2G-A):** `Box<Account<'info, ProofData>>` applied to `Borrow` and `Repay` in `lending_pool`; `Box<Account<'info, ProofData>>` and `Box<Account<'info, ShieldedPoolState>>` applied to `Withdraw` in `shielded_pool`. All stack-frame "Error:" diagnostics eliminated. See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B7.
+
+## What Is Done (C2G-A — B7 Stack-Frame Mitigation)
+
+All BPF stack-frame "Error:" diagnostics eliminated from `anchor build --no-idl`.
+
+**Changed files:**
+
+- `programs/lending_pool/src/lib.rs`
+  - `Borrow` context: `proof_data: Account<'info, ProofData>` → `Box<Account<'info, ProofData>>`
+  - `Repay` context: `proof_data: Account<'info, ProofData>` → `Box<Account<'info, ProofData>>`
+
+- `programs/shielded_pool/src/lib.rs`
+  - `Withdraw` context: `proof_data: Account<'info, ProofData>` → `Box<Account<'info, ProofData>>`
+  - `Withdraw` context: `state: Account<'info, ShieldedPoolState>` → `Box<Account<'info, ShieldedPoolState>>`
+
+**Validations (C2G-A):**
+- `cargo fmt --all -- --check` — passed
+- `cargo test --workspace` — passed, **47 tests** (no regressions)
+- `npm run typecheck:frontend` — passed
+- `npm run build:frontend` — passed
+- `anchor build --no-idl` — passed; **zero stack-frame error diagnostics**
 
 ---
 

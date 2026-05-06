@@ -274,3 +274,20 @@ Append-only. Most recent entry at the bottom.
 - Updated: `GROTH16_SOLANA_INTEGRATION_PLAN.md`, `ONCHAIN_VERIFIER_BLOCKERS.md`, `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`.
 - Validations: `cargo fmt` pass, `cargo test --workspace` pass (47 tests), `tsc --noEmit` pass, `npm run build` pass, `anchor build --no-idl` pass (B7 warnings, non-fatal).
 - Commit: `feat: add proof account flow for groth16 payloads`
+
+---
+
+## 2026-05-06 — Convergence Task 2G-A: B7 Stack-Frame Mitigation Preflight
+
+- Inspected B7 warnings from C2F: `Borrow::try_accounts` (6016 bytes), `Repay::try_accounts` (5248 bytes) in lending_pool.
+- Discovered additional pre-existing B7 warnings in shielded_pool (not documented in C2F):
+  - `Withdraw::try_accounts`: 6464-byte frame
+  - `__private::__global::withdraw` entry point: 4544-byte frame
+- Applied `Box<Account<'info, ProofData>>` to `Borrow.proof_data` and `Repay.proof_data` in `lending_pool`.
+- Applied `Box<Account<'info, ProofData>>` and `Box<Account<'info, ShieldedPoolState>>` to `Withdraw` context in `shielded_pool`.
+- `ShieldedPoolState` required boxing because `historical_roots: [[u8;32]; 30]` (960 bytes) still contributes to the stack frame even though Vec fields are heap-allocated.
+- All Anchor constraints, field accesses, mutations, and deref coercions verified to work identically with Box<Account>.
+- Result: zero stack-frame "Error:" diagnostics in `anchor build --no-idl`.
+- Validations: `cargo fmt` pass, `cargo test --workspace` pass (47 tests), `tsc --noEmit` pass, `npm run build` pass, `anchor build --no-idl` pass (zero B7 warnings).
+- Updated: `ONCHAIN_VERIFIER_BLOCKERS.md`, `GROTH16_SOLANA_INTEGRATION_PLAN.md`, `docs/IMPLEMENTATION_STATUS.md`, `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`.
+- Commit: `fix: reduce proof account stack usage`

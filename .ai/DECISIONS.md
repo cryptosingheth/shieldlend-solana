@@ -274,11 +274,12 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 
 ---
 
-## BPF Stack Frame Warning (B7, C2F)
+## BPF Stack Frame Warning (B7, C2F → RESOLVED C2G-A)
 
-**Decision**: Treat B7 `cargo-build-sbf` stack-frame "Error:" diagnostics as non-fatal warnings until devnet testing confirms or denies runtime overflow.
-**Why**: The BPF linker's static analysis overstates actual runtime stack depth because Anchor's `Account::try_accounts` heap-allocates via Borsh. The build completes and `.so` artifacts are generated.
-**How to apply**: If `borrow` or `repay` crashes with a stack overflow on devnet, switch `proof_data: Account<'info, ProofData>` to `proof_data: Box<Account<'info, ProofData>>` in the `Borrow` and `Repay` contexts. This heap-allocates the account wrapper, removing it from the stack frame.
+**Decision**: Apply `Box<Account<'info, T>>` proactively to all contexts with large ProofData or ShieldedPoolState accounts before devnet deployment. Do not defer to runtime.
+**Why**: C2G-A preflight revealed that `Withdraw::try_accounts` in shielded_pool also exceeded the 4096-byte BPF limit (6464-byte frame), as did the `withdraw` entry point (4544 bytes). These were pre-existing alongside the C2F-reported lending_pool warnings. Deferring to devnet would waste SOL on deployments that could crash on the first proof verification instruction.
+**Resolution**: `Box<Account<'info, ProofData>>` on `Borrow.proof_data`, `Repay.proof_data`, `Withdraw.proof_data`; `Box<Account<'info, ShieldedPoolState>>` on `Withdraw.state`. `ShieldedPoolState` requires boxing because its `historical_roots: [[u8;32]; 30]` (960 bytes fixed array) still contributes to the frame even though Vec contents are heap-allocated.
+**How to apply**: When adding a new account context that includes ProofData or any account struct with large fixed-size arrays, default to `Box<Account<'info, T>>`. All Anchor constraints, field accesses, and mutations work identically through Rust's Deref/DerefMut coercion chain.
 
 ---
 

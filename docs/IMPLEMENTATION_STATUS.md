@@ -30,7 +30,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `npm run typecheck:frontend` | known good | TypeScript check passes |
 | `npm run build:frontend` | known good | Next build passes with existing dependency warning |
 | `cargo test --workspace` | known good | 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests) |
-| `anchor build --no-idl` | known good | SBF build passes; new B7 stack-frame warnings for Borrow/Repay (non-fatal) |
+| `anchor build --no-idl` | known good | SBF build passes; zero stack-frame error diagnostics after C2G-A Box<Account> fix |
 
 ## Program IDs
 
@@ -139,7 +139,7 @@ Artifact details:
 | Full Anchor IDL generation blocked | Cannot rely on generated IDLs until Anchor/proc-macro2 issue is fixed |
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
 | ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
-| BPF stack frame warnings (B7) | `Borrow::try_accounts` and `Repay::try_accounts` emit stack-exceeded diagnostics; build succeeds, runtime impact TBD | Monitor on devnet; mitigations: `Box<Account>` or context refactor |
+| ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
 | No devnet deployment | Frontend transactions cannot execute against deployed programs |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |
