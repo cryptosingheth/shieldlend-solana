@@ -2,11 +2,11 @@
 
 ## Task Objective
 
-Convergence Task 2G-B: Devnet deployment and first runtime validation — COMPLETE.
+Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
 
 ## Current Status
 
-**C2G-B complete.** All three programs deployed to devnet and IDs verified. initialize confirmed. end-to-end smoke (`devnet-e2e.mjs`) confirmed through `UnknownRoot` guard at withdraw.
+**C2H complete.** All three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed. UnauthorizedWriter blocker discovered and fixed.
 
 ## Deployed Programs (Devnet) — All Verified
 
@@ -18,53 +18,61 @@ Convergence Task 2G-B: Devnet deployment and first runtime validation — COMPLE
 
 All IDs match `Anchor.toml`, `anchor keys list`, and all three `declare_id!` values.
 
-## End-to-End Smoke Test Results (scripts/devnet-e2e.mjs)
+## C2H Round-Trip — Transaction Signatures
 
-| Step | Result | Signature / Note |
+| Step | Instruction | Signature |
 |---|---|---|
-| `nullifier_registry::initialize` | SKIP (already done prev session) | sig `2of4jzbt...` |
-| `shielded_pool::initialize` | CONFIRMED | sig `QMVjEr1d...` |
-| `shielded_pool::store_withdraw_proof` | CONFIRMED | sig `5YRBBhwJ...` |
-| `shielded_pool::withdraw` | EXPECTED FAIL — UnknownRoot (6007) | Pool is freshly initialized; no deposit has been flushed |
+| 0a | `nullifier_registry::update_authorized_programs` (PDA fix) | `5nqg3EDxMi6My224DV43xmqjbfzMWuCr5njQAkBFkzNwTkRKY9xQ8jjqGdRRoRPaUYfJWeF8UhsWkM48VPAnQcCK` |
+| 1 | `shielded_pool::deposit` | `3dsEYbRR7o66HYErueU6Fdzt1dSEhX6mpRm2XSZArzzWib7kbjnETUgw6dAfZBsXfw45nQuH8gbSGKfZEvNkGRtu` |
+| 2 | `shielded_pool::flush_epoch` | `2GXQhThHoHB7hBmZXWHxP9VCm2eU3e19NoRCaj8L5a2p6L7yUkv4vCH4yM4cUqMyY23xhqV51fsts5Wu8bsTgqBL` |
+| 3 | `shielded_pool::store_withdraw_proof` | `5vd2RnQJwCmqQ9YmNSFUA5dxZWRNmGudmMurGVgXtcgm1MKHP8LZJBi6EVra4vBinXqoX2b9tBidTYXxzW1JNBed` |
+| 4 | `shielded_pool::withdraw` (Groth16 PASS) | `3s7zqUmuTLmYCMKW6JtH27easQetAUZP6DUhuKAXzL5b27wfMPRL5nx6eRX64C59kRQ7LmfBsii18TJBpQi2FDhd` |
 
-**Withdraw error**: `AnchorError at lib.rs:140. Error Code: UnknownRoot (6007). Merkle root is not in the retained root history.`
+**Groth16 pairing**: 198,502 CU consumed and passed.
 
-This is correct behavior. All account validation (PDA derivation, bump checks, proof_data guards) passed. The only missing piece is a real deposit that populates the pool's Merkle root.
+## Critical Discovery: UnauthorizedWriter (registry_writer PDA vs program ID)
 
-## shielded_pool Vec-Capacity Change (C2G-B bug fix)
+`nullifier_registry::assert_authorized` checks `writer.key()` — the account that appears as signer in the CPI. In Anchor `invoke_signed`, the signer is the **registry_writer PDA** derived from `[b"registry-writer"]` in the calling program, NOT the calling program's ID.
 
-Problem: `ShieldedPoolState::SPACE` = 14500 bytes. Solana's CPI realloc limit = 10240 bytes. Anchor's `init` constraint uses realloc internally, causing `initialize` to fail.
+Registry_writer PDAs:
+- shielded_pool: `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf`
+- lending_pool: `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk`
 
-Fix: `MAX_EPOCH_COMMITMENTS` and `MAX_EXIT_QUEUE` reduced 128→8. SPACE: 14500 → 1900 bytes.
+The initial `authorized_programs` list was set to program IDs (wrong). Fixed by calling `update_authorized_programs` with the PDA addresses. `devnet-fullround.mjs` Step 0a auto-detects and corrects this.
 
-Note: This is a devnet-only reduction. Production requires a proper realloc-on-insert design.
+## Files Changed (C2H, this session)
 
-## Files Changed (C2G-B, this session)
-
-- `programs/shielded_pool/src/lib.rs` — MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8
-- `scripts/devnet-e2e.mjs` — new; full e2e smoke script
-- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — C2G-B complete; realloc fix documented
-- `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` — C2G-B complete; wiring sequence updated
-- `docs/IMPLEMENTATION_STATUS.md` — deployment rows updated; smoke results added
-- `.ai/CURRENT_TASK.md` — C2G-B complete
+- `scripts/devnet-fullround.mjs` — new; full round-trip script (deposit + flush + auth fix + store_proof + withdraw)
+- `docs/IMPLEMENTATION_STATUS.md` — C2H entries added; on-chain Groth16 confirmed; lending_pool deployed row updated
+- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — C2H section added with full tx sigs and UnauthorizedWriter discovery/fix
+- `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` — status updated to C2H complete; round-trip section added
+- `.ai/CURRENT_TASK.md` — C2H complete
 - `.ai/SESSION_HANDOFF.md` — this file
-- `.ai/DECISIONS.md` — Vec capacity and deploy strategy decisions added
-- `.ai/TASK_LOG.md` — C2G-B complete entry appended
+- `.ai/DECISIONS.md` — registry_writer PDA authorization decision added
+- `.ai/TASK_LOG.md` — C2H complete entry appended
 
 ## Active Wallet
 
 - Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V`
-- Balance: ~3.670413760 SOL
+- Balance: 3.554668080 SOL (after C2H; net cost ≈ 0.108515 SOL including 0.1 SOL deposited)
 - Cluster: devnet
+
+## Validations Passed (C2H)
+
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `anchor build --no-idl` — PASS (zero stack-frame error diagnostics)
 
 ## Remaining Work (Next Task)
 
-1. **Real deposit → flush → full round-trip**: Generate snarkjs proof (withdraw_ring) for a known commitment, deposit it, flush_epoch, store_withdraw_proof, withdraw. This will exercise the on-chain Groth16 verifier.
-2. **Privacy rails**: IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt not wired.
-3. **Production realloc design**: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production.
+1. **Privacy rails**: IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt not wired.
+2. **Production realloc design**: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production-scale capacity (current cap=8 for devnet).
+3. **Trusted setup ceremony**: DEV/TEST ptau is not production-ready.
 
 ## Do Not Claim
 
-- Full on-chain Groth16 verification is live (withdraw path not completed — UnknownRoot guard fires before verifier).
-- Production ZK proof artifacts (DEV/TEST only).
+- Production ZK proof artifacts (DEV/TEST only — `circuits/keys/dev_pot14_final.ptau`).
 - Any privacy rail (IKA, MagicBlock, Umbra, Encrypt) is active.
+- Full on-chain privacy (Groth16 verification confirmed with DEV/TEST setup only).

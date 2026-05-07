@@ -1,12 +1,13 @@
 # On-Chain Groth16 Verifier — Blockers Analysis
 
-Date: 2026-05-05 (updated 2026-05-06 after C2E, C2F, C2G-A, C2G-B)
+Date: 2026-05-05 (updated 2026-05-07 after C2E, C2F, C2G-A, C2G-B, C2H)
 Task: Convergence 2C — verify whether on-chain groth16-solana wiring can proceed safely.
 Outcome (C2C): B — verifier wiring was blocked. No fake wiring performed.
 Update (C2E): Blockers B1–B5 resolved. New blocker B6 (tx MTU) discovered during ABI extension.
 Update (C2F): B6 resolved via proof account PDA pattern. New non-fatal warning B7 (BPF stack frame) noted.
 Update (C2G-A): B7 resolved. Box<Account> applied to four Anchor contexts; zero stack-frame errors.
-Update (C2G-B): shielded_pool and nullifier_registry deployed to devnet. store_withdraw_proof smoke test confirmed on-chain (tx 66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ). lending_pool deployment blocked by insufficient devnet SOL.
+Update (C2G-B): shielded_pool and nullifier_registry deployed to devnet. store_withdraw_proof smoke test confirmed on-chain (tx 66Bmcz54...). lending_pool deployed after wallet refill.
+Update (C2H): Full round-trip (deposit → flush_epoch → store_withdraw_proof → withdraw) confirmed on devnet. On-chain Groth16 BN254 verification passed (198,502 CU). UnauthorizedWriter blocker discovered and resolved: authorized_programs must contain registry_writer PDA addresses, not program IDs.
 
 ---
 
@@ -400,3 +401,66 @@ After C2F introduced `ProofData` accounts in all three instruction contexts, `an
 ### Wallet After C2G-B
 
 Balance: 3.670413760 SOL
+
+---
+
+## C2H — Full Round-Trip Devnet Proof Smoke Test (2026-05-07)
+
+### Objective
+
+Exercise the complete withdraw path on devnet: deposit a real commitment, flush the epoch to update the Merkle root, store a Groth16 proof PDA, and execute `withdraw` — triggering the on-chain BN254 pairing verifier.
+
+### UnauthorizedWriter Bug — Discovered and Fixed
+
+**Root cause**: `nullifier_registry::initialize` in the previous session set `authorized_programs = [SHIELDED_POOL_PROGRAM_ID, LENDING_POOL_PROGRAM_ID]`. But `assert_authorized` in `nullifier_registry` checks `writer.key()`, which in a CPI is the `registry_writer` PDA address (seeds `[b"registry-writer"]` in each calling program) — not the caller's program ID.
+
+**Fix**: Computed registry_writer PDAs for both programs:
+
+| Program | PDA address |
+|---|---|
+| shielded_pool | `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf` |
+| lending_pool | `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk` |
+
+Called `nullifier_registry::update_authorized_programs` with the PDA addresses. Signature: `5nqg3EDxMi6My224DV43xmqjbfzMWuCr5njQAkBFkzNwTkRKY9xQ8jjqGdRRoRPaUYfJWeF8UhsWkM48VPAnQcCK`
+
+`scripts/devnet-fullround.mjs` now includes a Step 0a that detects and corrects this automatically on each run.
+
+### Full Round-Trip — Transaction Signatures
+
+| Step | Instruction | Signature |
+|---|---|---|
+| 1 | `shielded_pool::deposit` | `3dsEYbRR7o66HYErueU6Fdzt1dSEhX6mpRm2XSZArzzWib7kbjnETUgw6dAfZBsXfw45nQuH8gbSGKfZEvNkGRtu` |
+| 2 | `shielded_pool::flush_epoch` | `2GXQhThHoHB7hBmZXWHxP9VCm2eU3e19NoRCaj8L5a2p6L7yUkv4vCH4yM4cUqMyY23xhqV51fsts5Wu8bsTgqBL` |
+| 3 | `shielded_pool::store_withdraw_proof` | `5vd2RnQJwCmqQ9YmNSFUA5dxZWRNmGudmMurGVgXtcgm1MKHP8LZJBi6EVra4vBinXqoX2b9tBidTYXxzW1JNBed` |
+| 4 | `shielded_pool::withdraw` (Groth16 PASS) | `3s7zqUmuTLmYCMKW6JtH27easQetAUZP6DUhuKAXzL5b27wfMPRL5nx6eRX64C59kRQ7LmfBsii18TJBpQi2FDhd` |
+
+### Groth16 Verification Details
+
+- Compute units consumed: **198,502 CU** (under 1,400,000 CU budget)
+- Verifier: DEV/TEST `withdraw_ring` vkey embedded in `programs/shielded_pool/src/groth16_verifier.rs`
+- Proof type: BN254 Groth16 via `groth16-solana = "0.0.3"` using Solana alt_bn128 native syscalls
+- Trusted setup: DEV/TEST only (`circuits/keys/dev_pot14_final.ptau`) — not production
+
+### Smoke Vectors Used
+
+| Field | Value |
+|---|---|
+| secret | 123456789 |
+| nullifier | 987654321 |
+| denomination | 100,000,000 lamports (0.1 SOL) |
+| commitment | `0x02f6777b...` (Poseidon(secret, nullifier, denomination)) |
+| root | `0x176eb2c2...` (depth-24 Poseidon with commitment at leaf 0, all zeros path) |
+| nullifierHash | `0x22fb9625...` (Poseidon(nullifier, 0, SHIELDED_POOL_PROGRAM_ID_field)) |
+| leaf_index | 0 |
+
+### Wallet After C2H
+
+Balance: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited into pool)
+
+### Validations Passed
+
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `anchor build --no-idl` — PASS (zero stack-frame error diagnostics)

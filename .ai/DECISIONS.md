@@ -347,6 +347,16 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 
 ---
 
+## Nullifier Registry Authorization: PDA Address, Not Program ID (C2H)
+
+**Decision**: `nullifier_registry::authorized_programs` must contain registry_writer **PDA addresses**, not program IDs.
+**Why**: `assert_authorized` in `nullifier_registry` checks `writer.key()`. When a program signs a CPI using `invoke_signed` with seeds `[b"registry-writer", &[bump]]`, the account appearing as signer in the callee is the PDA derived from those seeds — not the caller's program ID. Setting `authorized_programs` to program IDs causes `UnauthorizedWriter` on every `register`/`lock`/`spend` CPI call.
+- shielded_pool registry_writer: `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf` (seeds `[b"registry-writer"]`, program `9Bvt3jMa...`)
+- lending_pool registry_writer: `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk` (seeds `[b"registry-writer"]`, program `HLtWrvLy...`)
+**How to apply**: When calling `initialize` or `update_authorized_programs` on `nullifier_registry`, always pass the registry_writer PDA addresses. `devnet-fullround.mjs` Step 0a computes these automatically and updates the config if wrong.
+
+---
+
 ## ShieldedPoolState Vec Capacity (C2G-B devnet fix)
 
 **Decision**: Reduce `MAX_EPOCH_COMMITMENTS` and `MAX_EXIT_QUEUE` from 128 to 8 for devnet. `ShieldedPoolState::SPACE` goes from ~14500 bytes to 1900 bytes.

@@ -378,3 +378,57 @@ C2G-B complete. All three programs deployed and verified. initialize + store_pro
 ### Wallet After
 
 Balance: 3.670413760 SOL
+
+---
+
+## 2026-05-07 — Convergence Task 2H: Full Round-Trip Devnet Proof Smoke Test
+
+**Branch**: convergence/zk-constants-artifacts
+**Objective**: Deposit real commitment, flush epoch, store proof, execute withdraw with on-chain Groth16 verification.
+
+### Steps Completed
+
+1. Pre-flight validations:
+   - `cargo fmt --all -- --check` — PASS
+   - `cargo test --workspace` — PASS (47 tests)
+   - `npm run typecheck:frontend` — PASS
+   - `npm run build:frontend` — PASS
+   - `anchor build --no-idl` — PASS (zero stack-frame error diagnostics)
+
+2. Wrote `scripts/devnet-fullround.mjs`:
+   - Step 0a: detect/fix `nullifier_registry::authorized_programs` (PDA addresses vs program IDs)
+   - Step 0b: detect existing pool state to enable idempotent re-runs
+   - Step 1: `deposit` smoke commitment (0.1 SOL, leaf_index=0)
+   - Step 2: `flush_epoch` with precomputed smoke root
+   - Step 3: `store_withdraw_proof` (fresh random proof_nonce)
+   - Step 4: `withdraw` with 1,400,000 CU budget
+
+3. Discovered `UnauthorizedWriter` bug:
+   - Root cause: `nullifier_registry::assert_authorized` checks `writer.key()` (registry_writer PDA), not program ID.
+   - `authorized_programs` was initialized with program IDs → all `register`/`lock`/`spend` CPIs fail.
+   - Fix: called `update_authorized_programs` with correct PDA addresses.
+   - shielded_pool registry_writer: `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf`
+   - lending_pool registry_writer: `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk`
+   - Fix sig: `5nqg3EDxMi6My224DV43xmqjbfzMWuCr5njQAkBFkzNwTkRKY9xQ8jjqGdRRoRPaUYfJWeF8UhsWkM48VPAnQcCK`
+
+4. Full round-trip confirmed on devnet:
+   - `deposit`: `3dsEYbRR7o66HYErueU6Fdzt1dSEhX6mpRm2XSZArzzWib7kbjnETUgw6dAfZBsXfw45nQuH8gbSGKfZEvNkGRtu`
+   - `flush_epoch`: `2GXQhThHoHB7hBmZXWHxP9VCm2eU3e19NoRCaj8L5a2p6L7yUkv4vCH4yM4cUqMyY23xhqV51fsts5Wu8bsTgqBL`
+   - `store_withdraw_proof`: `5vd2RnQJwCmqQ9YmNSFUA5dxZWRNmGudmMurGVgXtcgm1MKHP8LZJBi6EVra4vBinXqoX2b9tBidTYXxzW1JNBed`
+   - `withdraw` (Groth16 PASS): `3s7zqUmuTLmYCMKW6JtH27easQetAUZP6DUhuKAXzL5b27wfMPRL5nx6eRX64C59kRQ7LmfBsii18TJBpQi2FDhd`
+
+5. On-chain Groth16 BN254 verification: **198,502 CU consumed, pairing PASSED**.
+
+6. Updated all documentation:
+   - `docs/IMPLEMENTATION_STATUS.md`
+   - `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`
+   - `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md`
+   - `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/DECISIONS.md`, `.ai/TASK_LOG.md`
+
+### Wallet After
+
+Balance: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited into pool)
+
+### Commit
+
+`chore: validate full devnet withdraw proof roundtrip`

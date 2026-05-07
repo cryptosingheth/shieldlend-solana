@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-06 (C2G-B complete)
+Last reconciled: 2026-05-07 (C2H complete)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -15,7 +15,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST browser WASM, zkey, and vkey artifacts are generated and hashed; local proof smoke tests pass | Production trusted setup is missing; on-chain verification is not wired or live |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
 | External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
-| Deployment | `shielded_pool` and `nullifier_registry` deployed to devnet; `lending_pool` blocked by insufficient SOL (~1.29 SOL needed); `store_withdraw_proof` smoke tx confirmed | Do not claim full deployment; `lending_pool` not deployed |
+| Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
 
@@ -33,7 +33,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `anchor build --no-idl` | known good | SBF build passes; zero stack-frame error diagnostics after C2G-A Box<Account> fix |
 | `anchor deploy` (nullifier_registry) | **deployed** | Devnet slot 460526750; program ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `anchor deploy` (lending_pool) | **blocked** | Insufficient devnet SOL (~1.29 more needed) |
+| `anchor deploy` (lending_pool) | **deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill |
 | `node scripts/devnet-smoke.mjs` | **confirmed** | store_withdraw_proof tx on devnet; sig 66Bmcz54... |
 
 ## Program IDs
@@ -67,6 +67,9 @@ Additional synced references:
 | `shielded_pool::initialize` | **Confirmed** | sig `QMVjEr1d...`; pool state PDA created; devnet |
 | `shielded_pool` Vec-capacity upgrade | **Deployed** | MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8; SPACE 14500→1900 bytes |
 | End-to-end smoke (`devnet-e2e.mjs`) | **Confirmed** | init + store_proof + withdraw UnknownRoot guard; `scripts/devnet-e2e.mjs` |
+| Full round-trip (`devnet-fullround.mjs`) | **Confirmed** | deposit + flush_epoch + store_proof + **withdraw with Groth16 verified on-chain** (198,502 CU); `scripts/devnet-fullround.mjs` |
+| `nullifier_registry::update_authorized_programs` | **Confirmed** | Fixed authorized_programs list to contain registry_writer PDA addresses (not program IDs); sig `5nqg3EDx...` |
+| On-chain Groth16 BN254 verification | **Confirmed** | DEV/TEST trusted setup; withdraw sig `3s7zqUmu...`; 198,502 CU consumed |
 
 ## ZK Constants And Artifacts
 
@@ -135,7 +138,7 @@ Artifact details:
 | MagicBlock Private Payments | Not wired; URL env var absent by default | No |
 | Umbra stealth exits | Not wired; env-gated status only | No |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
-| On-chain Groth16 verification | DEV/TEST verifier wired; proof account pattern resolves tx MTU; B7 stack warning needs devnet validation | No — DEV/TEST trusted setup only; not deployed |
+| On-chain Groth16 verification | DEV/TEST verifier confirmed on devnet; 198,502 CU; full withdraw round-trip passes; B7 stack frame resolved (C2G-A) | No — DEV/TEST trusted setup only; production ceremony required |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
 | Full private repayment | Not live | No |
 | Full private borrow/withdraw flow | Not end-to-end verified | No |
@@ -150,7 +153,7 @@ Artifact details:
 | No production trusted setup | DEV/TEST artifacts cannot support production privacy claims |
 | ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
-| No integration test past UnknownRoot | Full round-trip (deposit → flush → withdraw) requires real snarkjs proof matching pool Merkle root |
+| ~~No integration test past UnknownRoot~~ | **Resolved (C2H)** — full deposit → flush_epoch → store_proof → withdraw round-trip confirmed on devnet with on-chain Groth16 verification |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
 | Umbra network/config not set | Stealth exits unavailable |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |

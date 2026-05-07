@@ -1,89 +1,83 @@
 # Current Task
 
-## Status: C2G-B complete — all three programs deployed; initialize confirmed; e2e smoke (init + store_proof + UnknownRoot withdraw guard) confirmed on devnet.
+## Status: C2H complete — full devnet withdraw round-trip with on-chain Groth16 BN254 verification confirmed.
 
 ## Active Objective
 
-Convergence Task 2G-B: Devnet deployment and first runtime validation.
+Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
 
-- `nullifier_registry` deployed: `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` (slot 460526750)
-- `shielded_pool` deployed: `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` (slot 460526822)
-- `lending_pool`: NOT deployed — needs ~1.29 more SOL on devnet
-- `store_withdraw_proof` smoke tx: CONFIRMED (sig `66Bmcz54i18vB7GD6Mx44FRyJ86Ci7q7BdNxjBo6PRKG6gjuD2XEzdJVXpj1MG2c7zYDq9LeEzWJSLf7TERtHYSQ`)
+- `deposit` confirmed: sig `3dsEYbRR...` (commitment at leaf 0)
+- `flush_epoch` confirmed: sig `2GXQhThH...` (smoke root inserted)
+- `nullifier_registry::update_authorized_programs` fixed: sig `5nqg3EDx...`
+- `store_withdraw_proof` confirmed: sig `5vd2RnQJ...`
+- `withdraw` confirmed: sig `3s7zqUmu...` — **on-chain Groth16 BN254 verification PASSED (198,502 CU)**
 
 ## Current Local Truth
 
 1. Solana CLI and Anchor CLI 0.30.1 are available.
 2. `Anchor.toml`, all three program `declare_id!` values, frontend `PROGRAM_IDS`, and
    ShieldedPool's internal `LENDING_POOL_PROGRAM_ID` match `anchor keys list`.
-3. `anchor build --no-idl` passes — SBF artifacts generated. **Zero stack-frame error diagnostics.**
+3. `anchor build --no-idl` passes — SBF artifacts generated. Zero stack-frame error diagnostics.
 4. Full Anchor IDL generation remains blocked by Anchor/proc-macro2 compatibility.
 5. All three circuits compile; DEV/TEST browser WASM, zkey, and vkey artifacts are generated.
 6. `groth16-solana = "0.0.3"` in both program Cargo.toml files.
-7. DEV/TEST verifier **wired** to all three instruction handlers via proof account PDA:
-   - `store_withdraw_proof` → `withdraw`: proof_data PDA with SPACE=908
-   - `store_collateral_proof` → `borrow`: proof_data PDA with SPACE=940
-   - `store_repay_proof` → `repay`: proof_data PDA with SPACE=940, public_input_count=6
-   - All three handlers: consumed/kind/authority guards + cross-field consistency checks
-8. B7 stack-frame mitigation (C2G-A) applied:
-   - `lending_pool::Borrow.proof_data` → `Box<Account<'info, ProofData>>`
-   - `lending_pool::Repay.proof_data` → `Box<Account<'info, ProofData>>`
-   - `shielded_pool::Withdraw.proof_data` → `Box<Account<'info, ProofData>>`
-   - `shielded_pool::Withdraw.state` → `Box<Account<'info, ShieldedPoolState>>`
+7. DEV/TEST verifier **wired** to all three instruction handlers via proof account PDA.
+8. B7 stack-frame mitigation (C2G-A) applied — all four contexts boxed.
 9. `frontend/src/lib/solanaClient.ts` — all proof-store instruction builders added.
-10. 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests).
+10. 47 Rust unit tests pass.
 11. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE not wired.
-12. `nullifier_registry` deployed to devnet (slot 460526750).
-13. `shielded_pool` deployed to devnet (slot 460526822).
-14. `lending_pool` deployed to devnet (sig `KNmLmqDJ...`).
-15. `shielded_pool` upgraded: MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8 to fix Anchor init realloc limit.
-16. `shielded_pool::initialize` confirmed on devnet (sig `QMVjEr1d...`).
-17. `shielded_pool::store_withdraw_proof` confirmed on devnet (sig `5YRBBhwJ...`).
-18. `shielded_pool::withdraw` confirmed to fire `UnknownRoot` (6007) — expected, correct behavior.
-19. `scripts/devnet-e2e.mjs` — full e2e smoke script written and verified.
+12. All three programs deployed to devnet.
+13. `shielded_pool::initialize` confirmed.
+14. `nullifier_registry::authorized_programs` fixed to contain registry_writer PDA addresses (not program IDs).
+15. Full round-trip (deposit → flush_epoch → store_proof → withdraw) confirmed on devnet.
+16. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed.
+17. `scripts/devnet-fullround.mjs` — full round-trip smoke script (idempotent, auto-fixes auth).
+
+## Deployed Programs (Devnet) — All Verified
+
+| Program | Program ID | Status |
+|---|---|---|
+| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | Deployed |
+| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | Deployed + upgraded (Vec cap fix) |
+| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Deployed |
+
+## Registry Writer PDAs (Devnet)
+
+| Program | PDA | Seeds |
+|---|---|---|
+| shielded_pool | `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf` | `[b"registry-writer"]` |
+| lending_pool | `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk` | `[b"registry-writer"]` |
 
 ## Active Wallet
 
 - Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V`
-- Balance: 3.670413760 SOL on devnet (after all C2G-B work)
+- Balance: 3.554668080 SOL on devnet (after C2H)
 - Cluster: devnet configured
-
-## Post-C2F Transaction Sizes (unchanged)
-
-| Instruction | Est. tx size |
-|---|---|
-| `store_withdraw_proof` | ~1109 bytes ✓ |
-| `store_collateral_proof` | ~1141 bytes ✓ |
-| `store_repay_proof` | ~693 bytes ✓ |
-| `withdraw` | ~524 bytes ✓ |
-| `borrow` | ~536 bytes ✓ |
-| `repay` | ~556 bytes ✓ |
 
 ## Known Blockers
 
-None blocking further work. All C2G-B goals achieved:
-- B6 (tx MTU): resolved C2F
-- B7 (BPF stack frame): resolved C2G-A
-- Deployment: all three programs on devnet
-- Runtime: initialize + store_proof + withdraw UnknownRoot guard all confirmed
+None blocking further work. All C2H goals achieved:
+- Full Groth16 round-trip on devnet: CONFIRMED
+- UnauthorizedWriter (registry_writer PDA vs program ID): RESOLVED
 
 ## Immediate Next Actions
 
-1. **Full round-trip integration test** — generate real snarkjs proof for a known commitment, deposit, flush_epoch, store_withdraw_proof, withdraw. Exercises on-chain Groth16 verifier.
+1. **Privacy rails** — wire IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt.
 2. **Production realloc design** — ShieldedPoolState should use realloc constraints for production-scale capacity.
-3. **Privacy rails** — wire IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt.
+3. **Trusted setup ceremony** — DEV/TEST ptau is not production-ready.
 
 ## Relevant Files
 
 | File | Role |
 |---|---|
-| `programs/shielded_pool/src/lib.rs` | `ProofData`, `StoreWithdrawProof`, `Withdraw` (Box<Account> — C2G-A) |
-| `programs/lending_pool/src/lib.rs` | `ProofData`, `Borrow`/`Repay` (Box<Account> — C2G-A) |
-| `programs/shielded_pool/src/groth16_verifier.rs` | Withdraw verifier module |
-| `programs/lending_pool/src/groth16_verifier.rs` | Collateral + repay verifier module |
-| `frontend/src/lib/solanaClient.ts` | All proof-store builders, PDA helpers, nonce generator |
-| `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` | B6: resolved; B7: resolved (C2G-A) |
-| `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` | Full C2D–C2G-A integration plan |
+| `programs/shielded_pool/src/lib.rs` | `ProofData`, `StoreWithdrawProof`, `Withdraw` (Box<Account>) |
+| `programs/nullifier_registry/src/lib.rs` | `RegistryConfig`, `assert_authorized` (checks writer PDA, not program ID) |
+| `programs/shielded_pool/src/groth16_verifier.rs` | Withdraw verifier, DEV/TEST vkey |
+| `programs/lending_pool/src/groth16_verifier.rs` | Collateral + repay verifier |
+| `frontend/src/lib/solanaClient.ts` | All proof-store builders, PDA helpers |
+| `scripts/devnet-fullround.mjs` | Full round-trip smoke script (idempotent) |
+| `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` | All blockers resolved (C2C–C2H) |
+| `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` | Full C2D–C2H integration plan |
 
 ## Hard Constraints
 
@@ -91,4 +85,4 @@ None blocking further work. All C2G-B goals achieved:
 - Do not run full `anchor build` with IDL unless explicitly scoped
 - Do not deploy without explicit instruction
 - Do not claim production trusted setup from the DEV/TEST `.ptau`
-- Do not claim on-chain privacy until deployed and integration-tested
+- Do not claim on-chain privacy until deployed and integration-tested with production artifacts

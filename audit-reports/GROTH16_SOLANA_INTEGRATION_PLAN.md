@@ -1,8 +1,8 @@
 # groth16-solana Integration Plan — ShieldLend Solana
 
-**Date**: 2026-05-06
+**Date**: 2026-05-07
 **Branch**: convergence/zk-constants-artifacts
-**Status**: C2G-B complete. All three programs deployed. initialize confirmed. store_withdraw_proof confirmed. withdraw hits UnknownRoot as expected (no deposit). Remaining gap: deposit → flush_epoch → full round-trip.
+**Status**: C2H complete. Full round-trip confirmed on devnet. On-chain Groth16 BN254 verification passed (198,502 CU). UnauthorizedWriter blocker discovered and resolved. All blockers C2C–C2H resolved.
 
 ---
 
@@ -251,14 +251,34 @@ All BPF stack-frame "Error:" diagnostics eliminated from `anchor build --no-idl`
 
 ---
 
-## Recommended Wiring Sequence
+## What Is Done (C2H — Full Round-Trip Devnet Proof Smoke Test)
 
-1. Generate a real withdrawal proof with snarkjs fullProve (withdraw_ring circuit).
-2. Deposit the matching commitment into shielded_pool.
-3. Call flush_epoch to insert commitment into the Merkle tree and update current_root.
-4. Call store_withdraw_proof with the snarkjs proof output.
-5. Call withdraw with the now-known root — all guards should pass and the Groth16 verifier should run on-chain.
-6. Wire privacy rails (IKA, MagicBlock, Umbra, Encrypt) after round-trip confirmed.
+**All steps in the recommended wiring sequence are confirmed.**
+
+| Step | Status | Devnet signature |
+|---|---|---|
+| deposit (commitment at leaf 0) | **CONFIRMED** | `3dsEYbRR...` |
+| flush_epoch (precomputed smoke root) | **CONFIRMED** | `2GXQhThH...` |
+| store_withdraw_proof (proof PDA) | **CONFIRMED** | `5vd2RnQJ...` |
+| withdraw (on-chain Groth16 BN254 verification) | **CONFIRMED** | `3s7zqUmu...` |
+
+**On-chain Groth16 result**: 198,502 compute units consumed; pairing verification passed; proof marked consumed; CPI to nullifier_registry succeeded; 0.1 SOL disbursed to stealth_address.
+
+**UnauthorizedWriter blocker discovered and fixed**: `nullifier_registry::assert_authorized` checks `writer.key()` which in a CPI is the registry_writer PDA address, not the program ID. The initial `authorized_programs` list contained program IDs; updated to PDA addresses via `update_authorized_programs`. Script `devnet-fullround.mjs` Step 0a detects and corrects this automatically.
+
+Registry_writer PDAs:
+- shielded_pool: `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf`
+- lending_pool: `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk`
+
+**Wallet after C2H**: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited)
+
+---
+
+## Recommended Next Steps
+
+1. Wire privacy rails: IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt.
+2. Production realloc design: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production-scale capacity (current cap=8 for devnet).
+3. Trusted setup ceremony for production Groth16 artifacts.
 
 ---
 
