@@ -101,12 +101,11 @@ a separate amount-hiding circuit and break LTV determinism. Deferred post-MVP.
 
 ---
 
-## Stealth Addresses
+## Umbra Privacy Rail
 
-**Decision**: All outputs via Umbra SDK — no custom ECDH implementation
-**Why**: Umbra is the most mature Solana stealth address library (mainnet alpha Feb 2026).
-Custom ECDH has high deanonymization bug risk.
-**How to apply**: `frontend/lib/umbra.ts` wraps the SDK. Never bypass it with a custom implementation.
+**Decision**: Use the official Umbra SDK for SPL/Token-2022 encrypted-balance and mixer/UTXO receiving paths. Do not replace it with custom ECDH or generic stealth-address placeholders.
+**Why**: The authoritative Umbra SDK docs describe Solana support for SPL/Token-2022 balances, devnet/mainnet program IDs, Wallet Standard helpers, encrypted balances, and mixer/UTXO flows. Custom address crypto has high deanonymization bug risk.
+**How to apply**: `frontend/src/lib/privacyRails/umbra.ts` wraps `@umbra-privacy/sdk`. Direct `WithdrawArgs.stealth_address` remains a lower-privacy C2H fallback only. Native SOL exits must be tokenized through wSOL or another supported SPL/Token-2022 mint before claiming Umbra routing.
 
 ---
 

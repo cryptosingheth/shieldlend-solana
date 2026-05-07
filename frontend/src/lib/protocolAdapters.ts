@@ -69,9 +69,11 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
   {
     key: "umbra",
     name: "Umbra SDK",
-    role: "One-time stealth addresses for withdrawal and disbursement destinations",
-    healthy: Boolean(process.env.NEXT_PUBLIC_UMBRA_ENABLED),
-    requiredForFullPrivacy: false,
+    role: "SPL/Token-2022 encrypted balances and mixer receiver path for exits",
+    healthy: process.env.NEXT_PUBLIC_UMBRA_ENABLED === "true" &&
+      Boolean(process.env.NEXT_PUBLIC_UMBRA_PROGRAM_ID) &&
+      Boolean(process.env.NEXT_PUBLIC_UMBRA_INDEXER_URL),
+    requiredForFullPrivacy: true,
   },
 ];
 

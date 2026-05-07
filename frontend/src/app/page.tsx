@@ -32,6 +32,12 @@ import {
 } from "../lib/noteStorage";
 import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/protocolAdapters";
 import {
+  getUmbraStatus,
+  planUmbraDestinationRoute,
+  type UmbraDestinationMode,
+  type UmbraStatus,
+} from "../lib/privacyRails/umbra";
+import {
   getConnection,
   getPhantomProvider,
   submitDeposit,
@@ -60,10 +66,12 @@ export default function HomePage() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [hasPlaintext, setHasPlaintext] = useState(false);
+  const [withdrawDestinationMode, setWithdrawDestinationMode] = useState<UmbraDestinationMode>("direct_stealth_address");
 
   const connected = Boolean(wallet?.publicKey && address);
   const vaultReady = Boolean(vaultKey);
   const protocolMode = useMemo(() => modeFromRails(FULL_PRIVACY_RAILS), []);
+  const umbraStatus = useMemo(() => getUmbraStatus(), []);
 
   const refreshAccount = useCallback(async (nextAddress = address, key = vaultKey) => {
     if (!nextAddress) return;
@@ -291,6 +299,7 @@ export default function HomePage() {
             notes={notes}
             connected={connected}
             vaultReady={vaultReady}
+            umbraStatus={umbraStatus}
             setScreen={setScreen}
             onExport={handleExportNotes}
             onImportClick={() => importFileRef.current?.click()}
@@ -300,10 +309,13 @@ export default function HomePage() {
           <Deposit busy={busy} connected={connected} vaultReady={vaultReady} onDeposit={deposit} onCreateLocalNote={createLocalNote} />
         )}
         {screen === "withdraw" && (
-          <BlockedFlow
-            title="Withdraw"
+          <Withdraw
             notes={notes}
-            reason="Withdrawal requires: compiled .wasm/.zkey artifacts for withdraw_ring, deployed ShieldedPool with groth16 verifier wired, NullifierRegistry CPI, and Umbra stealth address adapter."
+            connected={connected}
+            vaultReady={vaultReady}
+            destinationMode={withdrawDestinationMode}
+            setDestinationMode={setWithdrawDestinationMode}
+            umbraStatus={umbraStatus}
           />
         )}
         {screen === "borrow" && (
@@ -348,6 +360,7 @@ function Positions({
   notes,
   connected,
   vaultReady,
+  umbraStatus,
   setScreen,
   onExport,
   onImportClick,
@@ -355,6 +368,7 @@ function Positions({
   notes: StoredNote[];
   connected: boolean;
   vaultReady: boolean;
+  umbraStatus: UmbraStatus;
   setScreen: (screen: Screen) => void;
   onExport: () => void;
   onImportClick: () => void;
@@ -405,12 +419,29 @@ function Positions({
 
           <Panel title="Privacy rail status">
             <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
-              All required rails are currently offline. Full Privacy mode cannot activate.
-              Statuses reflect env config — not live health probes.
+              Full Privacy mode cannot activate while any required rail is unavailable.
+              Statuses reflect env config; use scripts/check-umbra.mjs for Umbra health probes.
             </p>
             {FULL_PRIVACY_RAILS.map((rail) => (
               <RailStatusRow key={rail.key} rail={rail} />
             ))}
+          </Panel>
+
+          <Panel title="Umbra rail status">
+            <RailStateLine status={umbraStatus} />
+            <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+              <dt>Network</dt>
+              <dd>{umbraStatus.config.network}</dd>
+              <dt>Program</dt>
+              <dd><code>{shortHash(umbraStatus.config.programId)}</code></dd>
+              <dt>Mint</dt>
+              <dd>{umbraStatus.config.mintAddress ? <code>{shortHash(umbraStatus.config.mintAddress)}</code> : "Not set"}</dd>
+            </dl>
+            {umbraStatus.blockers.length > 0 && (
+              <ul className="plain-list" style={{ marginTop: "12px", fontSize: "12px" }}>
+                {umbraStatus.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+              </ul>
+            )}
           </Panel>
         </div>
       </div>
@@ -452,7 +483,7 @@ function WhatWorksTodayPanel() {
             <li>IKA FutureSign wired — API routes echo JSON, no SDK call</li>
             <li>MagicBlock PER batching — no PER macros in any program</li>
             <li>Encrypt FHE oracle — verifier returns error, no ciphertexts</li>
-            <li>Umbra stealth addresses — SDK not in package.json</li>
+            <li>Umbra SDK — installed, but native SOL exits remain blocked unless routed through a supported SPL/Token-2022 rail</li>
           </ul>
         </div>
       </div>
@@ -519,6 +550,106 @@ function Deposit({
           </ul>
           <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
             Export a note backup after any deposit. There is no on-chain recovery path for lost local notes.
+          </p>
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function Withdraw({
+  notes,
+  connected,
+  vaultReady,
+  destinationMode,
+  setDestinationMode,
+  umbraStatus,
+}: {
+  notes: StoredNote[];
+  connected: boolean;
+  vaultReady: boolean;
+  destinationMode: UmbraDestinationMode;
+  setDestinationMode: (mode: UmbraDestinationMode) => void;
+  umbraStatus: UmbraStatus;
+}) {
+  const route = planUmbraDestinationRoute({
+    mode: destinationMode,
+    assetKind: "native-sol",
+    config: umbraStatus.config,
+  });
+  const canPrepare = connected && vaultReady && notes.length > 0 && route.canRoute;
+
+  return (
+    <section className="stack">
+      <Hero
+        title="Withdraw"
+        subtitle="C2H direct stealth_address withdraw remains available as the lower-privacy path. Umbra routing is fail-closed until the withdrawal asset is a supported SPL/Token-2022 mint."
+      />
+
+      <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 45%, var(--line))" }}>
+        <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Umbra does not make the existing native SOL C2H exit private by itself.</strong>
+          <span>
+            The official SDK shields SPL/Token-2022 balances, with wSOL as the SOL-compatible token route.
+            ShieldLend still needs a wSOL/SPL exit leg before an Umbra transaction can be submitted.
+          </span>
+        </div>
+      </div>
+
+      <div className="grid two">
+        <Panel title="Destination mode">
+          <div className="segmented">
+            <button
+              className={destinationMode === "direct_stealth_address" ? "active" : ""}
+              onClick={() => setDestinationMode("direct_stealth_address")}
+            >
+              Direct
+            </button>
+            <button
+              className={destinationMode === "umbra" ? "active" : ""}
+              onClick={() => setDestinationMode("umbra")}
+            >
+              Umbra
+            </button>
+          </div>
+
+          <div className="route-card">
+            <strong>{route.title}</strong>
+            <span>{route.summary}</span>
+            <small className={route.canRoute ? "green" : "amber"}>{route.canRoute ? "Route can be prepared" : route.nextStep}</small>
+          </div>
+
+          {route.blockers.length > 0 && (
+            <ul className="plain-list" style={{ marginTop: "12px", fontSize: "13px" }}>
+              {route.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+            </ul>
+          )}
+
+          <button disabled={!canPrepare} style={{ marginTop: "16px", padding: "10px 14px" }}>
+            Prepare withdraw route
+          </button>
+          <p className="muted" style={{ marginTop: "10px", fontSize: "12px" }}>
+            Available notes in local vault: {notes.length}. The transaction submit path remains disabled until proof inputs,
+            deployed programs, and the selected destination rail are all ready.
+          </p>
+        </Panel>
+
+        <Panel title="Umbra status">
+          <RailStateLine status={umbraStatus} />
+          <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+            <dt>SDK</dt>
+            <dd>@umbra-privacy/sdk 4.0.0</dd>
+            <dt>Network</dt>
+            <dd>{umbraStatus.config.network}</dd>
+            <dt>Program</dt>
+            <dd><code>{umbraStatus.config.programId}</code></dd>
+            <dt>Indexer</dt>
+            <dd>{umbraStatus.config.indexerApiEndpoint ? "Configured" : "Missing"}</dd>
+          </dl>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            Supported route: public SPL/Token-2022 balance to Umbra encrypted balance or receiver-claimable UTXO,
+            then Umbra withdrawal/claim. Native SOL requires wSOL or another supported token representation.
           </p>
         </Panel>
       </div>
@@ -612,6 +743,20 @@ function StatusLine({ label, value, healthy }: { label: string; value: string; h
       <div>
         <strong>{label}</strong>
         <span>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function RailStateLine({ status }: { status: UmbraStatus }) {
+  const Icon = status.state === "live" || status.state === "configured" ? CheckCircle : XCircle;
+  const color = status.state === "live" ? "green" : status.state === "configured" ? "amber" : "danger";
+  return (
+    <div className="rail">
+      <Icon size={16} className={color} />
+      <div>
+        <strong>Umbra {status.label}</strong>
+        <span>{status.details}</span>
       </div>
     </div>
   );

@@ -10,6 +10,8 @@
     "build:frontend": "npm --workspace frontend run build",
     "typecheck:frontend": "npm --workspace frontend run typecheck",
     "check:env": "node scripts/check-env.mjs",
+    "check:umbra": "node scripts/check-umbra.mjs",
+    "smoke:umbra": "node scripts/umbra-smoke.mjs",
     "test:programs": "cargo test --workspace",
     "test:anchor": "anchor test",
     "circuits:compile": "circom circuits/withdraw_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/collateral_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/repay_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits"

@@ -432,3 +432,55 @@ Balance: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited 
 ### Commit
 
 `chore: validate full devnet withdraw proof roundtrip`
+
+---
+
+## 2026-05-08 — Umbra Solana Privacy Rail Implementation
+
+**Branch**: rail/umbra
+**Objective**: Install and wire the official Umbra Solana SDK as a real fail-closed privacy rail without breaking C2H.
+
+### Steps Completed
+
+1. Researched authoritative Umbra sources:
+   - Superteam Umbra Side Track listing
+   - Umbra SDK docs and LLM docs index
+   - npm registry package metadata
+
+2. Installed official SDK:
+   - `@umbra-privacy/sdk@4.0.0`
+   - Confirmed devnet program ID: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
+   - Confirmed mainnet program ID: `UMBRAD2ishebJTcgCLkTkNUx1v3GyoAgpTRPeWoLykh`
+
+3. Added Umbra adapter and scripts:
+   - `frontend/src/lib/privacyRails/umbra.ts`
+   - `scripts/check-umbra.mjs`
+   - `scripts/umbra-smoke.mjs`
+
+4. Wired frontend:
+   - Withdraw screen now supports Direct vs Umbra destination mode.
+   - Direct mode preserves C2H `stealth_address` and labels it lower privacy.
+   - Umbra mode is blocked for current native SOL exits until a supported SPL/Token-2022 mint route exists.
+   - Added Umbra status panel.
+
+5. Updated docs and env:
+   - `.env.example`
+   - `README.md`
+   - `docs/HACKATHON.md`
+   - `docs/PRIVACY_AND_THREAT_MODEL.md`
+
+### Blockers / Non-Claims
+
+- Umbra docs support SPL/Token-2022 balances; current ShieldLend C2H withdrawal releases native SOL lamports.
+- Real Umbra route needs wSOL or another supported SPL/Token-2022 exit leg.
+- `@umbra-privacy/web-zk-prover@2.0.1` peers `@umbra-privacy/sdk@2.0.3`; it was not force-installed beside SDK 4.0.0.
+- No Umbra private transfer success is claimed; no funded devnet Umbra token action was submitted.
+
+### Validations
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS, with existing `web-worker`/`ffjavascript` warning
+- `npm run check:umbra` — PASS with network access; devnet indexer and relayer health both 200
+- `npm run smoke:umbra` — PASS with network access; client init and devnet query worked; no token action submitted
+- `cargo test --workspace` — PASS, 47 tests
+- `anchor build --no-idl` — PASS, with existing Anchor cfg/LTO/undefined-syscall warnings

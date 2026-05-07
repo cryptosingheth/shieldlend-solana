@@ -1,16 +1,25 @@
 # Current Task
 
-## Status: C2H complete — full devnet withdraw round-trip with on-chain Groth16 BN254 verification confirmed.
+## Status: Umbra privacy rail adapter implemented on `rail/umbra`; C2H full devnet withdraw round-trip preserved.
 
 ## Active Objective
 
-Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
+Umbra Solana Privacy Rail implementation task — COMPLETE for SDK install, adapter, UI route selection, docs, and local validations.
+
+Previous C2H remains intact:
 
 - `deposit` confirmed: sig `3dsEYbRR...` (commitment at leaf 0)
 - `flush_epoch` confirmed: sig `2GXQhThH...` (smoke root inserted)
 - `nullifier_registry::update_authorized_programs` fixed: sig `5nqg3EDx...`
 - `store_withdraw_proof` confirmed: sig `5vd2RnQJ...`
 - `withdraw` confirmed: sig `3s7zqUmu...` — **on-chain Groth16 BN254 verification PASSED (198,502 CU)**
+
+Umbra rail work completed:
+- Installed official `@umbra-privacy/sdk@4.0.0`.
+- Added `frontend/src/lib/privacyRails/umbra.ts` with SDK-backed client/register/deposit/withdraw/receiver-UTXO functions and fail-closed route planning.
+- Added `scripts/check-umbra.mjs` and `scripts/umbra-smoke.mjs`.
+- Wired Withdraw UI destination mode: direct `stealth_address` fallback vs Umbra SDK route.
+- Updated `.env.example`, README, `docs/HACKATHON.md`, and `docs/PRIVACY_AND_THREAT_MODEL.md`.
 
 ## Current Local Truth
 
@@ -25,13 +34,20 @@ Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
 8. B7 stack-frame mitigation (C2G-A) applied — all four contexts boxed.
 9. `frontend/src/lib/solanaClient.ts` — all proof-store instruction builders added.
 10. 47 Rust unit tests pass.
-11. IKA, MagicBlock PER, MagicBlock Private Payments, Umbra, Encrypt/FHE not wired.
+11. IKA, MagicBlock PER, MagicBlock Private Payments, Encrypt/FHE not wired.
 12. All three programs deployed to devnet.
 13. `shielded_pool::initialize` confirmed.
 14. `nullifier_registry::authorized_programs` fixed to contain registry_writer PDA addresses (not program IDs).
 15. Full round-trip (deposit → flush_epoch → store_proof → withdraw) confirmed on devnet.
 16. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed.
 17. `scripts/devnet-fullround.mjs` — full round-trip smoke script (idempotent, auto-fixes auth).
+18. Umbra SDK devnet config confirmed:
+    - Package: `@umbra-privacy/sdk@4.0.0`
+    - Devnet program ID: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
+    - Devnet indexer health: 200 `{"status":"ok"}`
+    - Devnet relayer health: 200 `{"status":"ok"}`
+19. Umbra smoke initialized a client and queried devnet user account state, but did not submit a token action.
+20. Current ShieldLend C2H withdrawal is native SOL direct `stealth_address`; Umbra supports SPL/Token-2022 balances, so true Umbra routing needs wSOL/SPL exit wiring.
 
 ## Deployed Programs (Devnet) — All Verified
 
@@ -56,15 +72,19 @@ Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
 
 ## Known Blockers
 
-None blocking further work. All C2H goals achieved:
+None blocking C2H. Umbra rail blockers for live transfer:
 - Full Groth16 round-trip on devnet: CONFIRMED
 - UnauthorizedWriter (registry_writer PDA vs program ID): RESOLVED
+- Native SOL is not a direct Umbra SDK balance type; use wSOL or another supported SPL/Token-2022 mint.
+- `@umbra-privacy/web-zk-prover@2.0.1` peers `@umbra-privacy/sdk@2.0.3`, so this branch did not force-install it beside SDK 4.0.0.
+- No funded Umbra supported-mint devnet action was submitted.
 
 ## Immediate Next Actions
 
-1. **Privacy rails** — wire IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt.
-2. **Production realloc design** — ShieldedPoolState should use realloc constraints for production-scale capacity.
-3. **Trusted setup ceremony** — DEV/TEST ptau is not production-ready.
+1. **Umbra live action** — choose supported mint (wSOL for SOL-like exits), fund signer, then submit a real SDK register/deposit or receiver-UTXO smoke.
+2. **Privacy rails** — wire IKA, MagicBlock PER/PrivatePayments, Encrypt.
+3. **Production realloc design** — ShieldedPoolState should use realloc constraints for production-scale capacity.
+4. **Trusted setup ceremony** — DEV/TEST ptau is not production-ready.
 
 ## Relevant Files
 

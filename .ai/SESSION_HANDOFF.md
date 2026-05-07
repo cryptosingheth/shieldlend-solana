@@ -2,11 +2,36 @@
 
 ## Task Objective
 
-Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
+Umbra Solana Privacy Rail implementation on `rail/umbra` — COMPLETE.
 
 ## Current Status
 
-**C2H complete.** All three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed. UnauthorizedWriter blocker discovered and fixed.
+**Umbra adapter complete; C2H preserved.** Official `@umbra-privacy/sdk@4.0.0` is installed. The frontend has a fail-closed Umbra adapter and Withdraw destination mode selector. Direct `stealth_address` mode remains preserved for the existing C2H native SOL withdrawal path and is labeled lower privacy. Umbra routing is blocked for the current native SOL path until ShieldLend adds a wSOL/SPL/Token-2022 exit leg.
+
+Previous C2H remains complete: all three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed.
+
+## Umbra SDK Findings
+
+- Source docs: `https://sdk.umbraprivacy.com/introduction` and `https://sdk.umbraprivacy.com/llms.txt`.
+- Official package installed: `@umbra-privacy/sdk@4.0.0`.
+- Docs/registry drift: docs LLM index mentions SDK `v3.0.0`, but npm registry latest resolved to `4.0.0`.
+- Devnet program ID: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`.
+- Mainnet program ID: `UMBRAD2ishebJTcgCLkTkNUx1v3GyoAgpTRPeWoLykh`.
+- Supported assets per docs: SPL and Token-2022; native SOL requires wSOL or another supported token representation.
+- Wallet support: SDK expects `IUmbraSigner` and exports `createSignerFromWalletAccount` for Wallet Standard wallet accounts.
+- Optional prover blocker: `@umbra-privacy/web-zk-prover@2.0.1` peers `@umbra-privacy/sdk@2.0.3`, so it was not force-installed beside SDK 4.0.0.
+
+## Files Changed (Umbra)
+
+- `frontend/src/lib/privacyRails/umbra.ts` — new official SDK adapter, status/config helpers, route planning, direct deposit/withdraw, receiver-UTXO function.
+- `scripts/check-umbra.mjs` — new SDK/package/program/indexer/relayer check.
+- `scripts/umbra-smoke.mjs` — new SDK client-init/devnet query smoke; no token action submitted.
+- `frontend/src/app/page.tsx` — Withdraw destination mode selector + Umbra status panel.
+- `frontend/src/app/globals.css` — route selector/status styling.
+- `frontend/src/lib/protocolAdapters.ts` — Umbra status reflects SDK config and required full-privacy rail.
+- `.env.example` — Umbra devnet env vars.
+- `docs/HACKATHON.md`, `docs/PRIVACY_AND_THREAT_MODEL.md`, `README.md` — updated to avoid fake native-SOL/Umbra claims.
+- `package.json`, `frontend/package.json`, `package-lock.json` — SDK dependency and scripts.
 
 ## Deployed Programs (Devnet) — All Verified
 
@@ -40,7 +65,7 @@ Registry_writer PDAs:
 
 The initial `authorized_programs` list was set to program IDs (wrong). Fixed by calling `update_authorized_programs` with the PDA addresses. `devnet-fullround.mjs` Step 0a auto-detects and corrects this.
 
-## Files Changed (C2H, this session)
+## Files Changed (C2H, previous session)
 
 - `scripts/devnet-fullround.mjs` — new; full round-trip script (deposit + flush + auth fix + store_proof + withdraw)
 - `docs/IMPLEMENTATION_STATUS.md` — C2H entries added; on-chain Groth16 confirmed; lending_pool deployed row updated
@@ -59,20 +84,31 @@ The initial `authorized_programs` list was set to program IDs (wrong). Fixed by 
 
 ## Validations Passed (C2H)
 
-- `cargo fmt --all -- --check` — PASS
 - `cargo test --workspace` — PASS (47 tests)
 - `npm run typecheck:frontend` — PASS
 - `npm run build:frontend` — PASS
 - `anchor build --no-idl` — PASS (zero stack-frame error diagnostics)
 
+## Validations Passed (Umbra Branch)
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS (existing `web-worker`/`ffjavascript` warning)
+- `npm run check:umbra` — PASS with network access; devnet indexer and relayer health both 200.
+- `npm run smoke:umbra` — PASS with network access; client initialized and devnet user account query returned `non_existent`; no token transfer submitted.
+- `cargo test --workspace` — PASS (47 tests; existing Anchor cfg warnings)
+- `anchor build --no-idl` — PASS (existing cfg/LTO/undefined-syscall warnings)
+
 ## Remaining Work (Next Task)
 
-1. **Privacy rails**: IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt not wired.
-2. **Production realloc design**: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production-scale capacity (current cap=8 for devnet).
-3. **Trusted setup ceremony**: DEV/TEST ptau is not production-ready.
+1. **Umbra live action**: choose a supported SPL/Token-2022 mint (wSOL for SOL-like exits), fund a devnet signer/token account, then submit a real SDK register/deposit or receiver-UTXO smoke.
+2. **Disbursement/withdraw asset bridge**: current ShieldLend C2H SOL custody exits native lamports; true Umbra routing requires a wSOL/SPL leg or program-level tokenized exit design.
+3. **Privacy rails**: IKA, MagicBlock PER/PrivatePayments, Encrypt not wired.
+4. **Production realloc design**: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production-scale capacity (current cap=8 for devnet).
+5. **Trusted setup ceremony**: DEV/TEST ptau is not production-ready.
 
 ## Do Not Claim
 
 - Production ZK proof artifacts (DEV/TEST only — `circuits/keys/dev_pot14_final.ptau`).
-- Any privacy rail (IKA, MagicBlock, Umbra, Encrypt) is active.
+- Umbra private transfer success. SDK/config/health are confirmed; no funded Umbra token action was submitted.
+- Any full privacy rail (IKA, MagicBlock, Encrypt) is active.
 - Full on-chain privacy (Groth16 verification confirmed with DEV/TEST setup only).
