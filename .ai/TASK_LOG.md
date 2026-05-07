@@ -432,3 +432,44 @@ Balance: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited 
 ### Commit
 
 `chore: validate full devnet withdraw proof roundtrip`
+
+---
+
+## 2026-05-08 — IKA dWallet Privacy Rail (rail/ika branch)
+
+**Branch**: rail/ika
+**Objective**: Implement IKA dWallet rail or strict capability probe + exact blocker.
+
+### Research Findings (verified 2026-05-08)
+
+- `@ika.xyz/sdk ^0.3.1` is in `frontend/package.json`; installed at root via npm workspaces.
+- SDK exports: `IkaClient`, `coordinatorTransactions` (DKG, sign, FutureSign), 4 curves (Ed25519, SECP256K1, Ristretto, SECP256R1).
+- Endpoint: `https://pre-alpha-dev-1.ika.ika-network.net:443` (gRPC, auth via user signature).
+- **BLOCKER 1**: Single mock signer — not real distributed MPC. Source: https://solana-pre-alpha.ika.xyz/
+- **BLOCKER 2**: `ika-dwallet-anchor` Rust CPI crate absent from both Anchor programs — Solana relay not wired.
+- **Architecture**: TypeScript SDK manages Sui-side dWallet lifecycle; Solana relay is a Rust CPI concern.
+
+### Files Created
+
+- `frontend/src/lib/privacyRails/ika.ts` — capability probe, `IkaCapabilityReport` type, `buildSignerContext()`, signer mode types
+- `scripts/check-ika.mjs` — local probe: SDK availability, CPI presence, exact blockers, capability matrix
+
+### Files Updated
+
+- `frontend/src/lib/protocolAdapters.ts` — IKA rail `healthy: false`, updated role to "pre-alpha / mock signer — CPI not wired"; re-exported `SignerMode` type
+- `frontend/src/app/page.tsx` — WhatWorksTodayPanel IKA entry updated; deposit signer mode warning updated
+- `.env.example` — removed `NEXT_PUBLIC_IKA_ENABLED=true` (was misleading); added accurate comment
+- `package.json` — added `check:ika` script
+- `node_modules/@ika.xyz/sdk` — installed at root via `npm install @ika.xyz/sdk@0.3.1`
+
+### Validations (all pass)
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS
+- `node scripts/check-ika.mjs` — exits 0 (SDK available; architectural blockers documented)
+
+### IKA Solana Path
+
+**Does NOT work today.** Solana CPI is not wired; mock signer only. Signer mode is `direct_wallet` (reduced privacy). The SDK probe correctly reports all blockers with source-backed evidence.

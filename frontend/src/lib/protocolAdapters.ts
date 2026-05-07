@@ -1,4 +1,5 @@
 export type ProtocolMode = "full" | "degraded" | "emergency";
+export type { SignerMode } from "./privacyRails/ika";
 
 export interface RailStatus {
   key: "programs_deployed" | "zk_artifacts" | "groth16" | "ika" | "per" | "vrf" | "private_payments" | "encrypt" | "umbra";
@@ -33,8 +34,8 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
   {
     key: "ika",
     name: "IKA dWallet relay",
-    role: "Relay authorization — prevents user wallet from being on-chain signer",
-    healthy: process.env.NEXT_PUBLIC_IKA_ENABLED === "true",
+    role: "Relay authorization (pre-alpha / mock signer) — ika-dwallet-anchor CPI not wired in Anchor programs; Solana relay not active",
+    healthy: false,
     requiredForFullPrivacy: true,
   },
   {

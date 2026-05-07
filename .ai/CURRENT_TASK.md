@@ -1,6 +1,6 @@
 # Current Task
 
-## Status: C2H complete — full devnet withdraw round-trip with on-chain Groth16 BN254 verification confirmed.
+## Status: IKA rail complete — capability probe + exact blocker documented. C2H preserved.
 
 ## Active Objective
 

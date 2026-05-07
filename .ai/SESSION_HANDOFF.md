@@ -2,11 +2,13 @@
 
 ## Task Objective
 
-Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
+IKA dWallet privacy rail — COMPLETE (probe + exact blocker documented, no fake relay).
 
 ## Current Status
 
-**C2H complete.** All three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed. UnauthorizedWriter blocker discovered and fixed.
+**IKA rail complete (probe + blocker).** IKA pre-alpha SDK probed and documented. Solana relay is NOT wired — exact blockers documented with source evidence. C2H still holds.
+
+**C2H still holds.** All three programs remain deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification: 198,502 CU, pairing passed.
 
 ## Deployed Programs (Devnet) — All Verified
 
@@ -40,16 +42,15 @@ Registry_writer PDAs:
 
 The initial `authorized_programs` list was set to program IDs (wrong). Fixed by calling `update_authorized_programs` with the PDA addresses. `devnet-fullround.mjs` Step 0a auto-detects and corrects this.
 
-## Files Changed (C2H, this session)
+## Files Changed (IKA rail, this session)
 
-- `scripts/devnet-fullround.mjs` — new; full round-trip script (deposit + flush + auth fix + store_proof + withdraw)
-- `docs/IMPLEMENTATION_STATUS.md` — C2H entries added; on-chain Groth16 confirmed; lending_pool deployed row updated
-- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — C2H section added with full tx sigs and UnauthorizedWriter discovery/fix
-- `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` — status updated to C2H complete; round-trip section added
-- `.ai/CURRENT_TASK.md` — C2H complete
-- `.ai/SESSION_HANDOFF.md` — this file
-- `.ai/DECISIONS.md` — registry_writer PDA authorization decision added
-- `.ai/TASK_LOG.md` — C2H complete entry appended
+- `frontend/src/lib/privacyRails/ika.ts` — new; capability probe, signer mode types, disclosure constants
+- `scripts/check-ika.mjs` — new; local probe: SDK availability, CPI presence, exact blockers, capability matrix
+- `frontend/src/lib/protocolAdapters.ts` — IKA rail healthy: false, role updated, SignerMode re-exported
+- `frontend/src/app/page.tsx` — WhatWorksTodayPanel + deposit warning updated for IKA pre-alpha/mock signer
+- `.env.example` — removed NEXT_PUBLIC_IKA_ENABLED=true; added accurate comment
+- `package.json` — added check:ika script
+- `.ai/TASK_LOG.md` — IKA rail entry appended
 
 ## Active Wallet
 
@@ -67,9 +68,12 @@ The initial `authorized_programs` list was set to program IDs (wrong). Fixed by 
 
 ## Remaining Work (Next Task)
 
-1. **Privacy rails**: IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt not wired.
-2. **Production realloc design**: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production-scale capacity (current cap=8 for devnet).
-3. **Trusted setup ceremony**: DEV/TEST ptau is not production-ready.
+1. **MagicBlock PER/VRF/PrivatePayments**: not wired.
+2. **Umbra**: not wired.
+3. **Encrypt FHE**: not wired.
+4. **IKA Solana relay (if pre-alpha matures)**: wire `ika-dwallet-anchor` CPI into Anchor programs when mock signer is replaced by real MPC.
+5. **Production realloc design**: ShieldedPoolState should use `realloc` constraints for production-scale capacity.
+6. **Trusted setup ceremony**: DEV/TEST ptau is not production-ready.
 
 ## Do Not Claim
 
