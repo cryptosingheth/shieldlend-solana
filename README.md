@@ -2,10 +2,10 @@
 
 A zero-knowledge, privacy-preserving lending protocol design for Solana.
 
-Current local implementation is a pre-alpha scaffold. Anchor programs compile,
-SBF binaries are generated, and circuit WASM artifacts exist, but no devnet
-deployment, trusted setup, zkeys, verification keys, on-chain Groth16 verifier,
-or external privacy rails are live.
+Current local implementation is a pre-alpha scaffold. All three Anchor programs
+are deployed on devnet. On-chain Groth16 BN254 verification is confirmed for
+the withdraw path (DEV/TEST trusted setup only). External privacy rails (IKA,
+MagicBlock PER/Private Payments, Umbra, Encrypt/FHE) are not yet wired.
 
 Built for the **Colosseum Frontier Hackathon 2026**.
 
@@ -52,25 +52,26 @@ component addresses. These layers are not all live in the current local build:
 
 ## Current Build Status
 
-> **Pre-alpha local scaffold — reconciled 2026-05-05.**
+> **Pre-alpha devnet build — reconciled 2026-05-07 (C2H complete).**
 > Local source state is authoritative. Do not use stale GitHub-rendered README
 > snapshots for status. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md)
 > for the full ledger.
 
 | Component | Status | Notes |
 |---|---|---|
-| Anchor program IDs | Synced in `Anchor.toml` and `declare_id!` | `frontend/src/lib/contracts.ts` still has old IDs; not deployment-ready |
-| Anchor SBF build | Passes with `anchor build --no-idl` | `.so` files exist in `target/deploy/` |
+| Anchor program IDs | Synced — all three `declare_id!`, `Anchor.toml`, `contracts.ts` | Confirmed by `anchor keys list` and devnet deployment |
+| Anchor SBF build | Passes with `anchor build --no-idl` | `.so` files in `target/deploy/`; zero stack-frame errors |
 | Full Anchor IDL build | Blocked | Anchor/proc-macro2 compatibility issue; intentionally out of scope |
-| Devnet deployment | Not done | No deployed program accounts verified |
-| Rust unit tests | Active | `cargo test --workspace` passes: 21 tests |
+| Devnet deployment | **All three deployed** | `nullifier_registry`, `shielded_pool`, `lending_pool` on devnet |
+| Rust unit tests | Active | `cargo test --workspace` passes: 47 tests |
 | Frontend checks | Active | Typecheck and production build pass |
-| `withdraw_ring.circom` | Compiles | Browser WASM generated and hashed |
-| `collateral_ring.circom` | Compiles | Browser WASM generated and hashed |
-| `repay_ring.circom` | Compiles | Browser WASM generated and hashed |
-| `.zkey` / `_vkey.json` | Missing | No `.ptau` or trusted setup exists locally |
-| On-chain Groth16 verification | Not live | Program verifier functions intentionally fail closed |
-| External privacy rails | Not live | IKA, PER, Private Payments, Umbra, Encrypt/FHE are not wired |
+| `withdraw_ring.circom` | Compiles | Browser WASM + DEV/TEST zkey + vkey generated and hashed |
+| `collateral_ring.circom` | Compiles | Browser WASM + DEV/TEST zkey + vkey generated and hashed |
+| `repay_ring.circom` | Compiles | Browser WASM + DEV/TEST zkey + vkey generated and hashed |
+| DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
+| On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
+| On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
+| External privacy rails | Not wired | IKA, PER, Private Payments, Umbra, Encrypt/FHE |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
 ---
@@ -93,7 +94,7 @@ ShieldLend is three Anchor programs. All SOL stays in one place. The other two p
 flowchart TD
     classDef prog fill:#1e293b,stroke:#475569,color:#e2e8f0
 
-    SP["shielded_pool\nSOL custody · Poseidon Merkle tree depth 24\nVerifier hooks fail closed until Groth16 is wired"]:::prog
+    SP["shielded_pool\nSOL custody · Poseidon Merkle tree depth 24\nGroth16 withdraw verifier confirmed on devnet (DEV/TEST)"]:::prog
     LP["lending_pool\nZero SOL custody — accounting only\nKamino 11-point interest model\nProof/payment/FHE hooks fail closed"]:::prog
     NR["nullifier_registry\nShared state: Active → Locked → Spent\nAuthorized writers: shielded_pool + lending_pool"]:::prog
 
@@ -149,10 +150,12 @@ external docs.
 | MagicBlock Private Payments | Not wired | No |
 | Umbra stealth exits | Not wired | No |
 | Encrypt/FHE oracle or health computation | Not wired | No |
-| On-chain Groth16 verification | Not wired | No |
+| On-chain Groth16 verification (withdraw) | Confirmed on devnet — DEV/TEST only | No — DEV/TEST trusted setup, not production |
+| On-chain Groth16 verification (borrow/repay) | Wired in program; devnet end-to-end not yet run | No |
 | Production trusted setup | Missing | No |
 | Full private repayment | Not live | No |
-| Full private borrow/withdraw flow | Not deployed or end-to-end verified | No |
+| Full private withdraw flow | Devnet round-trip confirmed — DEV/TEST only | No — DEV/TEST only; privacy rails not wired |
+| Full private borrow flow | Not end-to-end verified on devnet | No |
 
 ---
 
@@ -160,7 +163,7 @@ external docs.
 
 SOL flows:
 - **Target deposit**: IKA relay -> ShieldedPool via PER batch.
-- **Current deposit code**: direct wallet-signed frontend path; programs are not deployed.
+- **Current deposit code**: direct wallet-signed frontend path; programs deployed on devnet.
 - **Target withdraw**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra stealth address.
 - **Current withdraw code**: program path fails closed before proof verification.
 - **Target borrow**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra stealth address.
@@ -172,23 +175,24 @@ SOL flows:
 
 ## ZK Circuits
 
-All three circuits compile locally and browser WASM artifacts have been
-generated. They do not yet produce usable live Groth16 proofs because the
-trusted setup artifacts are missing, and no on-chain verifier is wired.
+All three circuits compile locally. DEV/TEST browser WASM artifacts, zkeys, and
+vkeys are generated and hashed. On-chain Groth16 BN254 verification is confirmed
+on devnet for the withdraw path (DEV/TEST trusted setup only — not production).
+Borrow and repay verifiers are wired in the programs but not yet exercised end-to-end.
 
-| Circuit | Source status | Browser WASM | ZKey | VKey | Public signals |
-|---|---|---|---|---|---|
-| `withdraw_ring.circom` | Compiles | Generated and hashed | Missing | Missing | `denomination_out`, `ring[16]`, `nullifierHash`, `root` |
-| `collateral_ring.circom` | Compiles | Generated and hashed | Missing | Missing | `ring[16]`, `nullifierHash`, `root`, `borrowed`, `minRatioBps` |
-| `repay_ring.circom` | Compiles | Generated and hashed | Missing | Missing | `nullifierHash`, `loanId`, `outstandingBalance`, `settlementReceiptHash`, `repaymentVault`, `receiptBindingHash` |
+| Circuit | Source status | Browser WASM | ZKey | VKey | On-chain status | Public signals |
+|---|---|---|---|---|---|---|
+| `withdraw_ring.circom` | Compiles | Generated | DEV/TEST | DEV/TEST | **Confirmed on devnet** (198,502 CU) | `denomination_out`, `ring[16]`, `nullifierHash`, `root` |
+| `collateral_ring.circom` | Compiles | Generated | DEV/TEST | DEV/TEST | Wired; devnet end-to-end not run | `ring[16]`, `nullifierHash`, `root`, `borrowed`, `minRatioBps` |
+| `repay_ring.circom` | Compiles | Generated | DEV/TEST | DEV/TEST | Wired; devnet end-to-end not run | `nullifierHash`, `loanId`, `outstandingBalance`, `settlementReceiptHash`, `repaymentVault`, `receiptBindingHash` |
 
 Artifact boundaries:
 
-- `circuits/artifact_manifest.json` records WASM hashes.
-- `.zkey` and `_vkey.json` files are missing.
-- No `.ptau` / trusted setup file exists locally.
-- No proof-generation smoke test is recorded as passing.
-- On-chain `groth16-solana` verification is not live.
+- `circuits/artifact_manifest.json` records WASM, zkey, and vkey hashes.
+- DEV/TEST zkeys and vkeys exist at `circuits/keys/`. Not a production trusted setup.
+- DEV/TEST `.ptau`: `circuits/keys/dev_pot14_final.ptau` (SHA-256 `3838aee2...`).
+- Local proof smoke tests passed for all three circuits.
+- On-chain `groth16-solana` verification is confirmed for `withdraw_ring` on devnet (DEV/TEST only).
 
 **Nullifier formula** (all circuits): `nullifierHash = Poseidon(nullifier, leaf_index, SHIELDED_POOL_PROGRAM_ID)`
 
@@ -196,8 +200,8 @@ Artifact boundaries:
 - `SHIELDED_POOL_PROGRAM_ID`: domain separator — prevents cross-contract nullifier correlation
 
 **Root validation design**: the program retains 30 non-zero historical roots
-for verifier use once on-chain Groth16 verification is wired. Proof validation
-is not live yet.
+(`ROOT_HISTORY_SIZE = 30`). On-chain Groth16 verification checks the submitted
+root against this history. Confirmed working on devnet (C2H round-trip).
 
 ---
 
@@ -244,7 +248,7 @@ computation, or threshold reveal is live.
 | Exit batching (withdrawals + disbursements) | MagicBlock PER (same enclave) | Both withdrawal and borrow disbursement exits batch together — type indistinguishable on-chain |
 | Anonymity set expansion | MagicBlock VRF | Dummy insertions must be cryptographically unbiasable; VRF provides per-shuffle on-chain verifiable randomness; carries forward into all future ring proofs |
 | Withdrawal submission | IKA relay | User wallet would be the ring proof transaction signer if submitted directly — permanently linking wallet to 16 ring candidates; relay routing prevents this |
-| Withdrawal authorization | groth16-solana | Target: ring proof should be verified on-chain atomically with fund release; not live yet |
+| Withdrawal authorization | groth16-solana | On-chain BN254 Groth16 verified on devnet (DEV/TEST trusted setup); 198,502 CU |
 | Withdrawal recipient | Umbra SDK | One-time stealth address with zero prior history; Umbra SDK handles generation, key derivation |
 
 ### LendingPool
@@ -325,10 +329,11 @@ requires a multi-sig governance vote with time-lock to activate.
 
 ### Current (as of May 2026)
 
-> Anchor workspace, programs, circuits, generated WASM artifacts, test
-> scaffolds, and frontend MVP shell exist locally. `anchor build --no-idl`
-> passes and `.so` files are generated. No programs are deployed. Zkeys,
-> verification keys, trusted setup, and on-chain proof verification are missing.
+> Anchor workspace, programs, circuits, generated artifacts, test scaffolds, and
+> frontend MVP shell. `anchor build --no-idl` passes; `.so` files in
+> `target/deploy/`. All three programs deployed on devnet. DEV/TEST zkeys,
+> vkeys, and Groth16 on-chain withdraw verification confirmed. Production trusted
+> setup and external privacy rails are not yet in place.
 
 ```
 shieldlend-solana/
@@ -341,7 +346,7 @@ shieldlend-solana/
 │   ├── repay_ring.circom       # nullifier knowledge + receipt binding; compiles
 │   ├── artifact_manifest.json  # generated WASM hashes; zkey/vkey hashes are null
 │   └── CEREMONY.md             # trusted setup / zkey blocker status
-├── programs/                   # all three programs compile; not deployed
+├── programs/                   # all three programs compiled + deployed on devnet
 │   ├── shielded_pool/src/lib.rs
 │   ├── lending_pool/src/lib.rs
 │   └── nullifier_registry/src/lib.rs

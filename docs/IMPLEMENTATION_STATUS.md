@@ -10,9 +10,9 @@ fail-closed scaffolding, missing integrations, and deployment status.
 
 | Area | Current local status | Claim boundary |
 |---|---|---|
-| Anchor programs | Compile to SBF with `anchor build --no-idl`; `.so` files exist in `target/deploy/` | Not deployed; full IDL generation is blocked |
-| Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` | Not deployed; synced local IDs are not proof of devnet readiness |
-| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST browser WASM, zkey, and vkey artifacts are generated and hashed; local proof smoke tests pass | Production trusted setup is missing; on-chain verification is not wired or live |
+| Anchor programs | Compile to SBF with `anchor build --no-idl`; all three deployed on devnet | Full IDL generation is blocked (Anchor/proc-macro2); use `--no-idl` path |
+| Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
+| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
 | External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
@@ -87,9 +87,9 @@ BN254 field element:
 
 | Circuit | Source file | Public signal metadata | Browser WASM | ZKey | Verification key | Live proof status |
 |---|---|---|---|---|---|---|
-| Withdraw | `circuits/withdraw_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Local smoke passed; on-chain not live |
-| Collateral | `circuits/collateral_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Local smoke passed; on-chain not live |
-| Repay | `circuits/repay_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Local smoke passed; on-chain not live |
+| Withdraw | `circuits/withdraw_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | **On-chain confirmed devnet** (198,502 CU, C2H) |
+| Collateral | `circuits/collateral_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Wired in program; devnet end-to-end not yet run |
+| Repay | `circuits/repay_ring.circom` | Recorded in `circuits/public_signals.json` | Generated and hashed | DEV/TEST generated and verified | DEV/TEST generated and hashed | Wired in program; devnet end-to-end not yet run |
 
 Artifact details:
 
@@ -103,7 +103,7 @@ Artifact details:
 - Verifier modules generated (`programs/*/src/groth16_verifier.rs`) with real DEV/TEST vkeys and
   6 smoke tests (3 circuits × verify + mutate). All pass.
 - DEV/TEST Groth16 verifier is **wired** to all three instruction handlers (`verify_withdraw_proof`, `verify_collateral_proof`, `verify_repay_proof`). Cross-field consistency guards in place.
-- On-chain execution is blocked by B6 (transaction MTU — see `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`).
+- On-chain execution confirmed: B6 resolved (C2F); B7 resolved (C2G-A); full devnet round-trip confirmed (C2H). See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md`.
 
 ## Implemented Code
 
@@ -141,7 +141,8 @@ Artifact details:
 | On-chain Groth16 verification | DEV/TEST verifier confirmed on devnet; 198,502 CU; full withdraw round-trip passes; B7 stack frame resolved (C2G-A) | No — DEV/TEST trusted setup only; production ceremony required |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
 | Full private repayment | Not live | No |
-| Full private borrow/withdraw flow | Not end-to-end verified | No |
+| Full private withdraw flow (DEV/TEST) | Devnet round-trip confirmed (C2H) — privacy rails not wired | No — DEV/TEST only; IKA/PER/Umbra not active |
+| Full private borrow flow | Not end-to-end verified on devnet | No |
 | Local note/history encryption | Implemented | Yes, local-browser only |
 | Fixed denominations | Implemented in code | Yes, as local program logic |
 
