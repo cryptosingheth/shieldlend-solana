@@ -165,7 +165,7 @@ SOL flows:
 - **Target deposit**: IKA relay -> ShieldedPool via PER batch.
 - **Current deposit code**: direct wallet-signed frontend path; programs deployed on devnet.
 - **Target withdraw**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra stealth address.
-- **Current withdraw code**: program path fails closed before proof verification.
+- **Current withdraw code**: DEV/TEST Groth16 round-trip confirmed on devnet; privacy rails (IKA relay, PER, Umbra) not wired.
 - **Target borrow**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra stealth address.
 - **Current borrow code**: lending proof verifier fails closed before disbursement.
 - **Target repay**: MagicBlock Private Payments receipt plus IKA-submitted proof.
@@ -316,7 +316,7 @@ requires a multi-sig governance vote with time-lock to activate.
 - Poseidon hash (matching circuits)
 
 **Off-Chain / Client**
-- snarkjs 0.7.6 (browser proof generation path; blocked until zkeys exist)
+- snarkjs 0.7.6 (browser proof generation path; DEV/TEST zkeys and vkeys generated)
 - Circom (withdraw_ring, collateral_ring, repay_ring)
 - Umbra SDK integration (planned)
 - AES-256-GCM + HKDF (client-side note vault, from wallet signature)
@@ -344,7 +344,7 @@ shieldlend-solana/
 │   ├── withdraw_ring.circom    # K=16 ring + depth-24 Merkle; nullifier formula updated
 │   ├── collateral_ring.circom  # K=16 ring + LTV in-circuit; nullifier formula updated
 │   ├── repay_ring.circom       # nullifier knowledge + receipt binding; compiles
-│   ├── artifact_manifest.json  # generated WASM hashes; zkey/vkey hashes are null
+│   ├── artifact_manifest.json  # WASM, DEV/TEST zkey, and vkey hashes recorded
 │   └── CEREMONY.md             # trusted setup / zkey blocker status
 ├── programs/                   # all three programs compiled + deployed on devnet
 │   ├── shielded_pool/src/lib.rs
@@ -379,7 +379,7 @@ shieldlend-solana/
 │       │   └── page.tsx        # wallet connect + deposit flow shell
 │       └── lib/
 │           ├── circuits.ts         # snarkjs Groth16 proof generation
-│           ├── contracts.ts        # stale program IDs; needs code follow-up
+│           ├── contracts.ts        # synced program IDs (all three devnet-deployed)
 │           ├── noteStorage.ts      # AES-256-GCM note vault
 │           ├── solanaClient.ts     # wallet / RPC / program ID boundaries
 │           ├── protocolAdapters.ts # IKA / Encrypt / MagicBlock adapter stubs

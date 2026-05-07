@@ -62,7 +62,7 @@ Additional synced references:
 | Full `anchor build` with IDL | Blocked | Anchor/proc-macro2 compatibility issue, intentionally out of scope |
 | `nullifier_registry` devnet deploy | **Deployed** | Slot 460526750; ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `shielded_pool` devnet deploy | **Deployed + upgraded** | Initial slot 460526822; upgraded (Vec capacity fix); ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `lending_pool` devnet deploy | **Blocked** | Insufficient devnet SOL (~1.29 more needed); program otherwise build-ready |
+| `lending_pool` devnet deploy | **Deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill (C2G-B) |
 | `store_withdraw_proof` smoke tx | **Confirmed** | `scripts/devnet-smoke.mjs`; sig `66Bmcz54...`; devnet |
 | `shielded_pool::initialize` | **Confirmed** | sig `QMVjEr1d...`; pool state PDA created; devnet |
 | `shielded_pool` Vec-capacity upgrade | **Deployed** | MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8; SPACE 14500→1900 bytes |
@@ -166,18 +166,19 @@ See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file
 
 Safe wording:
 
-- "Pre-alpha local scaffold."
-- "Anchor programs compile and SBF artifacts are generated."
-- "Circuits compile and DEV/TEST browser proving artifacts are generated."
-- "Local DEV/TEST Groth16 proof smoke tests pass."
-- "Production trusted setup, on-chain verification, external privacy rails, and devnet deployment are not live."
+- "All three programs are deployed on devnet."
+- "On-chain Groth16 BN254 withdraw verification confirmed on devnet (DEV/TEST trusted setup only)."
+- "DEV/TEST zkeys and vkeys generated; production trusted setup is missing."
+- "Borrow and repay verifiers are wired; devnet end-to-end flows not yet exercised."
+- "External privacy rails (IKA, MagicBlock PER/Private Payments, Umbra, Encrypt/FHE) are not wired."
 
-Unsafe wording:
+Unsafe wording (do not use):
 
 - "Deposits are private."
 - "Withdrawals are private."
 - "Borrow/repay flows are private end-to-end."
-- "Groth16 proofs are verified on-chain."
+- "Groth16 proofs are verified on-chain." (partial truth — withdraw only, DEV/TEST only; say it precisely)
 - "Production trusted setup is complete."
 - "IKA, MagicBlock, Umbra, or Encrypt privacy is active."
 - "Production privacy artifacts are ready."
+- "On-chain privacy is live." (privacy rails are not wired; Groth16 verification alone is not end-to-end privacy)
