@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { buildEncryptLiquidationRevealContext } from "../../../../../lib/prealphaIntegrations";
+import {
+  createEncryptHealthRatioInput,
+  ENCRYPT_PRE_ALPHA_DISCLAIMER,
+} from "../../../../../lib/privacyRails/encrypt";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -9,13 +12,33 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json(
-    buildEncryptLiquidationRevealContext({
+  if (body.createHealthRatioInput === true) {
+    const healthRatioBps = typeof body.healthRatioBps === "string" ? BigInt(body.healthRatioBps) : 15_000n;
+    const created = await createEncryptHealthRatioInput({
       loanPda: body.loanPda,
-      ciphertextHandle: body.ciphertextHandle,
-      collateralValueHandle: body.collateralValueHandle,
-      outstandingDebtLamports: body.outstandingDebtLamports,
-      liquidationThresholdBps: body.liquidationThresholdBps,
-    })
-  );
+      healthRatioBps,
+    });
+
+    return NextResponse.json({
+      provider: "encrypt",
+      operation: "encrypt.v1.EncryptService/CreateInput",
+      graph: "shieldlend_liquidation_health_v1",
+      healthRatioBps: healthRatioBps.toString(),
+      ciphertextIdentifierHex: created.ciphertextIdentifier.toString("hex"),
+      selectedNetworkKeyHex: created.selectedNetworkKeyHex,
+      claimBoundary: ENCRYPT_PRE_ALPHA_DISCLAIMER,
+    });
+  }
+
+  return NextResponse.json({
+    provider: "encrypt",
+    operation: "client_gRPC_probe_only",
+    graph: "shieldlend_liquidation_health_v1",
+    loanPda: body.loanPda,
+    ciphertextHandle: body.ciphertextHandle,
+    collateralValueHandle: body.collateralValueHandle,
+    outstandingDebtLamports: body.outstandingDebtLamports,
+    liquidationThresholdBps: body.liquidationThresholdBps,
+    claimBoundary: ENCRYPT_PRE_ALPHA_DISCLAIMER,
+  });
 }

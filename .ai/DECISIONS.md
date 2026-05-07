@@ -362,3 +362,11 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: Reduce `MAX_EPOCH_COMMITMENTS` and `MAX_EXIT_QUEUE` from 128 to 8 for devnet. `ShieldedPoolState::SPACE` goes from ~14500 bytes to 1900 bytes.
 **Why**: Solana's CPI realloc limit is 10240 bytes per call. Anchor's `init` constraint uses `create_account` + internal `realloc` to initialize accounts. With SPACE=14500, the realloc step fails with "Account data size realloc limited to 10240 in inner instructions". The 128-slot pre-allocation design is incompatible with Anchor's init on current devnet.
 **How to apply**: Production path must use `space = BASE_SPACE` (fixed fields only, empty Vecs) at init + explicit `realloc` constraints on `Deposit` and `FlushEpoch` contexts to grow the account as commitments are added. For devnet smoke testing, cap=8 is sufficient.
+
+---
+
+## Encrypt Pre-Alpha Integration Boundary (rail/encrypt)
+
+**Decision**: Keep Encrypt integration client/sidecar-level on `rail/encrypt`; do not add `encrypt-anchor` to programs in this branch.
+**Why**: Current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`, while this workspace and the C2H-verified devnet programs are on Anchor `0.30.1`. Upgrading Anchor in the privacy-rail branch risks breaking the confirmed Groth16 withdraw round-trip. The installed `@encrypt.xyz/pre-alpha-solana-client@0.1.0` package also exports its gRPC client as TypeScript source in `node_modules`, so plain Node cannot import the SDK directly.
+**How to apply**: Use `frontend/src/lib/privacyRails/encrypt.ts` and `scripts/check-encrypt.mjs` for pre-alpha gRPC `CreateInput` probes. Keep `lending_pool::verify_encrypt_reveal` fail-closed until an Anchor compatibility plan is approved. Preserve the official pre-alpha disclaimer: no production encryption guarantee and data may be plaintext/public.

@@ -432,3 +432,53 @@ Balance: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited 
 ### Commit
 
 `chore: validate full devnet withdraw proof roundtrip`
+
+---
+
+## 2026-05-08 — Encrypt Pre-Alpha Privacy Rail
+
+**Branch**: `rail/encrypt`
+**Objective**: Wire real Encrypt pre-alpha integration where safe without breaking C2H or overstating privacy.
+
+### Steps Completed
+
+1. Researched current Encrypt docs and Superteam track.
+   - Docs require `encrypt-anchor` with `anchor-lang = "0.32"`.
+   - This repo remains on Anchor `0.30.1`, so program-side wiring was deferred.
+   - Docs preserve pre-alpha disclaimer: no production encryption guarantee; data may be plaintext/public.
+
+2. Implemented client/sidecar Encrypt adapter:
+   - `frontend/src/lib/privacyRails/encrypt.ts`
+   - Uses documented gRPC API `encrypt.v1.EncryptService/CreateInput` via `@grpc/grpc-js`.
+   - Discovers active devnet network encryption keys from Encrypt program accounts.
+   - Submits non-sensitive health-ratio test input when explicitly requested.
+
+3. Added `scripts/check-encrypt.mjs` and `npm run check:encrypt`.
+   - `npm run check:encrypt -- --live` discovered active keys and returned ciphertext id `7Ss3kGMQAVXGRSuU1CuggFjMgDjtssiUhZqNmMh5NugW`.
+   - Exact SDK package in lockfile: `@encrypt.xyz/pre-alpha-solana-client@0.1.0`.
+   - Exact API used: `encrypt.v1.EncryptService/CreateInput`.
+
+4. Added frontend/API status surface:
+   - `/api/integrations/encrypt/status`
+   - `/api/integrations/encrypt/liquidation-reveal`
+   - Encrypt pre-alpha status panel on the Positions screen.
+
+5. Updated claim boundaries:
+   - `README.md`
+   - `docs/HACKATHON.md`
+   - `docs/PRIVACY_AND_THREAT_MODEL.md`
+   - `.ai/CURRENT_TASK.md`
+   - `.ai/SESSION_HANDOFF.md`
+   - `.ai/DECISIONS.md`
+
+### Validations
+
+- `npm run check:encrypt -- --live` — PASS
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS with existing `web-worker`/`ffjavascript` warning
+- `cargo test --workspace` — PASS, 47 tests; existing Anchor cfg warnings
+- `anchor build --no-idl` — PASS with existing Anchor/SBF warnings
+
+### Result
+
+Encrypt pre-alpha developer tooling is live at the adapter/client layer. Program-side FHE remains fail-closed by design until Anchor compatibility is resolved.

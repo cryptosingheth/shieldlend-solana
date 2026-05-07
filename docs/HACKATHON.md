@@ -18,6 +18,8 @@ ShieldLend targets three tracks simultaneously. Each track covers an orthogonal 
 
 > **Pre-Alpha Status**: IKA dWallet, Encrypt FHE, and MagicBlock private payment surfaces may require gated devnet access during the hackathon. The implementation target is real protocol adapters first. If a devnet dependency is unavailable, a clearly labeled fallback adapter can be used only to preserve the integration surface for judging; privacy claims are reduced in that mode. This disclosure is included here so judges reviewing this file independently have the full picture.
 
+> **Encrypt branch status (`rail/encrypt`)**: Encrypt is wired at the client/gRPC adapter level through `frontend/src/lib/privacyRails/encrypt.ts` and `scripts/check-encrypt.mjs`. A live pre-alpha `encrypt.v1.EncryptService/CreateInput` probe succeeded for a non-sensitive ShieldLend health-ratio test value and returned ciphertext identifier `7Ss3kGMQAVXGRSuU1CuggFjMgDjtssiUhZqNmMh5NugW`. This proves developer tooling and devnet gRPC connectivity only. It does not prove production FHE privacy, and it does not execute a ShieldLend on-chain encrypted-health instruction.
+
 ---
 
 ## Track 1 — IKA + Encrypt Frontier
@@ -43,6 +45,8 @@ At borrow time, the borrower pre-signs a conditional liquidation authorization: 
 The design property: liquidation is trustless consent, not operator permission.
 
 ### Encrypt integration points (4)
+
+Current implementation boundary: the branch implements a real Encrypt pre-alpha client probe and health-ratio input submission. The on-chain Anchor integration remains fail-closed because current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`, while ShieldLend's C2H-verified programs remain on Anchor `0.30.1`. Upgrading Anchor is not part of this branch because it could disturb the confirmed Groth16 withdraw round-trip.
 
 **1. FHE oracle input (price feeds)**
 Liquidation requires knowing the market price of SOL relative to the loan's collateral denomination. Price feeds are submitted as Encrypt FHE ciphertext inputs. The health_factor computation runs homomorphically on encrypted oracle data — MEV bots cannot compute the health factor breach condition from encrypted mempool data.
@@ -159,6 +163,6 @@ No single feature is claimed for multiple tracks. The IKA/Encrypt track is about
 |---|---|
 | MagicBlock PER + Private Payments | Join Discord (discord.com/invite/MBkdC3gxcv), request devnet PER and private payment endpoint access |
 | IKA dWallet | Access IKA devnet; `ika-dwallet-anchor` Rust crate; fallback adapter only if devnet access is unavailable |
-| Encrypt FHE | Access Encrypt devnet; `encrypt-anchor` crate; fallback adapter only if devnet access is unavailable |
+| Encrypt FHE | Client/gRPC adapter live on pre-alpha devnet; program-side path waits on an Anchor 0.32-compatible upgrade plan |
 | Umbra SDK | Solana mainnet alpha via Arcium (Feb 2026); stealthaddress.dev SDK docs |
 | groth16-solana | `groth16-solana` crate from Light Protocol; Solana 1.18.x+ |

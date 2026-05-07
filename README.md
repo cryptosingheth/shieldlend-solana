@@ -4,8 +4,9 @@ A zero-knowledge, privacy-preserving lending protocol design for Solana.
 
 Current local implementation is a pre-alpha scaffold. All three Anchor programs
 are deployed on devnet. On-chain Groth16 BN254 verification is confirmed for
-the withdraw path (DEV/TEST trusted setup only). External privacy rails (IKA,
-MagicBlock PER/Private Payments, Umbra, Encrypt/FHE) are not yet wired.
+the withdraw path (DEV/TEST trusted setup only). Encrypt is wired as a
+pre-alpha client/gRPC probe only; IKA, MagicBlock PER/Private Payments, Umbra,
+and on-chain Encrypt/FHE health verification are not live.
 
 Built for the **Colosseum Frontier Hackathon 2026**.
 
@@ -71,7 +72,8 @@ component addresses. These layers are not all live in the current local build:
 | DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
 | On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
-| External privacy rails | Not wired | IKA, PER, Private Payments, Umbra, Encrypt/FHE |
+| Encrypt pre-alpha client rail | Client/gRPC probe live | `CreateInput` health-ratio test returned ciphertext `7Ss3kGMQ...NugW`; no production encryption guarantee |
+| Other external privacy rails | Not wired | IKA, PER, Private Payments, Umbra, on-chain Encrypt/FHE |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
 ---
@@ -440,7 +442,7 @@ mainnet availability.
 | Protocol | Current repo status | External/devnet status note | Production path |
 |---|---|---|---|
 | IKA dWallet | SDK/status scaffolding only; relay not wired | Pre-alpha / gated devnet | IKA Solana mainnet |
-| Encrypt FHE | SDK/status scaffolding only; FHE health not wired | Pre-alpha / gated devnet | Encrypt mainnet |
+| Encrypt FHE | Client/gRPC adapter live; program-side FHE health fails closed | Pre-alpha docs disclaim production encryption guarantees and may store plaintext/public data | Encrypt mainnet + Anchor-compatible program integration |
 | MagicBlock PER + Private Payments | Not wired; Private Payments URL absent by default | Devnet access required | MagicBlock PER/private payments mainnet |
 | groth16-solana | Not added/wired in programs | Target verifier path | BN254 syscalls live since Solana 1.18.x |
 | Umbra SDK | Not wired in current frontend flow | Network/config not set locally | Production integration after code follow-up |
