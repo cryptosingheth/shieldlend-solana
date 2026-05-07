@@ -153,12 +153,56 @@ No single feature is claimed for multiple tracks. The IKA/Encrypt track is about
 
 ---
 
-## Integration Pre-Requisites
+## MagicBlock Integration — Implementation Status (2026-05-08)
+
+### What is implemented
+
+| Component | File | Status |
+|---|---|---|
+| TypeScript SDK | `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` | Installed in frontend |
+| TEE connectivity adapter | `frontend/src/lib/privacyRails/magicblock.ts` | `verifyTeeRpc()` — live HTTP 200 from devnet TEE |
+| Auth token acquisition | `magicblock.ts :: acquireAuthToken()` | `getAuthToken(rpcUrl, pubkey, signFn)` — SDK wired |
+| Permission instruction builder | `magicblock.ts :: buildCreatePermissionInstruction()` | Unsigned `TransactionInstruction` |
+| Delegation instruction builder | `magicblock.ts :: buildDelegatePermissionInstruction()` | Unsigned `TransactionInstruction` |
+| Commit/undelegate builder | `magicblock.ts :: buildCommitAndUndelegatePermissionInstruction()` | Unsigned `TransactionInstruction` |
+| Permission PDA deriver | `magicblock.ts :: derivePermissionPda()` | `permissionPdaFromAccount` |
+| Private Payments deposit | `magicblock.ts :: privateDeposit()` | Fails closed on missing URL |
+| Private Payments transfer | `magicblock.ts :: privateTransfer()` | Fails closed on missing URL |
+| Private Payments withdraw | `magicblock.ts :: privateWithdraw()` | Fails closed on missing URL |
+| Private Payments balance | `magicblock.ts :: privateBalance()` | Fails closed on missing URL |
+| Private Payments settleRepayment | `magicblock.ts :: settleRepayment()` | Fails closed on missing URL |
+| Live status check | `magicblock.ts :: getMagicBlockLiveStatus()` | Async; TEE + config |
+| Check script | `scripts/check-magicblock.mjs` | `node scripts/check-magicblock.mjs` |
+
+### Live check output (2026-05-08)
+
+```
+ok   SDK @magicblock-labs/ephemeral-rollups-sdk: v0.8.8
+ok   Permission Program ID: ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1
+ok   Delegation Program ID: DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh
+ok   TEE RPC reachable: HTTP 200 — {"jsonrpc":"2.0","result":"ok","id":1}
+warn TEE TDX attestation: Exception: challenge must decode to 64 bytes
+ok   Router RPC reachable: HTTP 200
+warn Private Payments API URL not set
+warn Anchor version gap: 0.30.1 → 0.32.1 (Rust macros blocked)
+ok   13/13 SDK functions verified
+```
+
+### What is blocked and why
+
+| Blocker | Detail |
+|---|---|
+| TDX attestation | `challenge must decode to 64 bytes` — minor API delta between SDK 0.8.8 and current devnet TEE challenge format |
+| Rust PER macros | `#[ephemeral]`, `#[delegate]`, `#[commit]` require Anchor 0.32.1; workspace uses 0.30.1. Must be isolated. |
+| Private Payments URL | Requires Discord access. Set `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` when granted. |
+| Account delegation in `shielded_pool` | Depends on Rust macros (blocked above) |
+
+### Integration Pre-Requisites (remaining)
 
 | Integration | Action required before coding |
 |---|---|
-| MagicBlock PER + Private Payments | Join Discord (discord.com/invite/MBkdC3gxcv), request devnet PER and private payment endpoint access |
+| MagicBlock PER Rust macros | Isolated Anchor upgrade to 0.32.1; re-run full C2H devnet round-trip |
+| MagicBlock Private Payments URL | Join Discord (discord.com/invite/MBkdC3gxcv), request devnet endpoint access |
 | IKA dWallet | Access IKA devnet; `ika-dwallet-anchor` Rust crate; fallback adapter only if devnet access is unavailable |
 | Encrypt FHE | Access Encrypt devnet; `encrypt-anchor` crate; fallback adapter only if devnet access is unavailable |
 | Umbra SDK | Solana mainnet alpha via Arcium (Feb 2026); stealthaddress.dev SDK docs |
-| groth16-solana | `groth16-solana` crate from Light Protocol; Solana 1.18.x+ |

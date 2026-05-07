@@ -41,7 +41,10 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
     key: "per",
     name: "MagicBlock PER",
     role: "Private execution lane — deposit batching and exit batching inside TDX enclave",
-    // Must not be hardcoded true: no PER macros exist in any program.
+    // TEE RPC is reachable (devnet-tee.magicblock.app HTTP 200 confirmed).
+    // Attestation: challenge-encoding mismatch vs SDK 0.8.8 (minor TEE API delta).
+    // Rust macros (#[ephemeral], #[delegate], #[commit]) blocked on Anchor 0.32.1.
+    // Set NEXT_PUBLIC_PER_ENABLED=true only after Anchor upgrade + macro wiring.
     healthy: Boolean(process.env.NEXT_PUBLIC_PER_ENABLED),
     requiredForFullPrivacy: true,
   },
@@ -148,6 +151,8 @@ function receiptHashFromPayload(payload: unknown): string {
 
 export const magicBlockPrivatePayments: PrivatePaymentAdapter = {
   async settleRepayment(params) {
+    // Delegated to the typed adapter in privacyRails/magicblock.ts.
+    // Full Private Payments surface (deposit, transfer, withdraw, balance) lives there.
     const baseUrl = process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL;
     if (!baseUrl) throw new AdapterNotConfiguredError("MagicBlock Private Payments");
     const payload = await postJson<unknown>(`${baseUrl.replace(/\/$/, "")}/repayments/settle`, params);

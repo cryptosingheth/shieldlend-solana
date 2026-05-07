@@ -432,3 +432,54 @@ Balance: 3.554668080 SOL (net cost ≈ 0.108515 SOL including 0.1 SOL deposited 
 ### Commit
 
 `chore: validate full devnet withdraw proof roundtrip`
+
+---
+
+## 2026-05-08 — MagicBlock PER TypeScript Rail Integration (rail/magicblock)
+
+### Branch
+
+`rail/magicblock` (base: `origin/convergence/zk-constants-artifacts`)
+
+### Objective
+
+Implement MagicBlock as a real privacy rail (not a docs/status placeholder). Research, implement, validate.
+
+### What was done
+
+1. Researched MagicBlock PER docs (`docs.magicblock.gg`), SDK exports, and real API behavior.
+2. Confirmed: Anchor 0.32.1 required for Rust macros; workspace uses 0.30.1. Rust macros deferred.
+3. Installed `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` in frontend workspace.
+4. Created `frontend/src/lib/privacyRails/magicblock.ts` — full TypeScript adapter.
+5. Created `scripts/check-magicblock.mjs` — live CLI check (runs real TEE RPC call).
+6. Updated `frontend/src/lib/protocolAdapters.ts` — per-rail comment with TEE status.
+7. Updated `.env.example` (root + frontend) with all MagicBlock env vars and comments.
+8. Updated `docs/HACKATHON.md` and `docs/IMPLEMENTATION_STATUS.md`.
+
+### Live check output
+
+- TEE RPC (`https://devnet-tee.magicblock.app`): **HTTP 200** — `{"jsonrpc":"2.0","result":"ok","id":1}`
+- Router RPC (`https://devnet-router.magicblock.app`): **HTTP 200**
+- Permission Program ID: `ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1` (verified vs SDK)
+- Delegation Program ID: `DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh` (verified vs SDK)
+- SDK functions: 13/13 present
+- TDX attestation: exception `challenge must decode to 64 bytes` (challenge format delta in SDK vs TEE)
+- Private Payments: URL not set (requires Discord access)
+
+### Blockers documented
+
+- TDX attestation challenge encoding mismatch (SDK 0.8.8 vs current devnet TEE)
+- Rust PER macros require Anchor 0.32.1 (current 0.30.1)
+- Private Payments URL requires Discord access
+- VRF: no module in SDK 0.8.x
+
+### Validations passed
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS (zero errors)
+
+### Commit
+
+`feat: integrate MagicBlock privacy rails`

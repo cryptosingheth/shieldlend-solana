@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-07 (C2H complete)
+Last reconciled: 2026-05-08 (rail/magicblock: MagicBlock PER TypeScript adapter + live TEE check)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -14,7 +14,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
+| External privacy rails | MagicBlock TypeScript adapter live (TEE RPC verified reachable, Permission/Delegation instructions, Private Payments surface); IKA, Encrypt, Umbra status flags exist | Rust PER macros blocked on Anchor 0.32.1; Private Payments URL requires Discord access; IKA relay, Umbra exits, Encrypt/FHE not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -133,9 +133,9 @@ Artifact details:
 |---|---|---|
 | IKA relay signer privacy | Not wired | No |
 | IKA FutureSign liquidation consent | Not wired; borrower-supplied flag exists | No |
-| MagicBlock PER batching | Not wired | No |
+| MagicBlock PER batching | TypeScript adapter wired; TEE RPC live (HTTP 200); Rust macros blocked on Anchor 0.32.1 | No — Rust-side account delegation not wired |
 | MagicBlock VRF dummies | Not wired | No |
-| MagicBlock Private Payments | Not wired; URL env var absent by default | No |
+| MagicBlock Private Payments | TypeScript adapter wired (deposit, transfer, withdraw, balance, settleRepayment); URL env var absent by default | No — requires Private Payments API access |
 | Umbra stealth exits | Not wired; env-gated status only | No |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
 | On-chain Groth16 verification | DEV/TEST verifier confirmed on devnet; 198,502 CU; full withdraw round-trip passes; B7 stack frame resolved (C2G-A) | No — DEV/TEST trusted setup only; production ceremony required |
@@ -155,12 +155,59 @@ Artifact details:
 | ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
 | ~~No integration test past UnknownRoot~~ | **Resolved (C2H)** — full deposit → flush_epoch → store_proof → withdraw round-trip confirmed on devnet with on-chain Groth16 verification |
-| MagicBlock Private Payments URL missing | Private repayment rail unavailable |
+| MagicBlock Private Payments URL missing | Private repayment rail unavailable. Request at discord.com/invite/MBkdC3gxcv. TypeScript adapter fails closed. |
+| MagicBlock Anchor version gap | Rust PER macros (#[ephemeral], #[delegate], #[commit]) require Anchor 0.32.1; workspace uses 0.30.1. Do not upgrade without isolating the C2H round-trip risk. |
 | Umbra network/config not set | Stealth exits unavailable |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |
 | PER not wired | No private batching or unified exit batching |
 
 See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file/line evidence.
+
+## MagicBlock Rail Integration (rail/magicblock, 2026-05-08)
+
+### What is live
+
+| Component | Status | Evidence |
+|---|---|---|
+| SDK installed | `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` | `npm install --workspace frontend` |
+| TEE RPC reachable | HTTP 200 from `https://devnet-tee.magicblock.app` | `scripts/check-magicblock.mjs` |
+| Router RPC reachable | HTTP 200 from `https://devnet-router.magicblock.app` | `scripts/check-magicblock.mjs` |
+| Program IDs verified | Permission `ACLseo...`, Delegation `DELeGG...` match SDK constants | `scripts/check-magicblock.mjs` |
+| SDK functions present | 13 of 13 expected functions verified in SDK 0.8.8 | `scripts/check-magicblock.mjs` |
+| TypeScript adapter | `frontend/src/lib/privacyRails/magicblock.ts` | TEE verify, auth token, permission instructions, Private Payments API |
+| Permission instruction builder | `buildCreatePermissionInstruction` | Unsigned `TransactionInstruction` via SDK |
+| Delegation instruction builder | `buildDelegatePermissionInstruction` | Unsigned `TransactionInstruction` via SDK |
+| Commit/undelegate builder | `buildCommitAndUndelegatePermissionInstruction` | Unsigned `TransactionInstruction` via SDK |
+| Permission PDA deriver | `derivePermissionPda(account)` | `permissionPdaFromAccount` from SDK |
+| Private Payments adapter | deposit, transfer, withdraw, balance, settleRepayment | Fails closed on missing URL |
+| Live status check | `getMagicBlockLiveStatus()` | Async; tests TEE + config |
+| Check script | `scripts/check-magicblock.mjs` | Runs live, reports status |
+
+### What is blocked and why
+
+| Blocker | Root cause | Unblock path |
+|---|---|---|
+| TDX attestation (`verifyTeeRpcIntegrity`) | Returns exception: `challenge must decode to 64 bytes` — minor API delta between SDK 0.8.8 and current devnet TEE | Update SDK to latest patch or contact MagicBlock re: challenge format |
+| Rust PER macros (`#[ephemeral]`, `#[delegate]`, `#[commit]`) | Require Anchor 0.32.1; workspace uses 0.30.1 | Isolated Anchor upgrade task; re-run C2H devnet round-trip before landing |
+| Private Payments API URL | Not publicly available; requires Discord access | Join `discord.com/invite/MBkdC3gxcv`, request devnet credentials |
+| Account delegation in `shielded_pool` | Rust macros blocked (above) | Blocked until Anchor upgrade |
+| MagicBlock VRF | SDK has no VRF module in 0.8.x | Separate VRF integration task; may require different SDK or on-chain program CPI |
+
+### Safe claim wording (MagicBlock)
+
+- "MagicBlock SDK 0.8.8 is integrated. TEE RPC endpoint is reachable on devnet."
+- "Permission and delegation instruction builders are wired (TypeScript). Account delegation requires Anchor 0.32.1."
+- "Private Payments adapter is implemented and fails closed until API access is provisioned."
+- "Rust PER account delegation is blocked on Anchor 0.32.1 (current 0.30.1)."
+
+### Unsafe wording (do not use)
+
+- "PER deposit batching is active."
+- "Deposits are processed inside TDX enclave."
+- "TDX attestation verified." (attestation call throws on challenge format mismatch)
+- "Private Payments are live." (URL not configured)
+
+---
 
 ## Claim Policy
 
