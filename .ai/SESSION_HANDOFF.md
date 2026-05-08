@@ -2,64 +2,73 @@
 
 ## Task Objective
 
-Privacy Rails Integration Merge — COMPLETE on `convergence/privacy-rails-integration`.
-All four rails merged: rail/encrypt (97ec94d), rail/umbra (b3a63c1), rail/magicblock (8d31e20), rail/ika (bb27511).
+Hackathon Demo and Submission Package — COMPLETE on `convergence/privacy-rails-integration`.
 
 ## Current Status
 
-C2H milestone intact. Three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254: 198,502 CU, pairing passed.
+All four privacy rail branches merged (93375d4). Hackathon demo package committed. Branch ready to push.
 
 ---
 
-## Encrypt Rail (97ec94d)
+## Hackathon Package (2026-05-08)
 
-- gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet.
+### Files Added/Changed
+
+| File | Action |
+|---|---|
+| `docs/HACKATHON.md` | Replaced — submission-focused, confirmed rail status table, claim boundary |
+| `docs/DEMO_SCRIPT.md` | New — step-by-step demo walkthrough, commands, what not to claim |
+| `docs/SUBMISSION_CHECKLIST.md` | New — GitHub, tx signatures, video scenes, screenshots, env vars, claim boundary |
+| `scripts/demo-status.mjs` | New — self-verifying manifest: git/artifacts/program IDs/rail scripts/claim boundary |
+| `package.json` | Updated — added `demo:status` script |
+| `README.md` | Updated — date/branch ref, split privacy rail rows to reflect four adapters, added doc links |
+| `.ai/SESSION_HANDOFF.md` | This file |
+| `.ai/CURRENT_TASK.md` | Updated |
+| `.ai/TASK_LOG.md` | Updated |
+
+### Commit
+
+`docs: add hackathon demo and submission package`
+
+---
+
+## Confirmed Integration State (unchanged from previous session)
+
+### C2H / Groth16
+
+- Full devnet round-trip: deposit → flush_epoch → store_withdraw_proof → withdraw
+- On-chain Groth16 BN254: PASSED — 198,502 CU; nullifier consumed; nullifier registry CPI succeeded
+- Trusted setup: DEV/TEST pot14 only — NOT production
+
+### Encrypt Rail
+
+- gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet
 - Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`
-- Program ID: `4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8`
-- Active network key: `f00f3465b66ff8034600706ed05bf70ef5318edc511398085a3ab4512b875197`
-- Health-ratio ciphertext: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
-- Program-side FHE: fail-closed. Anchor 0.32 sidecar blocked.
+- Ciphertext handle: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
+- Program-side FHE: fail-closed. Anchor 0.32.1 sidecar blocked.
 
----
-
-## Umbra Rail (b3a63c1)
+### Umbra Rail
 
 - `@umbra-privacy/sdk@4.0.0`. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
-- Funded devnet wSOL flow confirmed:
+- Funded devnet wSOL deposit/withdraw: 7 confirmed tx signatures on record
+- ShieldLend C2H payout: still native SOL direct `stealth_address`; wSOL/SPL bridge not wired
 
-| Step | Signature |
-|---|---|
-| wSOL wrap | `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As` |
-| Umbra deposit queue | `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx` |
-| Umbra deposit callback | `2nPcvgkfXhYWuAAxHfhjH8WCi4afguYbhqu3uYdpYgEH1As5jB8R2evfiUWXmFekz1CXfhB1HwHosiQKYGjCxMVL` |
-| Umbra withdraw queue | `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUQdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` |
-| Umbra withdraw callback | `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau` |
+### MagicBlock Rail
 
-- ShieldLend C2H payout still native SOL direct `stealth_address`; Umbra needs wSOL/SPL bridge.
+- `@magicblock-labs/ephemeral-rollups-sdk@0.8.8`
+- TEE RPC HTTP 200; Router RPC HTTP 200
+- PER sidecar: 4 ShieldLend use-case bundles; 17/17 smoke pass; 13/13 SDK functions verified
+- Rust PER macros blocked: Anchor 0.32.1 required, workspace 0.30.1
+- TDX attestation warn: challenge mismatch SDK 0.8.8 vs devnet TEE
+- Private Payments URL: not configured; adapter fails closed
 
----
+### IKA Rail
 
-## MagicBlock Rail (8d31e20)
-
-- `@magicblock-labs/ephemeral-rollups-sdk@0.8.8`.
-- TEE RPC `https://devnet-tee.magicblock.app` — HTTP 200.
-- Router RPC `https://devnet-router.magicblock.app` — HTTP 200.
-- `examples/magicblock-per-sidecar/` — 4 ShieldLend use-case bundles. Smoke: 17 pass, 0 fail.
-- Rust PER macros blocked: Anchor 0.32.1 required, workspace 0.30.1.
-- TDX attestation warn: challenge mismatch SDK 0.8.8 vs devnet TEE.
-- Private Payments URL: not configured; adapter fails closed.
-
----
-
-## IKA Rail (bb27511)
-
-- `@ika.xyz/sdk@0.4.0` + `@ika.xyz/ika-wasm@0.2.1`.
-- SDK/capability probe: createDWallet, approveMessage, createSignature, SignatureScheme — all present.
-- Real Solana relay signing blocked:
-  - `ika-dwallet-anchor` CPI crate not published / no `ika-dwallet-anchor` Cargo dependency.
-  - Anchor integration depends on Sui object model (DWallet network is Sui-based).
-  - No Solana CPI crate for Anchor programs in the IKA pre-alpha.
-- Direct wallet fallback: labelled "reduced privacy" in UI. No fake relay signing.
+- `@ika.xyz/sdk@0.4.0` + `@ika.xyz/ika-wasm@0.2.1`
+- SDK/capability probe: all four functions present
+- WASM `createClassGroupsKeypair(ED25519)` runs locally
+- Real Solana relay signing blocked: B1 (no Solana code in SDK), B2 (no CPI crate), B3 (Sui dependency)
+- Direct wallet fallback: labelled "reduced privacy" in UI
 
 ---
 
@@ -73,15 +82,40 @@ C2H milestone intact. Three programs deployed and verified. Full deposit → flu
 
 ## Active Wallet
 
-- `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V` — Solana devnet
+`HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V` — Solana devnet
+
+---
+
+## Missing User Assets for Final Submission
+
+- C2H devnet transaction signatures from `devnet-fullround.mjs` run (fill into `SUBMISSION_CHECKLIST.md`)
+- Demo video (9 scenes described in `SUBMISSION_CHECKLIST.md`)
+- Screenshots (5 listed in `SUBMISSION_CHECKLIST.md`)
+- `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` — requires Discord access
+- GitHub remote push + PR creation
+
+---
 
 ## Do Not Claim
 
-- Production FHE privacy from Encrypt.
-- TDX attestation verified (challenge mismatch, labelled warn).
-- Rust PER macros wired (Anchor version gap).
-- MagicBlock Private Payments live (URL not configured).
-- IKA relay signing active (mock signer, no CPI).
-- ShieldLend native SOL C2H is Umbra-routed.
-- Any full privacy rail end-to-end active.
-- Production ZK proof artifacts (DEV/TEST only).
+- Production ZK trusted setup (DEV/TEST pot14 only)
+- Production privacy
+- IKA relay signing active
+- MagicBlock Private Payments live
+- MagicBlock PER Rust macros in Anchor programs
+- MagicBlock TDX attestation verified
+- Umbra native SOL ShieldLend payout
+- Encrypt on-chain FHE active
+
+---
+
+## Next Actions
+
+1. `git push origin convergence/privacy-rails-integration` (user must authorize)
+2. Create PR against `main` with description linking to `docs/HACKATHON.md`
+3. Fill in C2H devnet tx signatures in `docs/SUBMISSION_CHECKLIST.md`
+4. Record demo video (9 scenes)
+5. Capture 5 screenshots
+6. Submit to hackathon form
+
+Safe to `/clear` after this handoff.

@@ -783,3 +783,29 @@ Attempt to make IKA genuinely live for ShieldLend or prove exact Solana blockers
 ### IKA Solana Path
 
 **Still blocked.** `requestSign` is a Sui Move call, not an Ed25519 byte output. No Solana SDK exists in `@ika.xyz/sdk`. CPI crate absent. Adapter stays `direct_wallet` / reduced-privacy until IKA releases a Solana-native signing path and CPI crate is wired.
+
+---
+
+## 2026-05-08 — Hackathon Demo and Submission Package
+
+### Objective
+
+Create final hackathon demo/submission package based on `convergence/privacy-rails-integration` (commit `93375d4`).
+
+### Files Added
+
+- `docs/DEMO_SCRIPT.md` — step-by-step demo walkthrough, commands, honest framing script for judges
+- `docs/SUBMISSION_CHECKLIST.md` — GitHub, tx signatures, video scenes, screenshots, env vars, claim boundary
+- `scripts/demo-status.mjs` — self-verifying manifest: git/artifacts/program IDs/rail scripts/live checks/claim boundary
+
+### Files Updated
+
+- `docs/HACKATHON.md` — replaced design-intent doc with submission-focused version: one-liner, confirmed rail status table, Umbra tx signatures, claim boundary, blocker table
+- `package.json` — added `demo:status` script
+- `README.md` — updated date/branch ref; split privacy rail rows; added doc links to HACKATHON.md and DEMO_SCRIPT.md
+
+### Validations (all pass)
+
+- `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS

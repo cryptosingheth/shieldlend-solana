@@ -1,48 +1,43 @@
 # Current Task
 
-## Status: Privacy rails integration merge COMPLETE on `convergence/privacy-rails-integration`.
+## Status: Hackathon demo and submission package COMPLETE on `convergence/privacy-rails-integration`.
 
-## Active Objective
+## Completed This Session
 
-All four privacy rail branches merged. Pending: final validation + commit.
+### Hackathon Package (2026-05-08)
 
-## Completed Rail Work
+- `docs/HACKATHON.md` — replaced with submission-focused doc: one-liner, confirmed rail status table, Umbra tx signatures, claim boundary, blocker table
+- `docs/DEMO_SCRIPT.md` — new: step-by-step demo walkthrough, all commands, honest framing script for judges
+- `docs/SUBMISSION_CHECKLIST.md` — new: GitHub branch/PR, Umbra tx signatures pre-filled, C2H signatures placeholder, video scenes, screenshots, env vars, claim boundary
+- `scripts/demo-status.mjs` — new: self-verifying manifest (git/artifacts/program IDs/rail scripts/optional live checks/claim boundary)
+- `package.json` — added `demo:status` script
+- `README.md` — updated date/branch ref; split "Other external privacy rails | Not wired" into four accurate rows; added doc links
 
-### Encrypt rail (97ec94d)
-- gRPC `CreateInput` live probe confirmed. Active key: `f00f3465...`. Ciphertext: `5VZ8BhpS...`
-- Program-side FHE: fail-closed. Anchor 0.32 sidecar blocked.
+### Validations (all pass)
 
-### Umbra rail (b3a63c1)
-- `@umbra-privacy/sdk@4.0.0`. Devnet funded wSOL deposit/withdraw confirmed.
-- ShieldLend C2H still native SOL direct `stealth_address`; wSOL/SPL bridge needed.
+- `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
 
-### MagicBlock rail (8d31e20)
-- TEE RPC + Router RPC HTTP 200. SDK PER sidecar smoke: 17 pass, 0 fail.
-- Rust PER macros blocked (Anchor 0.32.1). Private Payments URL absent.
+---
 
-### IKA rail (bb27511)
-- `@ika.xyz/sdk@0.4.0`. SDK/capability probe confirmed.
-- Real Solana signing blocked: `ika-dwallet-anchor` CPI not wired; mock signer only (pre-alpha).
-- Direct wallet fallback labelled "reduced privacy" in deposit screen.
+## Hard Constraints (unchanged)
 
-### C2H baseline (8555e6b — unchanged)
-- Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet.
-- On-chain Groth16 BN254 verification: 198,502 CU consumed, pairing passed.
+- Do not claim production ZK trusted setup
+- Do not claim IKA relay signing active
+- Do not claim MagicBlock Private Payments live
+- Do not claim MagicBlock PER macros in Anchor programs
+- Do not claim Umbra native SOL ShieldLend payout
+- Do not claim Encrypt on-chain FHE active
+- Do not fake any blocker as resolved
 
-## Deployed Programs (Devnet)
+---
 
-| Program | Program ID | Status |
-|---|---|---|
-| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | Deployed |
-| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | Deployed + upgraded |
-| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Deployed |
+## Pending (requires user action)
 
-## Hard Constraints
-
-- Do not claim production FHE privacy.
-- Do not submit sensitive user data to Encrypt pre-alpha.
-- Do not break C2H Groth16 withdraw round-trip.
-- Do not fake IKA relay signing, Umbra native SOL payout, MagicBlock Private Payments, or Encrypt on-chain FHE.
-- Do not upgrade main Anchor version.
-- Do not force MagicBlock PER macros into Anchor 0.30.1.
-- Do not claim TDX attestation verified (challenge mismatch with SDK 0.8.8).
+1. Push: `git push origin convergence/privacy-rails-integration`
+2. Create PR against `main`
+3. Fill C2H devnet tx signatures into `docs/SUBMISSION_CHECKLIST.md`
+4. Record demo video (9 scenes from `SUBMISSION_CHECKLIST.md`)
+5. Capture 5 screenshots
+6. Obtain `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` from MagicBlock Discord

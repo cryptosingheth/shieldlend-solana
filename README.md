@@ -54,10 +54,11 @@ component addresses. These layers are not all live in the current local build:
 
 ## Current Build Status
 
-> **Pre-alpha devnet build — reconciled 2026-05-07 (C2H complete).**
+> **Pre-alpha devnet build — privacy rails integrated 2026-05-08 (branch: `convergence/privacy-rails-integration`, commit `93375d4`).**
 > Local source state is authoritative. Do not use stale GitHub-rendered README
 > snapshots for status. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md)
-> for the full ledger.
+> for the full ledger. For the hackathon submission claim boundary and demo instructions
+> see [`docs/HACKATHON.md`](docs/HACKATHON.md) and [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
 
 | Component | Status | Notes |
 |---|---|---|
@@ -73,9 +74,10 @@ component addresses. These layers are not all live in the current local build:
 | DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
 | On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
-| Encrypt pre-alpha client rail | Client/gRPC probe live | `CreateInput` health-ratio test returned ciphertext `7Ss3kGMQ...NugW`; no production encryption guarantee |
-| Umbra SDK adapter | Installed, fail-closed | wSOL/SPL/Token-2022 only; native SOL C2H path still direct `stealth_address` |
-| Other external privacy rails | Not wired | IKA, PER, Private Payments, on-chain Encrypt/FHE |
+| Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; on-chain FHE fail-closed (Anchor 0.32 gap) |
+| Umbra rail adapter | Funded devnet confirmed | wSOL deposit/withdraw: 7 devnet tx signatures; native SOL C2H payout bridge not yet wired |
+| MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Rust macros blocked (Anchor 0.32 gap); Private Payments URL Discord-gated |
+| IKA rail adapter | SDK/WASM probe confirmed | Solana relay signing blocked: no `ika-dwallet-anchor` CPI; direct wallet fallback labelled reduced privacy |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
 ---

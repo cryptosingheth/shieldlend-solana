@@ -1,153 +1,66 @@
-# ShieldLend — Hackathon Track Integrations
+# ShieldLend — Hackathon Submission
 
 **Event**: Colosseum Frontier Hackathon 2026
-
-ShieldLend targets three tracks simultaneously. Each track covers an orthogonal privacy layer — there is no overlap in the features claimed for each.
+**Branch**: `convergence/privacy-rails-integration`
+**Integration commit**: `93375d4`
 
 ---
 
-## Track Overview
+## One-liner
 
-| Track | Sponsor | ShieldLend implements |
+ShieldLend is a privacy-focused Solana lending protocol combining on-chain Groth16 withdraw proofs with external privacy rail integrations from Encrypt, Umbra, MagicBlock, and IKA.
+
+---
+
+## Tracks
+
+| Track | Sponsor | ShieldLend integration |
 |---|---|---|
-| IKA + Encrypt Frontier | Superteam | dWallet relay authorization + dWallet disbursement co-signing + FutureSign liquidation + FHE oracle/health computation + FHE aggregate solvency |
-| Colosseum Privacy Track | MagicBlock | PER deposit batching + PER exit batching + VRF dummy insertion + private repayment settlement |
-| Umbra Side Track | Frontier | Official Umbra SDK for SPL/Token-2022 encrypted balances, mixer/UTXO receiving paths, exit hygiene, and user-scoped disclosure patterns |
+| IKA + Encrypt Frontier | Superteam | dWallet relay authorization + FHE oracle/health computation + FHE aggregate solvency + three-step async liquidation + FutureSign |
+| Colosseum Privacy Track | MagicBlock | PER deposit/exit batching + VRF dummy insertion + Private Payments repayment settlement |
+| Umbra Side Track | Frontier | SPL/Token-2022 encrypted balances + mixer/UTXO paths + scoped disclosure |
 
 ---
 
-> **Pre-Alpha Status**: IKA dWallet, Encrypt FHE, and MagicBlock private payment surfaces may require gated devnet access during the hackathon. The implementation target is real protocol adapters first. If a devnet dependency is unavailable, a clearly labeled fallback adapter can be used only to preserve the integration surface for judging; privacy claims are reduced in that mode. This disclosure is included here so judges reviewing this file independently have the full picture.
+## What Works on Devnet (Confirmed)
 
-> **Encrypt branch status (`rail/encrypt`)**: Encrypt is wired at the client/gRPC adapter level through `frontend/src/lib/privacyRails/encrypt.ts`, `scripts/check-encrypt.mjs`, and `scripts/encrypt-health-smoke.mjs`. A live pre-alpha `encrypt.v1.EncryptService/CreateInput` probe succeeded for a non-sensitive ShieldLend health-ratio test value and returned ciphertext identifier `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`. The health smoke also models collateral, debt, and liquidation-threshold inputs. This proves developer tooling and devnet gRPC connectivity only. It does not prove production FHE privacy, and it does not execute a ShieldLend on-chain encrypted-health instruction.
+### ShieldLend Core (C2H)
 
----
+All three Anchor programs are deployed on Solana devnet:
 
-## Track 1 — IKA + Encrypt Frontier
+| Program | Program ID |
+|---|---|
+| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
+| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
+| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
 
-### Track theme
-"Bridgeless Capital Markets + Encrypted Capital Markets"
+Full withdraw round-trip confirmed on devnet:
 
-### IKA integration points (3)
+```
+deposit → flush_epoch → store_withdraw_proof → withdraw
+```
 
-**1. dWallet relay authorization (deposit + withdrawal + borrow + repay submission)**
-The protocol relay wallet is a 2PC-MPC dWallet. Every ShieldedPool/LendingPool instruction submitted on-chain goes through this relay. Repayment value itself can settle through MagicBlock Private Payments, but the repay instruction is still relay-submitted. Each operation requires both:
-- User partial signature (consent gate)
-- IKA MPC network co-signature (policy gate)
+On-chain Groth16 BN254 verification results:
+- Pairing check: passed
+- Proof consumed (nullifier registered)
+- Nullifier registry CPI: succeeded
+- Compute units: 198,502 CU
 
-No single party — including the protocol deployer — can move user funds through the relay unilaterally. The relay wallet is the permanent on-chain signer for all ShieldedPool and LendingPool transactions. User wallets never appear in any on-chain transaction touching the protocol.
+Trusted setup: DEV/TEST `pot14` ceremony only. Not production.
 
-**2. dWallet disbursement signing (borrow)**
-Loan disbursements are co-signed via `approve_message()` CPI. The LendingPool program enforces LTV rules on-chain via Groth16 verification; the IKA MPC network enforces that the user consented to the specific disbursement parameters (amount, recipient, loanId). Both gates must pass for funds to leave ShieldedPool.
+### Privacy Rail Status
 
-**3. FutureSign (pre-authorized liquidation)**
-At borrow time, the borrower pre-signs a conditional liquidation authorization: "liquidate loanId X if health_factor < Y." This consent is stored in the IKA dWallet. When the health factor condition is met, the pre-authorization executes without requiring the borrower to be online and without operator discretion.
-
-The design property: liquidation is trustless consent, not operator permission.
-
-### Encrypt integration points (4)
-
-Current implementation boundary: the branch implements a real Encrypt pre-alpha client probe and modeled health/collateral threshold input submission. The on-chain Anchor integration remains fail-closed because current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`, while ShieldLend's C2H-verified programs remain on Anchor `0.30.1`. A throwaway Anchor 0.32 sidecar feasibility check failed at the actual `EncryptContext` CPI boundary because current upstream `encrypt-anchor` resolves to newer Anchor/Solana account types. Upgrading Anchor is not part of this branch because it could disturb the confirmed Groth16 withdraw round-trip.
-
-**1. FHE oracle input (price feeds)**
-Liquidation requires knowing the market price of SOL relative to the loan's collateral denomination. Price feeds are submitted as Encrypt FHE ciphertext inputs. The health_factor computation runs homomorphically on encrypted oracle data — MEV bots cannot compute the health factor breach condition from encrypted mempool data.
-
-ZK proofs can verify a fact about a known value, but cannot receive a continuously updating oracle stream and compute over it homomorphically. FHE is the only approach that allows real-time encrypted price feeds to feed directly into liquidation logic without plaintext exposure.
-
-**2. Encrypted collateral health factor computation**
-Each `LoanAccount` PDA stores `is_liquidatable: EncryptedBool` — the result of the FHE health factor comparison over encrypted oracle/collateral values and public or bucketed outstanding debt. The health factor result is a ciphertext until threshold decryption is explicitly requested. This prevents anyone — including MEV bots and the relay operator — from reading individual loan health factors from the chain.
-
-The `is_liquidatable` ciphertext is the trigger for the three-step async liquidation flow (see below).
-
-**3. Three-step async liquidation with handle pinning**
-FHE decryption is asynchronous -- the `is_liquidatable` ciphertext must be sent to the Encrypt threshold network for decryption before liquidation can proceed. ShieldLend implements a three-step flow mapped to Anchor's PDA model:
-
-- **Step 1** (`request_liquidation_reveal`): Permissionless. Snapshots the FHE ciphertext handle. Emits event for Encrypt oracle. Sets `pending_liquidation_reveal = true`.
-- **Step 2** (`verify_liquidation_reveal`): Called by Encrypt oracle keeper after threshold decryption completes. Verifies the re-encryption proof is signed over this loan's PDA address (handle pinning — prevents replay attacks). Sets `confirmed_liquidatable`.
-- **Step 3** (`liquidate`): Permissionless, only if confirmed. Executes IKA FutureSign.
-
-**Handle pinning security**: The Encrypt oracle decryption proof is verified against the specific `LoanAccount` PDA address. Since PDAs are derived from `seeds = [b"loan", collateral_nullifier_hash]`, the proof for Loan A cannot be submitted against Loan B. This prevents a class of replay attacks identified in our competitive analysis of FHE lending protocols.
-
-**4. Aggregate solvency check (homomorphic collateral sum)**
-Aggregate collateral coverage is computed as: `Σ(encrypted_collateral_value[i])` via FHE homomorphic addition. Public/bucketed borrow amounts provide deterministic debt accounting. A single threshold decrypt reveals only aggregate collateral coverage. Individual collateral positions remain hidden throughout.
-
-This enables protocol solvency verification — confirming total outstanding debt is within aggregate collateral coverage — without exposing any individual borrower's collateral position.
-
-**Bonus: Targeted threshold decryption (auditor disclosure)**
-For compliance disclosure of a specific loan, a user can combine selected local history records, proof public signals, receipt hashes, and optional Encrypt threshold disclosure of collateral/health evidence for a designated auditor. Individual borrower identity is not revealed unless the user chooses to disclose it. This satisfies selective disclosure requirements without a protocol-wide backdoor key.
-
-### Why IKA and Encrypt are not competing
-
-IKA provides signing authorization infrastructure. Encrypt provides FHE computation infrastructure. Encrypt uses IKA as its coordination layer for threshold decryption. ShieldLend uses IKA for relay signing and for coordinating threshold decryption (which Encrypt relies on). The two integrations are architecturally layered, not competing.
+| Rail | What is confirmed | What is not live |
+|---|---|---|
+| **C2H / Groth16** | Full devnet round-trip: deposit → flush_epoch → store_withdraw_proof → withdraw. On-chain BN254 pairing passed. 198,502 CU. Nullifier consumed. | Production trusted setup. Production privacy guarantee. |
+| **Umbra** | `@umbra-privacy/sdk@4.0.0` installed. Funded devnet wSOL encrypted-balance deposit and withdrawal confirmed. Seven transaction signatures on record. | Native SOL ShieldLend payout routed through Umbra. C2H still exits via direct `stealth_address`. wSOL/SPL bridge not implemented. |
+| **Encrypt** | Live pre-alpha gRPC `encrypt.v1.EncryptService/CreateInput` probe confirmed. Health-ratio test value submitted. Ciphertext handle returned: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`. | On-chain FHE. `encrypt-anchor` CPI integration (blocked by Anchor 0.32.1 requirement). Production encryption guarantee. |
+| **MagicBlock** | TEE RPC `https://devnet-tee.magicblock.app` HTTP 200. Router RPC `https://devnet-router.magicblock.app` HTTP 200. PER sidecar TypeScript builders: 4 ShieldLend use-case bundles, 17/17 pass. 13/13 SDK functions verified. | Rust PER macros in Anchor programs (blocked: Anchor 0.30.1 vs 0.32.1 required). Private Payments URL (requires Discord access). TDX attestation (challenge format mismatch with SDK 0.8.8). On-chain PER transaction submitted. |
+| **IKA** | `@ika.xyz/sdk@0.4.0` + WASM loaded. SDK/capability probe: `createDWallet`, `approveMessage`, `createSignature`, `SignatureScheme` all present. WASM `createClassGroupsKeypair(ED25519)` runs locally. | Real Solana relay signing. `ika-dwallet-anchor` CPI crate not published. IKA SDK has no Solana code — all `coordinatorTransactions` functions call Sui Move targets. Direct wallet fallback is labelled "reduced privacy" in UI. |
 
 ---
 
-## Track 2 — Colosseum Privacy Track — MagicBlock
-
-### Track theme
-"Privacy infrastructure for DeFi — execution environment and randomness"
-
-### MagicBlock integration points (4)
-
-**1. Private Ephemeral Rollup (PER) — deposit batching**
-ShieldedPool deposit queue accounts are delegated to the MagicBlock PER. The PER runs inside an Intel TDX enclave — deposit batching occurs inside the enclave, and no observer (including the PER operator) can link an individual user's funding transaction (TX1) to their commitment in the batch (TX2).
-
-This is the core deposit timing-correlation defense. Without PER, the relay design would route funding through a different wallet — but an observer could still time-correlate TX1 and TX2 for a single depositor. PER's enclave prevents this even for a 1-user batch.
-
-Integration: `#[ephemeral]` and `#[delegate]` macros on DepositQueueAccount; `#[commit]` on flush_epoch.
-
-**2. Private Ephemeral Rollup (PER) — exit batching**
-ShieldedPool exit queue accounts are also delegated to the MagicBlock PER. Both withdrawal exits and borrow disbursement exits enqueue as `ExitQueueAccount` entries in the same PER enclave. The `flush_exits` instruction sends each amount to its respective Umbra stealth address in a single batch.
-
-This makes withdrawal and borrow disbursement exits structurally indistinguishable on-chain. An observer sees: "relay sent SOL to stealth addresses." The type of exit — withdrawal or borrow disbursement — cannot be classified. Without exit batching, the different on-chain instruction names (`withdraw` vs `disburse`) would reveal which type of exit occurred.
-
-Integration: `#[delegate]` on ExitQueueAccount; `flush_exits` commits from PER to base layer.
-
-**3. VRF — anonymity set expansion**
-At epoch flush, dummy commitments are inserted into the Merkle tree using MagicBlock VRF randomness. The VRF proof is included in the flush_epoch transaction and verifiable on-chain — no one, including the flush operator, can predict or bias the number or positions of dummy insertions.
-
-VRF runs once per deposit epoch. The resulting dummy commitments persist in the Merkle tree permanently and are indistinguishable from real commitments. Every future ring proof — for withdrawal, borrow, or repay — samples its K=16 ring from the full tree, which includes all VRF-placed dummies. Anonymity set expansion from VRF carries forward automatically into every ring proof, with no additional VRF calls required at spend time.
-
-Integration: VRF SDK callback wired to `flush_epoch`.
-
-**4. Private Payments — repayment amount privacy**
-Repayment is the one flow where a private proof alone is not enough: if a user pays a public SOL/SPL vault directly, the repayment transfer and amount are visible even if the ZK proof hides borrower identity. ShieldLend therefore uses MagicBlock Private Payments / private SPL semantics as the Full Privacy repayment settlement rail.
-
-The LendingPool verifies a receipt bound to `loanId`, `nullifierHash`, `outstanding_balance`, `repayment_vault`, and epoch before unlocking collateral. This gives the lending program deterministic solvency/accounting while hiding the repayment transfer graph and amount.
-
-Integration: private payment settlement + receipt binding in `lending_pool::repay`; degraded fallback uses relay repayment and does not claim amount privacy.
-
----
-
-## Track 3 — Umbra Side Track
-
-### Track theme
-"Umbra as the Solana privacy rail for token exits"
-
-### Authoritative integration facts
-
-- Official package installed: `@umbra-privacy/sdk@4.0.0`.
-- Docs package name: `@umbra-privacy/sdk`; docs describe a TypeScript SDK for Node.js and browser environments.
-- Supported networks: `mainnet`, `devnet`, and `localnet`.
-- Program IDs:
-  - Mainnet: `UMBRAD2ishebJTcgCLkTkNUx1v3GyoAgpTRPeWoLykh`
-  - Devnet: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
-- Supported assets are SPL and Token-2022 balances. Native SOL is not a direct Umbra balance type; SOL-like routing should use wSOL or another supported SPL representation.
-- Wallet model: the SDK expects an `IUmbraSigner` with transaction signing, batch transaction signing, and message signing. The SDK also exports `createSignerFromWalletAccount` for Wallet Standard wallet accounts.
-
-### Funded devnet smoke
-
-`scripts/umbra-funded-smoke.mjs` now performs the live funded path against devnet using wSOL:
-
-1. Confirms the configured Solana CLI wallet balance.
-2. Creates or reuses the wallet's wSOL ATA, transfers native devnet SOL into it, and calls SPL Token `SyncNative`.
-3. Initializes the Umbra SDK client for devnet.
-4. Reuses the existing confidential Umbra registration when present.
-5. Deposits 0.001 wSOL from the public ATA into the Umbra encrypted balance.
-6. Queries the encrypted balance and withdraws the same 0.001 wSOL back to the public ATA.
-
-Confirmed devnet mint: `So11111111111111111111111111111111111111112` (wSOL).
-
-Confirmed transaction signatures:
+## Umbra Devnet Transaction Signatures
 
 | Step | Signature |
 |---|---|
@@ -159,98 +72,59 @@ Confirmed transaction signatures:
 | Umbra withdraw callback | `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau` |
 | Umbra withdraw rent reclaim | `4zm2xwJ4TfCGTTwtcG72wfj3xXjsYiDfNqZBRY1Kp2qyszwezjywjJCC63LphzUK9Qbs5jhbv37NLYEFcLfoqKEm` |
 
-Result: funded Umbra encrypted-balance deposit and withdrawal are live on devnet for wSOL. This does **not** mean the existing ShieldLend C2H native SOL withdraw is Umbra-routed. C2H still exits native SOL through `WithdrawArgs.stealth_address`; ShieldLend needs a program/API settlement leg that converts native SOL exits to wSOL or another supported SPL/Token-2022 mint before calling the Umbra SDK.
-
-### Umbra integration points (3)
-
-**1. Withdrawal receiving path**
-ShieldLend now has a frontend Umbra adapter at `frontend/src/lib/privacyRails/umbra.ts`. The adapter exposes a fail-closed route plan and official SDK calls for:
-- public SPL/Token-2022 balance -> Umbra encrypted balance
-- Umbra encrypted balance -> public token account
-- public SPL/Token-2022 balance -> receiver-claimable UTXO
-
-Current C2H withdraw releases native SOL to `WithdrawArgs.stealth_address`. That path remains preserved and is labeled lower privacy in the UI. It is not an Umbra mixer/encrypted-balance action.
-
-The funded smoke proves the SDK-side wSOL rail works. It does not yet wire the ShieldedPool payout path into that rail.
-
-**2. Loan disbursement receiving path**
-Borrow disbursement can use the same adapter once the disbursement asset is represented as a supported SPL/Token-2022 mint. For SOL-denominated lending, the practical route is wSOL or a program-level SOL -> wSOL leg before calling Umbra SDK functions.
-
-**3. Mixer path and scoped disclosure**
-Umbra's mixer/UTXO path is the stronger receiving path for breaking sender/receiver linkage. The SDK exposes receiver-claimable UTXO creation and claim functions, but claim flows require a ZK prover and relayer. The optional `@umbra-privacy/web-zk-prover@2.0.1` currently declares a peer dependency on `@umbra-privacy/sdk@2.0.3`, so this branch does not force-install it beside `@umbra-privacy/sdk@4.0.0`. Until a compatible prover package is selected, ShieldLend must not claim live mixer actions.
+Devnet mint: `So11111111111111111111111111111111111111112` (wSOL)
 
 ---
 
-## Why Three Tracks Are Non-Overlapping
+## Claim Boundary
 
-Each track is awarded for a distinct privacy dimension:
+These claims are accurate and supported by devnet evidence:
 
-| Privacy dimension | Layer | Track |
-|---|---|---|
-| Who signed and authorized each on-chain relay operation | Authorization | IKA + Encrypt Frontier |
-| Oracle data and aggregate balances confidentiality | Data confidentiality | IKA + Encrypt Frontier |
-| Where deposit→commitment mapping can be observed | Execution environment | Colosseum / MagicBlock |
-| Whether dummy insertions are biasable | Randomness | Colosseum / MagicBlock |
-| What exit type (withdrawal vs disbursement) can be inferred | Exit classification | Colosseum / MagicBlock |
-| Whether repayment transfer amount/graph is public | Private payment settlement | Colosseum / MagicBlock |
-| Where funds go after withdrawal or disbursement | Address privacy | Umbra Side Track |
-| How users disclose selected exit evidence | Scoped disclosure | Umbra Side Track |
+- Three Anchor programs deployed on Solana devnet.
+- Full Groth16 BN254 withdraw round-trip confirmed on devnet (DEV/TEST trusted setup).
+- On-chain nullifier registry CPI succeeded; proof consumed.
+- Umbra `@umbra-privacy/sdk@4.0.0` funded devnet deposit/withdraw confirmed for wSOL.
+- Encrypt live pre-alpha gRPC `CreateInput` probe confirmed with returned ciphertext handle.
+- MagicBlock TEE RPC + Router RPC HTTP 200 on devnet.
+- MagicBlock PER sidecar TypeScript SDK builders verified (not submitted on-chain).
+- IKA SDK/capability probe and WASM confirmed.
+- Frontend privacy status panel shows live-checked adapter status for all four rails.
+- All four rail adapters present in `frontend/src/lib/privacyRails/`.
 
-No single feature is claimed for multiple tracks. The IKA/Encrypt track is about signing trust and encrypted computation. The MagicBlock track is about execution privacy, temporal batching, and randomness. The Umbra track is about address-layer output privacy. These are three layers of the same protocol stack.
+These claims are NOT accurate and must NOT be made:
+
+- Production ZK trusted setup (DEV/TEST `pot14` ceremony only).
+- Production privacy (no production trusted setup means no production ZK privacy guarantee).
+- IKA relay signing active (direct wallet fallback only; no `ika-dwallet-anchor` CPI).
+- MagicBlock Private Payments live (URL not configured; adapter fails closed).
+- MagicBlock PER macros in Anchor programs (Anchor version gap: 0.30.1 vs 0.32.1 required).
+- MagicBlock TDX attestation verified (challenge format mismatch).
+- Umbra native SOL ShieldLend payout (C2H exits native SOL directly; wSOL bridge not wired).
+- Encrypt on-chain FHE active (program-side FHE blocked by Anchor 0.32.1 requirement).
+- Any full end-to-end privacy rail active from deposit to encrypted exit.
 
 ---
 
-## MagicBlock Integration — Implementation Status (2026-05-08)
+## Implementation Blockers (Honest Findings)
 
-### What is implemented
+These are engineering blockers discovered during integration, not design failures:
 
-| Component | File | Status |
+| Blocker | Root cause | Unblock path |
 |---|---|---|
-| TypeScript SDK | `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` | Installed in frontend |
-| TEE connectivity adapter | `frontend/src/lib/privacyRails/magicblock.ts` | `verifyTeeRpc()` — live HTTP 200 from devnet TEE |
-| Auth token acquisition | `magicblock.ts :: acquireAuthToken()` | `getAuthToken(rpcUrl, pubkey, signFn)` — SDK wired |
-| Permission instruction builder | `magicblock.ts :: buildCreatePermissionInstruction()` | Unsigned `TransactionInstruction` |
-| Delegation instruction builder | `magicblock.ts :: buildDelegatePermissionInstruction()` | Unsigned `TransactionInstruction` |
-| Commit/undelegate builder | `magicblock.ts :: buildCommitAndUndelegatePermissionInstruction()` | Unsigned `TransactionInstruction` |
-| Permission PDA deriver | `magicblock.ts :: derivePermissionPda()` | `permissionPdaFromAccount` |
-| Private Payments deposit | `magicblock.ts :: privateDeposit()` | Fails closed on missing URL |
-| Private Payments transfer | `magicblock.ts :: privateTransfer()` | Fails closed on missing URL |
-| Private Payments withdraw | `magicblock.ts :: privateWithdraw()` | Fails closed on missing URL |
-| Private Payments balance | `magicblock.ts :: privateBalance()` | Fails closed on missing URL |
-| Private Payments settleRepayment | `magicblock.ts :: settleRepayment()` | Fails closed on missing URL |
-| Live status check | `magicblock.ts :: getMagicBlockLiveStatus()` | Async; TEE + config |
-| Check script | `scripts/check-magicblock.mjs` | `node scripts/check-magicblock.mjs` |
+| Encrypt on-chain FHE | `encrypt-anchor` requires Anchor 0.32.1; workspace uses 0.30.1 to protect confirmed Groth16 round-trip | Isolated Anchor 0.32 sidecar program; re-run C2H devnet round-trip after upgrade |
+| MagicBlock PER Rust macros | Same Anchor version gap | Same isolated upgrade path |
+| MagicBlock Private Payments | Discord-gated devnet URL | Join MagicBlock Discord; request `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` |
+| MagicBlock TDX attestation | SDK 0.8.8 challenge format mismatch with current devnet TEE | Upgrade SDK or match challenge encoding |
+| IKA Solana relay signing | `ika-dwallet-anchor` CPI crate not published; IKA SDK calls Sui Move, not Solana | Wait for IKA Solana CPI crate; or implement Sui-side relay adapter |
+| Umbra native SOL payout | Umbra SDK supports SPL/Token-2022 only; C2H exits native SOL | Add SOL → wSOL wrap leg in ShieldedPool before Umbra SDK call |
 
-### Live check output (2026-05-08)
+---
 
-```
-ok   SDK @magicblock-labs/ephemeral-rollups-sdk: v0.8.8
-ok   Permission Program ID: ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1
-ok   Delegation Program ID: DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh
-ok   TEE RPC reachable: HTTP 200 — {"jsonrpc":"2.0","result":"ok","id":1}
-warn TEE TDX attestation: Exception: challenge must decode to 64 bytes
-ok   Router RPC reachable: HTTP 200
-warn Private Payments API URL not set
-warn Anchor version gap: 0.30.1 → 0.32.1 (Rust macros blocked)
-ok   13/13 SDK functions verified
-```
+## Architecture References
 
-### What is blocked and why
-
-| Blocker | Detail |
-|---|---|
-| TDX attestation | `challenge must decode to 64 bytes` — minor API delta between SDK 0.8.8 and current devnet TEE challenge format |
-| Rust PER macros | `#[ephemeral]`, `#[delegate]`, `#[commit]` require Anchor 0.32.1; workspace uses 0.30.1. Must be isolated. |
-| Private Payments URL | Requires Discord access. Set `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` when granted. |
-| Account delegation in `shielded_pool` | Depends on Rust macros (blocked above) |
-
-### Integration Pre-Requisites (remaining)
-
-| Integration | Action required before coding |
-|---|---|
-| MagicBlock PER Rust macros | Isolated Anchor upgrade to 0.32.1; re-run full C2H devnet round-trip |
-| MagicBlock Private Payments URL | Join Discord (discord.com/invite/MBkdC3gxcv), request devnet endpoint access |
-| IKA dWallet | Access IKA devnet; `ika-dwallet-anchor` Rust crate; fallback adapter only if devnet access is unavailable |
-| Encrypt FHE | Client/gRPC adapter live on pre-alpha devnet; program-side path waits on Anchor 0.32-compatible upgrade |
-| Umbra SDK | `@umbra-privacy/sdk@4.0.0` installed; funded devnet wSOL deposit/withdraw confirmed |
-| groth16-solana | `groth16-solana` crate from Light Protocol; Solana 1.18.x+ |
+- Track design details: this document, Sections above
+- Implementation status full ledger: [`docs/IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)
+- ZK circuit design: [`docs/architecture.md`](architecture.md)
+- Privacy threat model: [`docs/PRIVACY_AND_THREAT_MODEL.md`](PRIVACY_AND_THREAT_MODEL.md)
+- Demo instructions: [`docs/DEMO_SCRIPT.md`](DEMO_SCRIPT.md)
+- Submission checklist: [`docs/SUBMISSION_CHECKLIST.md`](SUBMISSION_CHECKLIST.md)
