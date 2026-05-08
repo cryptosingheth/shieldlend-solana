@@ -38,8 +38,8 @@ const MAGIC_CONTEXT_ID = "MagicContext1111111111111111111111111111111";
 // Devnet TEE validator
 const TEE_VALIDATOR = "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo";
 
-// Anchor version gap — Rust macros require 0.32.1, workspace has 0.30.1
-const ANCHOR_CURRENT = "0.30.1";
+// Rust macros require Anchor 0.32.1; workspace compatibility is present, but macros are not wired.
+const ANCHOR_CURRENT = "0.32.1";
 const ANCHOR_REQUIRED = "0.32.1";
 
 let overallOk = true;
@@ -192,13 +192,13 @@ if (PRIVATE_PAYMENTS_URL) {
   );
 }
 
-// ─── 7. Rust macro version gap ───────────────────────────────────────────────
+// ─── 7. Rust macro wiring status ─────────────────────────────────────────────
 
 console.log("\n--- Rust PER Macros ---");
 
 warn(
-  `Anchor version gap`,
-  `Current: ${ANCHOR_CURRENT} — Required for PER macros: ${ANCHOR_REQUIRED}`
+  `Rust PER macros not wired`,
+  `Anchor current: ${ANCHOR_CURRENT}; required: ${ANCHOR_REQUIRED}`
 );
 info(
   "Blocked macros",
@@ -206,7 +206,7 @@ info(
 );
 info(
   "Risk",
-  "Anchor upgrade must be isolated (rebuild all three programs, re-run C2H round-trip)"
+  "Next task must wire macros in programs, rebuild all three programs, and re-run C2H round-trip"
 );
 info(
   "Unblocked surface",
@@ -259,7 +259,7 @@ if (PRIVATE_PAYMENTS_URL) {
   console.log("BLOCKED    — Private Payments API URL not set (requires Discord access).");
 }
 
-console.log("BLOCKED    — Rust PER macros require Anchor 0.32.1 (current 0.30.1).");
+console.log("NOT WIRED  — Anchor 0.32.1 is present; Rust PER macros are not in ShieldLend programs.");
 
 if (!overallOk) {
   console.error("\nOne or more checks failed. See above for details.");

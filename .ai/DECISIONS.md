@@ -313,8 +313,8 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 ## groth16-solana API (pinned, C2D)
 
 **Decision**: Use `groth16-solana = "0.0.3"` in both on-chain programs. Do not use 0.2.0 or later.
-**Why**: The current workspace uses Anchor 0.30.1 + solana-program 1.18.x. Version 0.2.0 requires the Solana 2.x / agave SDK, which creates an incompatible dependency tree.
-**How to apply**: Keep `groth16-solana = "0.0.3"` pinned. When upgrading to Solana 2.x toolchain, re-evaluate the crate version at that time.
+**Why**: This pin preserves the C2H Groth16 verifier path. After the Anchor 0.32.1 upgrade, Anchor uses Solana split crates while `groth16-solana 0.0.3` still pulls `solana-program 1.18.26`; this mixed graph compiles and tests because ShieldLend calls the verifier through byte-array helpers.
+**How to apply**: Keep `groth16-solana = "0.0.3"` pinned until a dedicated verifier migration proves an alternative on SBF and re-runs C2H. Do not change the verifier crate as part of PER or Encrypt wiring.
 
 **Decision**: The `vk_gamme_g2` field name in `Groth16Verifyingkey` (double-m, in 0.0.3) is intentional in the crate source.
 **Why**: It is a known typo in the published crate. Future versions may fix it. Using the wrong spelling (`vk_gamma_g2`) will cause a compile error against 0.0.3.
@@ -367,7 +367,7 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 ## Encrypt Pre-Alpha Integration Boundary (rail/encrypt)
 
 **Decision**: Keep Encrypt integration client/sidecar-level on `rail/encrypt`; do not add `encrypt-anchor` to programs in this branch.
-**Why**: Current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`, while this workspace and the C2H-verified devnet programs are on Anchor `0.30.1`. Upgrading Anchor in the privacy-rail branch risks breaking the confirmed Groth16 withdraw round-trip. The installed `@encrypt.xyz/pre-alpha-solana-client@0.1.0` package also exports its gRPC client as TypeScript source in `node_modules`, so plain Node cannot import the SDK directly.
+**Why**: Current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`. The workspace has now been upgraded to Anchor 0.32.1, but program-side Encrypt still needs a compatible `encrypt-anchor` crate family and C2H revalidation. The installed `@encrypt.xyz/pre-alpha-solana-client@0.1.0` package also exports its gRPC client as TypeScript source in `node_modules`, so plain Node cannot import the SDK directly.
 **How to apply**: Use `frontend/src/lib/privacyRails/encrypt.ts` and `scripts/check-encrypt.mjs` for pre-alpha gRPC `CreateInput` probes. Keep `lending_pool::verify_encrypt_reveal` fail-closed until an Anchor compatibility plan is approved. Preserve the official pre-alpha disclaimer: no production encryption guarantee and data may be plaintext/public.
 
 ---
@@ -377,3 +377,11 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: Do not add an Anchor 0.32 Encrypt sidecar in this branch.
 **Why**: A throwaway Anchor 0.32 sidecar could compile graph-only code, but failed when calling the real `encrypt_anchor::EncryptContext` CPI path. Current upstream `encrypt-anchor` resolves to newer Anchor/Solana account crates, producing duplicate `solana_account_info::AccountInfo` and `anchor_lang::Error` types at the CPI boundary.
 **How to apply**: Keep `lending_pool::verify_encrypt_reveal` fail-closed. Use `scripts/encrypt-health-smoke.mjs` only as a pre-alpha gRPC CreateInput smoke for modeled health/collateral threshold inputs. Program-side Encrypt should move in a separate migration branch that pins/forks a compatible `encrypt-anchor` revision, verifies a single Anchor/Solana account crate family with `cargo tree`, and reruns C2H after any program-side change.
+
+---
+
+## Anchor 0.32.1 Workspace Baseline (upgrade/anchor-032-privacy-rails)
+
+**Decision**: The active workspace baseline is Anchor `0.32.1` for CLI, `anchor-lang`, and root `@coral-xyz/anchor`.
+**Why**: MagicBlock PER Rust macros and Encrypt Anchor integration require Anchor 0.32 compatibility. The upgrade validates without changing program IDs or wiring rails.
+**How to apply**: Treat Anchor 0.32.1 compatibility as available, but do not claim MagicBlock PER macros or Encrypt on-chain FHE are live until program-side wiring is implemented, rebuilt, redeployed if needed, and C2H is rerun. Track `anchor build --no-idl` SBF syscall warnings before any upgraded-binary redeploy.

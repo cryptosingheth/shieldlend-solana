@@ -11,7 +11,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | Canonical path | `/Users/opinderpreetsingh/Projects/shieldlend-solana` |
 | Old paths (do not use) | iCloud/Codex Workspace copies archived; `~/shieldlend-solana` archived |
 | EVM repo (separate) | `~/shieldlend-v2` — do not modify unless explicitly asked |
-| Branch | `convergence/zk-constants-artifacts` |
+| Branch | `upgrade/anchor-032-privacy-rails` |
 | Remote: origin | `https://github.com/cryptosingheth/shieldlend-solana.git` |
 
 ## Agent Instructions
@@ -38,7 +38,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 **CLI prerequisites**:
 - `solana` CLI installed
-- `anchor` CLI installed (`0.30.1`)
+- `anchor` CLI installed (`0.32.1`)
 - `circom` installed (`2.2.3`)
 - `snarkjs` available (`0.7.6`; `--version` prints usage and exits non-zero)
 
@@ -52,7 +52,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `programs/lending_pool/` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
 | `programs/nullifier_registry/` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | PDA nullifier set; Active/Locked/Spent state machine |
 | `Anchor.toml` | — | Workspace config; cluster = Localnet; wallet = `~/.config/solana/id.json` |
-| `Cargo.toml` | — | Root workspace; `anchor-lang = "0.30.1"` |
+| `Cargo.toml` | — | Root workspace; `anchor-lang = "0.32.1"` |
 
 ---
 
@@ -93,6 +93,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `docs/USER_JOURNEYS_AND_TEST_PLAN.md` | Product journey matrix + pass/block status |
 | `docs/IMPLEMENTATION_PLAN.md` | Phase-by-phase implementation checklist |
 | `docs/DESIGN_PLAN.md` | Product/UI design direction and screen planning |
+| `docs/ANCHOR_032_UPGRADE.md` | Anchor 0.32.1 upgrade ledger, validations, and warnings |
 | `security-checklist.md` | Pre-submission security review checklist |
 
 ---

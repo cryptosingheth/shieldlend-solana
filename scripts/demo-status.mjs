@@ -193,10 +193,10 @@ console.log(`
   ✗ Production privacy guarantee
   ✗ IKA relay signing active (no ika-dwallet-anchor CPI; direct wallet fallback)
   ✗ MagicBlock Private Payments live (URL Discord-gated; adapter fails closed)
-  ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.30.1 vs 0.32.1 gap)
+  ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)
   ✗ Umbra native SOL ShieldLend payout (C2H exits direct stealth_address; no wSOL bridge)
-  ✗ Encrypt on-chain FHE active (blocked by Anchor 0.32.1 requirement)
+  ✗ Encrypt on-chain FHE active (Anchor 0.32.1 compatibility present; Encrypt Anchor CPI not wired)
 `);
 
 // ── Summary ──────────────────────────────────────────────────────────────────

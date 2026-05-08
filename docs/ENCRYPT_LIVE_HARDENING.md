@@ -61,16 +61,15 @@ Latest live-hardening IDs:
 - `debt_value_lamports`: `25EK8vDYPXB6kaT6EZEmz6gwjpu1SNKt57zn1cnYR1xw`
 - `liquidation_threshold_bps`: `2iA8vWgBaA8cKo6eGsQQMdZUgHyNNB3spSc93Sj6Fhos`
 
-## Anchor 0.32 migration path
+## Anchor 0.32 program-side migration path
 
-Use a separate migration branch. Do not upgrade the C2H-verified Anchor 0.30.1 workspace in place.
+The root workspace now uses Anchor 0.32.1, but Encrypt Anchor CPI is still not wired. Keep the remaining program-side migration separate from this client/gRPC hardening path.
 
-1. Install/use an Anchor CLI compatible with the chosen program SDK target.
-2. Pin an `encrypt-pre-alpha` revision whose `encrypt-anchor` crate resolves to Anchor 0.32, or vendor/fork `encrypt-anchor` and align its workspace `anchor-lang` and Solana account crates to the sidecar.
-3. Add the sidecar as an isolated Cargo workspace with its own `[workspace]`, so it is not a root ShieldLend workspace member.
-4. Confirm `cargo tree -i solana-account-info` and `cargo tree -i anchor-lang` do not show incompatible duplicate versions across the sidecar's Anchor and Encrypt CPI boundary.
-5. Build/test the sidecar first with `cargo test`, then with the matching Anchor CLI/SBF toolchain.
-6. Only after sidecar CPI compiles, consider wiring `lending_pool::verify_encrypt_reveal`.
-7. Rerun the C2H devnet Groth16 withdraw round-trip before merging any program-side migration.
+1. Keep using Anchor CLI 0.32.1 unless a specific Encrypt revision requires otherwise.
+2. Pin an `encrypt-pre-alpha` revision whose `encrypt-anchor` crate resolves to the same Anchor/Solana account crate family, or vendor/fork `encrypt-anchor` and align its workspace `anchor-lang` and Solana account crates.
+3. Confirm `cargo tree -i solana-account-info` and `cargo tree -i anchor-lang` do not show incompatible duplicate versions across the ShieldLend Anchor and Encrypt CPI boundary.
+4. Build/test the CPI path first with `cargo test`, then with the matching Anchor CLI/SBF toolchain.
+5. Only after CPI compiles, consider wiring `lending_pool::verify_encrypt_reveal`.
+6. Rerun the C2H devnet Groth16 withdraw round-trip before merging any program-side migration.
 
 Until those steps pass, `lending_pool` must keep returning `EncryptVerifierNotWired`.
