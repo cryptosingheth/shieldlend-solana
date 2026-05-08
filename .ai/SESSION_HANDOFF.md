@@ -42,15 +42,23 @@ Registry_writer PDAs:
 
 The initial `authorized_programs` list was set to program IDs (wrong). Fixed by calling `update_authorized_programs` with the PDA addresses. `devnet-fullround.mjs` Step 0a auto-detects and corrects this.
 
-## Files Changed (IKA rail, this session)
+## Files Changed (IKA live-hardening, 2026-05-08)
 
-- `frontend/src/lib/privacyRails/ika.ts` — new; capability probe, signer mode types, disclosure constants
-- `scripts/check-ika.mjs` — new; local probe: SDK availability, CPI presence, exact blockers, capability matrix
+- `scripts/ika-live-sign-smoke.mjs` — new; local-only Solana signing capability probe with source-backed blocker evidence
+- `frontend/package.json` — @ika.xyz/sdk bumped ^0.3.1 → ^0.4.0
+- `package-lock.json` — updated for sdk 0.4.0 + ika-wasm 0.2.1
+- `.ai/TASK_LOG.md` — IKA live-hardening entry appended
+- `.ai/SESSION_HANDOFF.md` — this file updated
+- `.ai/CURRENT_TASK.md` — updated
+
+## Files Changed (IKA rail, prior session)
+
+- `frontend/src/lib/privacyRails/ika.ts` — capability probe, signer mode types, disclosure constants
+- `scripts/check-ika.mjs` — local probe: SDK availability, CPI presence, exact blockers, capability matrix
 - `frontend/src/lib/protocolAdapters.ts` — IKA rail healthy: false, role updated, SignerMode re-exported
 - `frontend/src/app/page.tsx` — WhatWorksTodayPanel + deposit warning updated for IKA pre-alpha/mock signer
 - `.env.example` — removed NEXT_PUBLIC_IKA_ENABLED=true; added accurate comment
 - `package.json` — added check:ika script
-- `.ai/TASK_LOG.md` — IKA rail entry appended
 
 ## Active Wallet
 

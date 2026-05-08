@@ -1,6 +1,6 @@
 # Current Task
 
-## Status: IKA rail complete — capability probe + exact blocker documented. C2H preserved.
+## Status: IKA live-hardening complete — Solana blockers proven with source evidence. C2H preserved.
 
 ## Active Objective
 
