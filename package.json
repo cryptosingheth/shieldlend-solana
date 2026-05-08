@@ -12,6 +12,9 @@
     "check:env": "node scripts/check-env.mjs",
     "check:encrypt": "node scripts/check-encrypt.mjs",
     "smoke:encrypt-health": "node scripts/encrypt-health-smoke.mjs",
+    "check:umbra": "node scripts/check-umbra.mjs",
+    "smoke:umbra": "node scripts/umbra-smoke.mjs",
+    "smoke:umbra-funded": "node scripts/umbra-funded-smoke.mjs",
     "test:programs": "cargo test --workspace",
     "test:anchor": "anchor test",
     "circuits:compile": "circom circuits/withdraw_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/collateral_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/repay_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits"

@@ -5,8 +5,9 @@ A zero-knowledge, privacy-preserving lending protocol design for Solana.
 Current local implementation is a pre-alpha scaffold. All three Anchor programs
 are deployed on devnet. On-chain Groth16 BN254 verification is confirmed for
 the withdraw path (DEV/TEST trusted setup only). Encrypt is wired as a
-pre-alpha client/gRPC probe only; IKA, MagicBlock PER/Private Payments, Umbra,
-and on-chain Encrypt/FHE health verification are not live.
+pre-alpha client/gRPC probe; Umbra SDK adapter is installed and fail-closed in
+the frontend for supported SPL/Token-2022 exits. IKA, MagicBlock PER/Private
+Payments, and on-chain Encrypt/FHE health verification are not live.
 
 Built for the **Colosseum Frontier Hackathon 2026**.
 
@@ -47,7 +48,7 @@ component addresses. These layers are not all live in the current local build:
 
 - **Payment protection** (MagicBlock Private Payments): Repayments settle through a private SPL/WSOL payment path. The LendingPool verifies a receipt bound to `loanId`, `nullifierHash`, and `outstanding_balance`, so collateral can unlock without publishing the repayment transfer graph.
 
-- **Exit protection** (Umbra SDK): Every output — withdrawal destinations and loan disbursements — routes to a one-time Umbra stealth address. Each address is derived via ECDH from the recipient's published meta-address, has zero prior chain history, and is abandoned after use.
+- **Exit protection** (Umbra SDK target): Outputs should route through Umbra encrypted-balance or mixer paths once the exit asset is SPL/Token-2022, including wSOL for SOL-like exits. Current C2H native SOL withdraw uses the direct `stealth_address` field and is lower privacy.
 
 ---
 
@@ -73,7 +74,8 @@ component addresses. These layers are not all live in the current local build:
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
 | On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
 | Encrypt pre-alpha client rail | Client/gRPC probe live | `CreateInput` health-ratio test returned ciphertext `7Ss3kGMQ...NugW`; no production encryption guarantee |
-| Other external privacy rails | Not wired | IKA, PER, Private Payments, Umbra, on-chain Encrypt/FHE |
+| Umbra SDK adapter | Installed, fail-closed | wSOL/SPL/Token-2022 only; native SOL C2H path still direct `stealth_address` |
+| Other external privacy rails | Not wired | IKA, PER, Private Payments, on-chain Encrypt/FHE |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
 ---
@@ -122,7 +124,7 @@ table above.
 | Groth16 circuits | Prove note ownership, collateral validity, and repayment authority. | Lets the protocol enforce rules without revealing which note belongs to the user. |
 | MagicBlock Private Payments | Settles repayments through a private payment receipt in Full Privacy mode. | A ZK proof alone cannot hide a normal public repayment transfer. |
 | Encrypt FHE | Keeps oracle and health-factor computation encrypted until authorized reveal. | Protects liquidation-sensitive data from MEV and public health-factor surveillance. |
-| Umbra | Gives each withdrawal or disbursement a fresh stealth receiving address. | Prevents outputs from landing directly in a known wallet. |
+| Umbra | SDK-backed SPL/Token-2022 encrypted balances and mixer/UTXO receiving path. | Prevents fake stealth placeholders; native SOL requires wSOL/SPL routing before live Umbra action. |
 | NullifierRegistry | Tracks Active, Locked, and Spent note states. | Prevents double-spend and prevents collateral withdrawal during active loans. |
 
 The canonical explanation of these flows is [`docs/VISUAL_FLOWS.md`](docs/VISUAL_FLOWS.md). The exact privacy guarantees, residual risks, and adversary model are in [`docs/PRIVACY_AND_THREAT_MODEL.md`](docs/PRIVACY_AND_THREAT_MODEL.md).
@@ -150,7 +152,7 @@ external docs.
 | MagicBlock PER batching | Not wired | No |
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | Not wired | No |
-| Umbra stealth exits | Not wired | No |
+| Umbra SDK exits | Adapter installed, blocked for current native SOL C2H path | No — requires supported SPL/Token-2022 mint and live transaction smoke |
 | Encrypt/FHE oracle or health computation | Not wired | No |
 | On-chain Groth16 verification (withdraw) | Confirmed on devnet — DEV/TEST only | No — DEV/TEST trusted setup, not production |
 | On-chain Groth16 verification (borrow/repay) | Wired in program; devnet end-to-end not yet run | No |
@@ -166,9 +168,9 @@ external docs.
 SOL flows:
 - **Target deposit**: IKA relay -> ShieldedPool via PER batch.
 - **Current deposit code**: direct wallet-signed frontend path; programs deployed on devnet.
-- **Target withdraw**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra stealth address.
-- **Current withdraw code**: DEV/TEST Groth16 round-trip confirmed on devnet; privacy rails (IKA relay, PER, Umbra) not wired.
-- **Target borrow**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra stealth address.
+- **Target withdraw**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra SPL/Token-2022 receiving path.
+- **Current withdraw code**: DEV/TEST Groth16 round-trip confirmed on devnet; direct `stealth_address` mode preserved; Umbra SDK adapter installed but native SOL routing is blocked until wSOL/SPL exit wiring exists.
+- **Target borrow**: ShieldedPool -> IKA relay -> PER exit batch -> Umbra SPL/Token-2022 receiving path.
 - **Current borrow code**: lending proof verifier fails closed before disbursement.
 - **Target repay**: MagicBlock Private Payments receipt plus IKA-submitted proof.
 - **Current repay code**: proof and private-payment verifiers fail closed.
@@ -445,7 +447,7 @@ mainnet availability.
 | Encrypt FHE | Client/gRPC adapter live; program-side FHE health fails closed | Pre-alpha docs disclaim production encryption guarantees and may store plaintext/public data | Encrypt mainnet + Anchor-compatible program integration |
 | MagicBlock PER + Private Payments | Not wired; Private Payments URL absent by default | Devnet access required | MagicBlock PER/private payments mainnet |
 | groth16-solana | Not added/wired in programs | Target verifier path | BN254 syscalls live since Solana 1.18.x |
-| Umbra SDK | Not wired in current frontend flow | Network/config not set locally | Production integration after code follow-up |
+| Umbra SDK | Installed and fail-closed in current frontend flow | Network/config in `.env.example`; native SOL token-type blocker remains | Add wSOL/SPL exit leg and funded devnet smoke |
 
 ---
 
@@ -455,7 +457,7 @@ mainnet availability.
 |---|---|---|
 | IKA + Encrypt Frontier | Superteam | Target: dWallet relay authorization, FutureSign liquidation consent, encrypted oracle/health computation, aggregate solvency |
 | Colosseum Privacy Track | MagicBlock | Target: PER deposit batching, PER exit batching, VRF dummy insertion, private repayment settlement |
-| Umbra Side Track | Frontier | Target: Umbra SDK for output stealth addresses, exit hygiene, and optional disclosure patterns |
+| Umbra Side Track | Frontier | Target: Umbra SDK for SPL/Token-2022 encrypted balances, mixer receiving paths, exit hygiene, and optional disclosure patterns |
 
 Each track covers a distinct privacy layer — entry execution, transaction authorization, private repayment settlement, encrypted state, and exit address hygiene — with no overlap between them. For full track-by-track integration details and non-overlap justification, see [`docs/HACKATHON.md`](docs/HACKATHON.md).
 

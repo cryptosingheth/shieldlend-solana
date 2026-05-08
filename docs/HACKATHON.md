@@ -12,7 +12,7 @@ ShieldLend targets three tracks simultaneously. Each track covers an orthogonal 
 |---|---|---|
 | IKA + Encrypt Frontier | Superteam | dWallet relay authorization + dWallet disbursement co-signing + FutureSign liquidation + FHE oracle/health computation + FHE aggregate solvency |
 | Colosseum Privacy Track | MagicBlock | PER deposit batching + PER exit batching + VRF dummy insertion + private repayment settlement |
-| Umbra Side Track | Frontier | Umbra SDK for output addresses, exit hygiene, and user-scoped disclosure patterns |
+| Umbra Side Track | Frontier | Official Umbra SDK for SPL/Token-2022 encrypted balances, mixer/UTXO receiving paths, exit hygiene, and user-scoped disclosure patterns |
 
 ---
 
@@ -121,20 +121,63 @@ Integration: private payment settlement + receipt binding in `lending_pool::repa
 ## Track 3 — Umbra Side Track
 
 ### Track theme
-"Stealth addresses as the unified output privacy layer for DeFi"
+"Umbra as the Solana privacy rail for token exits"
+
+### Authoritative integration facts
+
+- Official package installed: `@umbra-privacy/sdk@4.0.0`.
+- Docs package name: `@umbra-privacy/sdk`; docs describe a TypeScript SDK for Node.js and browser environments.
+- Supported networks: `mainnet`, `devnet`, and `localnet`.
+- Program IDs:
+  - Mainnet: `UMBRAD2ishebJTcgCLkTkNUx1v3GyoAgpTRPeWoLykh`
+  - Devnet: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
+- Supported assets are SPL and Token-2022 balances. Native SOL is not a direct Umbra balance type; SOL-like routing should use wSOL or another supported SPL representation.
+- Wallet model: the SDK expects an `IUmbraSigner` with transaction signing, batch transaction signing, and message signing. The SDK also exports `createSignerFromWalletAccount` for Wallet Standard wallet accounts.
+
+### Funded devnet smoke
+
+`scripts/umbra-funded-smoke.mjs` now performs the live funded path against devnet using wSOL:
+
+1. Confirms the configured Solana CLI wallet balance.
+2. Creates or reuses the wallet's wSOL ATA, transfers native devnet SOL into it, and calls SPL Token `SyncNative`.
+3. Initializes the Umbra SDK client for devnet.
+4. Reuses the existing confidential Umbra registration when present.
+5. Deposits 0.001 wSOL from the public ATA into the Umbra encrypted balance.
+6. Queries the encrypted balance and withdraws the same 0.001 wSOL back to the public ATA.
+
+Confirmed devnet mint: `So11111111111111111111111111111111111111112` (wSOL).
+
+Confirmed transaction signatures:
+
+| Step | Signature |
+|---|---|
+| wSOL wrap + SyncNative | `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As` |
+| Umbra deposit queue | `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx` |
+| Umbra deposit callback | `2nPcvgkfXhYWuAAxHfhjH8WCi4afguYbhqu3uYdpYgEH1As5jB8R2evfiUWXmFekz1CXfhB1HwHosiQKYGjCxMVL` |
+| Umbra deposit rent reclaim | `2MFBu2kb2VFPHRRhDYK4ip9uwm3Vm8vaYGdhCogx9V4LBCwjw3nrjx1oY6JefQkRPX3T9P2ttcVPcw6L4Rkh7Uib` |
+| Umbra withdraw queue | `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUQdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` |
+| Umbra withdraw callback | `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau` |
+| Umbra withdraw rent reclaim | `4zm2xwJ4TfCGTTwtcG72wfj3xXjsYiDfNqZBRY1Kp2qyszwezjywjJCC63LphzUK9Qbs5jhbv37NLYEFcLfoqKEm` |
+
+Result: funded Umbra encrypted-balance deposit and withdrawal are live on devnet for wSOL. This does **not** mean the existing ShieldLend C2H native SOL withdraw is Umbra-routed. C2H still exits native SOL through `WithdrawArgs.stealth_address`; ShieldLend needs a program/API settlement leg that converts native SOL exits to wSOL or another supported SPL/Token-2022 mint before calling the Umbra SDK.
 
 ### Umbra integration points (3)
 
-**1. Withdrawal destinations**
-Every ShieldedPool withdrawal routes to a fresh Umbra stealth address. The address is generated via Umbra SDK from the recipient's published stealth meta-address. Only the recipient can derive the private key via ECDH. The stealth address has zero prior chain history — no observer can link it to the recipient's primary wallet.
+**1. Withdrawal receiving path**
+ShieldLend now has a frontend Umbra adapter at `frontend/src/lib/privacyRails/umbra.ts`. The adapter exposes a fail-closed route plan and official SDK calls for:
+- public SPL/Token-2022 balance -> Umbra encrypted balance
+- Umbra encrypted balance -> public token account
+- public SPL/Token-2022 balance -> receiver-claimable UTXO
 
-**2. Loan disbursement destinations**
-Every borrow disbursement routes to a fresh Umbra stealth address. The borrower's wallet address is a private input to the collateral_ring ZK circuit — never published on-chain. The only on-chain disbursement target is a freshly generated Umbra stealth address. This breaks the on-chain chain: collateral commitment → loan disbursement → borrower identity.
+Current C2H withdraw releases native SOL to `WithdrawArgs.stealth_address`. That path remains preserved and is labeled lower privacy in the UI. It is not an Umbra mixer/encrypted-balance action.
 
-Both exits — withdrawal and disbursement — use the same Umbra scheme and route through the same PER exit batch. The unified stealth address format is a prerequisite for exit batching to be effective: both exit types must look identical on-chain to be indistinguishable.
+The funded smoke proves the SDK-side wSOL rail works. It does not yet wire the ShieldedPool payout path into that rail.
 
-**3. Scoped disclosure and exit hygiene**
-Umbra remains the address-layer privacy tool, not the repayment settlement rail. It is also useful for user-controlled disclosure patterns: the client can prove selected withdrawal/disbursement destinations belong to the user without revealing unrelated stealth addresses. This complements the encrypted local history journal and avoids any protocol-operated viewing key.
+**2. Loan disbursement receiving path**
+Borrow disbursement can use the same adapter once the disbursement asset is represented as a supported SPL/Token-2022 mint. For SOL-denominated lending, the practical route is wSOL or a program-level SOL -> wSOL leg before calling Umbra SDK functions.
+
+**3. Mixer path and scoped disclosure**
+Umbra's mixer/UTXO path is the stronger receiving path for breaking sender/receiver linkage. The SDK exposes receiver-claimable UTXO creation and claim functions, but claim flows require a ZK prover and relayer. The optional `@umbra-privacy/web-zk-prover@2.0.1` currently declares a peer dependency on `@umbra-privacy/sdk@2.0.3`, so this branch does not force-install it beside `@umbra-privacy/sdk@4.0.0`. Until a compatible prover package is selected, ShieldLend must not claim live mixer actions.
 
 ---
 
@@ -163,6 +206,6 @@ No single feature is claimed for multiple tracks. The IKA/Encrypt track is about
 |---|---|
 | MagicBlock PER + Private Payments | Join Discord (discord.com/invite/MBkdC3gxcv), request devnet PER and private payment endpoint access |
 | IKA dWallet | Access IKA devnet; `ika-dwallet-anchor` Rust crate; fallback adapter only if devnet access is unavailable |
-| Encrypt FHE | Client/gRPC adapter live on pre-alpha devnet; program-side path waits on an Anchor 0.32-compatible upgrade plan |
-| Umbra SDK | Solana mainnet alpha via Arcium (Feb 2026); stealthaddress.dev SDK docs |
+| Encrypt FHE | Client/gRPC adapter live on pre-alpha devnet; program-side path waits on Anchor 0.32-compatible upgrade |
+| Umbra SDK | `@umbra-privacy/sdk@4.0.0` installed; set devnet RPC, WebSocket RPC, indexer, relayer, supported mint, and Wallet Standard signer |
 | groth16-solana | `groth16-solana` crate from Light Protocol; Solana 1.18.x+ |

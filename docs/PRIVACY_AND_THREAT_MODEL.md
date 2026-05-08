@@ -49,7 +49,7 @@ Mechanisms:
 - The nullifier prevents double-spend without revealing the note secret.
 - IKA submits the withdrawal, so the user's wallet is not the on-chain signer.
 - MagicBlock PER batches withdrawals with borrow disbursement exits.
-- Umbra generates a fresh stealth address for the receiving side.
+- Umbra SDK is the target receiving rail for SPL/Token-2022 exits. Current C2H native SOL withdraw still uses the direct `stealth_address` field and is lower privacy until a wSOL/SPL Umbra leg is wired.
 
 What remains public:
 - A relay submitted a withdrawal proof.
@@ -60,7 +60,7 @@ What is hidden:
 - Which ring member was the user's commitment.
 - Which user submitted the proof.
 - Whether an exit is a withdrawal or borrow disbursement when it is batched with other exits.
-- Which known wallet controls the receiving address.
+- Which known wallet controls the receiving address only when the exit goes through a real Umbra encrypted-balance or mixer path. Direct `stealth_address` mode does not provide the same protection.
 
 ### Borrow
 
@@ -71,7 +71,7 @@ Mechanisms:
 - The collateral nullifier moves from Active to Locked, preventing withdrawal while the loan is active.
 - IKA submits the borrow transaction and co-signs disbursement only after program-side checks pass.
 - MagicBlock PER batches disbursement exits with withdrawals.
-- Umbra provides a fresh stealth address for loan proceeds.
+- Umbra SDK provides the target token receiving path for loan proceeds once disbursement is represented as a supported SPL/Token-2022 mint.
 
 What remains public:
 - A LoanAccount PDA exists.
@@ -171,11 +171,11 @@ IP privacy is not enforced by ShieldLend. Users who need network-layer privacy m
 | Cross-contract nullifier correlation | Protected | `SHIELDED_POOL_PROGRAM_ID` in nullifier formula. |
 | Re-insertion double-spend | Protected | `leaf_index` in nullifier formula. |
 | Withdrawal submitter wallet | Protected | IKA relay submits proof transaction. |
-| Withdrawal destination | Protected | Umbra fresh stealth address. |
+| Withdrawal destination | Mode-dependent | Protected only on the Umbra SPL/Token-2022 route; direct `stealth_address` is lower privacy and preserves C2H. |
 | Exit type classification | Mitigated | Withdrawal and disbursement exits share PER -> Umbra path. |
 | Collateral note identity | Protected | Collateral ring proof. |
 | Borrower wallet | Protected | Private circuit input plus relay signer. |
-| Disbursement destination | Protected | Umbra stealth address. |
+| Disbursement destination | Mode-dependent | Protected only once disbursement uses the Umbra SDK route for a supported mint. |
 | Repayer wallet | Protected | IKA relay plus repay proof. |
 | Repayment transfer graph | Protected in Full Privacy mode | MagicBlock Private Payments receipt binding. |
 | Repayment amount | Mode-dependent | Hidden only when private payment settlement is active. |
@@ -292,6 +292,7 @@ These disclosures are intentional, documented, and required for a safe first ver
 - Borrow amount is public or bucketed.
 - LoanAccount creation and loan count are public.
 - Denomination class is visible when fixed-denomination funds are released.
+- Current native SOL C2H withdraw exits use direct `stealth_address`; Umbra privacy requires a supported SPL/Token-2022 route such as wSOL.
 - Aggregate collateral coverage can be threshold-decrypted.
 - Repayment amount is private only in Full Privacy mode with MagicBlock Private Payments.
 - IP address privacy is not handled by the protocol.

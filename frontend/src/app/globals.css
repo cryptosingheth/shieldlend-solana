@@ -362,6 +362,44 @@ button:disabled {
   font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-0);
+}
+
+.segmented button {
+  min-height: 38px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.segmented button.active {
+  border-color: color-mix(in srgb, var(--privacy) 42%, var(--line));
+  background: color-mix(in srgb, var(--privacy) 12%, var(--surface-2));
+}
+
+.route-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-0);
+}
+
+.route-card span,
+.route-card small {
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+
 .note-row {
   width: 100%;
   display: grid;

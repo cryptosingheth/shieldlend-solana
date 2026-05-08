@@ -2,97 +2,74 @@
 
 ## Task Objective
 
-Encrypt Live-Hardening Task — COMPLETE on branch `rail/encrypt`.
+Privacy Rails Integration Merge — in progress on `convergence/privacy-rails-integration`.
+Merging rail/encrypt (97ec94d) + rail/umbra (b3a63c1) + rail/magicblock (8d31e20) + rail/ika (bb27511) into this branch, preserving the C2H devnet Groth16 withdraw proof milestone.
 
 ## Current Status
 
-Encrypt is integrated where safe for this codebase: client/adapter-level gRPC integration against the Encrypt pre-alpha devnet endpoint. Program-side `encrypt-anchor` integration was intentionally not added because the current Encrypt installation docs require Anchor `0.32`, while this repo's C2H-verified programs and CLI remain on Anchor `0.30.1`.
+C2H milestone intact: all three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed.
 
-The Anchor 0.32 sidecar feasibility check was re-run. A throwaway graph-only sidecar compiled, but the real `encrypt_anchor::EncryptContext` CPI path failed with duplicate `solana_account_info` and `anchor_lang` types because current upstream `encrypt-anchor` resolves to newer Anchor/Solana account crates. No sidecar was added.
+---
 
-C2H is not broken. No Anchor program logic changed, and all required validations pass.
+## Encrypt Rail Findings (97ec94d)
 
-## Encrypt Live Probe
-
-Command run:
-
-```bash
-npm run check:encrypt -- --live
-```
-
-Result:
-- SDK/package in lockfile: `@encrypt.xyz/pre-alpha-solana-client@0.1.0`
-- gRPC API used: `encrypt.v1.EncryptService/CreateInput`
+- `@encrypt.xyz/pre-alpha-solana-client@0.1.0` present in lockfile.
+- gRPC API: `encrypt.v1.EncryptService/CreateInput`
 - Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`
 - Program ID: `4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8`
-- Active devnet keys discovered:
-  - `6L4bQjT2ao774nQQ6BkXqnKJMye4nmPW1SMeRRxfm2Yn`, disc `2`, key `f00f3465b66ff8034600706ed05bf70ef5318edc511398085a3ab4512b875197`
-  - `2YP2nxFoYcDFDBRygrN7C3Y3ENdcoaLjVeAmbX8HHwur`, disc `7`, key `5555555555555555555555555555555555555555555555555555555555555555`
-- Health-ratio test value: `15000` bps
-- Returned ciphertext identifier: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
+- Active devnet key: `f00f3465b66ff8034600706ed05bf70ef5318edc511398085a3ab4512b875197`
+- Health-ratio test ciphertext: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
+- Collateral/debt/threshold IDs: `8CtojVRa...`, `25EK8vDY...`, `2iA8vWgB...`
+- Program-side Encrypt/FHE remains fail-closed (`LendingError::EncryptVerifierNotWired`).
+- Anchor 0.32 sidecar blocked — feasibility check confirmed account-type conflicts.
+- Official docs: pre-alpha has no real encryption guarantee; data may be plaintext/public.
 
-Additional live-hardening script:
+---
 
-```bash
-node scripts/encrypt-health-smoke.mjs --live
-```
+## Umbra Rail Findings (b3a63c1)
 
-This submits modeled non-sensitive `collateral_value_lamports`, `debt_value_lamports`, and `liquidation_threshold_bps` inputs through the same CreateInput service. Latest IDs:
-- collateral: `8CtojVRaXkWnCB6pN6wq5jxEvkdmAe5BhfTsm5pBLZsc`
-- debt: `25EK8vDYPXB6kaT6EZEmz6gwjpu1SNKt57zn1cnYR1xw`
-- threshold: `2iA8vWgBaA8cKo6eGsQQMdZUgHyNNB3spSc93Sj6Fhos`
+- `@umbra-privacy/sdk@4.0.0` installed.
+- Devnet program ID: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
+- Funded devnet wSOL deposit/withdraw confirmed:
 
-Important: this proves pre-alpha developer tooling and gRPC connectivity only. Official Encrypt docs state pre-alpha has no real encryption guarantee and data may be plaintext/public. Do not submit sensitive or real data.
+| Step | Signature |
+|---|---|
+| wSOL wrap + SyncNative | `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As` |
+| Umbra deposit queue | `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx` |
+| Umbra deposit callback | `2nPcvgkfXhYWuAAxHfhjH8WCi4afguYbhqu3uYdpYgEH1As5jB8R2evfiUWXmFekz1CXfhB1HwHosiQKYGjCxMVL` |
+| Umbra withdraw queue | `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUQdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` |
+| Umbra withdraw callback | `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjsDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau` |
 
-## Files Changed
+- ShieldLend native SOL payout still uses direct `stealth_address`; needs wSOL/SPL bridge for true Umbra routing.
 
-- `frontend/src/lib/privacyRails/encrypt.ts` — Encrypt adapter with active key discovery and gRPC `CreateInput`
-- `scripts/check-encrypt.mjs` — CLI probe, including live `CreateInput` mode
-- `scripts/encrypt-health-smoke.mjs` — modeled health/collateral threshold live smoke
-- `docs/ENCRYPT_LIVE_HARDENING.md` — exact sidecar blocker and Anchor 0.32 migration path
-- `frontend/src/app/api/integrations/encrypt/status/route.ts` — real status probe
-- `frontend/src/app/api/integrations/encrypt/liquidation-reveal/route.ts` — probe-only default plus optional health-ratio `CreateInput`
-- `frontend/src/app/page.tsx` — Encrypt pre-alpha status panel
-- `.env.example` — optional network-key/probe env vars
-- `package.json` — `check:encrypt` script
-- `README.md`
-- `docs/HACKATHON.md`
-- `docs/PRIVACY_AND_THREAT_MODEL.md`
-- `.ai/CURRENT_TASK.md`
-- `.ai/SESSION_HANDOFF.md`
-- `.ai/DECISIONS.md`
-- `.ai/TASK_LOG.md`
+---
 
-## Program-Side Status
+## Deployed Programs (Devnet) — All Verified
 
-Fail-closed. `lending_pool::verify_encrypt_reveal` still returns `LendingError::EncryptVerifierNotWired`. This is intentional until an Anchor 0.32 migration or an Anchor 0.30-compatible Encrypt program SDK path is approved.
+| Program | Program ID |
+|---|---|
+| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
+| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
+| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
+
+## Active Wallet
+
+- Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V`
+- Cluster: devnet
 
 ## Validations Passed
 
 - `npm run check:encrypt -- --live` — PASS
-- `node scripts/encrypt-health-smoke.mjs --live` — PASS
 - `npm run typecheck:frontend` — PASS
-- `npm run build:frontend` — PASS with existing `web-worker`/`ffjavascript` warning
-- `cargo test --workspace` — PASS, 47 tests; existing Anchor cfg warnings
-- `anchor build --no-idl` — PASS with existing Anchor/SBF warnings
+- `npm run build:frontend` — PASS (existing web-worker/ffjavascript warning)
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS (existing Anchor/SBF warnings)
 
-## Current Claim Boundary
+## Do Not Claim
 
-Live:
-- Encrypt pre-alpha devnet endpoint reachable.
-- Active network encryption key discovery works.
-- gRPC `CreateInput` accepts a non-sensitive ShieldLend health-ratio test input and returns a ciphertext identifier.
-- Frontend/API can display Encrypt rail status.
-
-Pre-alpha / not live:
-- No production FHE privacy guarantee.
-- No on-chain ShieldLend encrypted-health instruction.
-- No Encrypt threshold reveal verification in `lending_pool`.
-- No sensitive data should be submitted.
-
-## Next Recommended Task
-
-Choose one:
-
-1. Keep Encrypt as a sidecar/client rail until upstream package exports and Anchor compatibility stabilize.
-2. Open a separate Anchor 0.32 migration branch, wire `encrypt-anchor`, and rerun the full C2H devnet round-trip before merging.
+- Production FHE privacy from any Encrypt path.
+- Sensitive data should be submitted to Encrypt pre-alpha.
+- ShieldLend native SOL C2H is Umbra-routed (SDK-side wSOL rail confirmed only).
+- Umbra mixer/UTXO success (direct encrypted-balance confirmed; receiver-claimable UTXO needs compatible prover).
+- Any full privacy rail (IKA, MagicBlock, Encrypt on-chain) is active.
+- Production ZK proof artifacts (DEV/TEST only).

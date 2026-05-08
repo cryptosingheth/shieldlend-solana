@@ -525,3 +525,82 @@ Latest live-hardening CreateInput IDs:
 - collateral: `8CtojVRaXkWnCB6pN6wq5jxEvkdmAe5BhfTsm5pBLZsc`
 - debt: `25EK8vDYPXB6kaT6EZEmz6gwjpu1SNKt57zn1cnYR1xw`
 - liquidation threshold: `2iA8vWgBaA8cKo6eGsQQMdZUgHyNNB3spSc93Sj6Fhos`
+
+---
+
+## 2026-05-08 — Umbra Solana Privacy Rail Implementation
+
+**Branch**: rail/umbra
+**Objective**: Install and wire the official Umbra Solana SDK as a real fail-closed privacy rail without breaking C2H.
+
+### Steps Completed
+
+1. Researched authoritative Umbra sources:
+   - Superteam Umbra Side Track listing
+   - Umbra SDK docs and LLM docs index
+   - npm registry package metadata
+
+2. Installed official SDK:
+   - `@umbra-privacy/sdk@4.0.0`
+   - Confirmed devnet program ID: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
+   - Confirmed mainnet program ID: `UMBRAD2ishebJTcgCLkTkNUx1v3GyoAgpTRPeWoLykh`
+
+3. Added Umbra adapter and scripts:
+   - `frontend/src/lib/privacyRails/umbra.ts`
+   - `scripts/check-umbra.mjs`
+   - `scripts/umbra-smoke.mjs`
+
+4. Wired frontend:
+   - Withdraw screen now supports Direct vs Umbra destination mode.
+   - Direct mode preserves C2H `stealth_address` and labels it lower privacy.
+   - Umbra mode is blocked for current native SOL exits until a supported SPL/Token-2022 mint route exists.
+   - Added Umbra status panel.
+
+5. Updated docs and env:
+   - `.env.example`
+   - `README.md`
+   - `docs/HACKATHON.md`
+   - `docs/PRIVACY_AND_THREAT_MODEL.md`
+
+### Blockers / Non-Claims
+
+- Umbra docs support SPL/Token-2022 balances; current ShieldLend C2H withdrawal releases native SOL lamports.
+- Real Umbra route needs wSOL or another supported SPL/Token-2022 exit leg.
+- `@umbra-privacy/web-zk-prover@2.0.1` peers `@umbra-privacy/sdk@2.0.3`; it was not force-installed beside SDK 4.0.0.
+- No Umbra private transfer success is claimed; no funded devnet Umbra token action was submitted.
+
+### Validations
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS, with existing `web-worker`/`ffjavascript` warning
+- `npm run check:umbra` — PASS with network access; devnet indexer and relayer health both 200
+- `npm run smoke:umbra` — PASS with network access; client init and devnet query worked; no token action submitted
+- `cargo test --workspace` — PASS, 47 tests
+- `anchor build --no-idl` — PASS, with existing Anchor cfg/LTO/undefined-syscall warnings
+
+---
+
+## 2026-05-08 — Umbra Live-Hardening Funded Devnet wSOL Flow
+
+**Branch**: rail/umbra
+**Objective**: Make Umbra live enough for hackathon by submitting a funded devnet SPL/wSOL SDK flow and keeping ShieldLend payout claims honest.
+
+### Completed
+
+- Added `scripts/umbra-funded-smoke.mjs` and `scripts/umbra-wsol-smoke.mjs`.
+- Added `npm run smoke:umbra-funded`.
+- Added frontend funded-flow status fields and `/api/integrations/umbra/status`.
+- Updated `docs/HACKATHON.md` and `docs/IMPLEMENTATION_STATUS.md`.
+- Confirmed funded devnet wSOL flow:
+  - Mint: `So11111111111111111111111111111111111111112`
+  - Amount: `1000000` base units (`0.001` wSOL)
+  - wSOL wrap + SyncNative: `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As`
+  - Umbra deposit queue/callback: `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx` / `2nPcvgkfXhYWuAAxHfhjH8WCi4afguYbhqu3uYdpYgEH1As5jB8R2evfiUWXmFekz1CXfhB1HwHosiQKYGjCxMVL`
+  - Umbra withdraw queue/callback: `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` / `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau`
+
+### Claim Boundary
+
+- Umbra SDK-side wSOL encrypted-balance deposit and withdrawal are live on devnet.
+- Existing C2H withdraw still uses native SOL direct `stealth_address`.
+- ShieldLend payout route still needs native SOL -> wSOL/SPL settlement wiring before claiming Umbra-routed withdrawals.
+- Umbra mixer/UTXO path was not claimed; compatible prover remains unresolved for SDK 4.0.0.

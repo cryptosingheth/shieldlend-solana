@@ -74,8 +74,9 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `frontend/src/lib/circuits.ts` | snarkjs proof generation |
 | `frontend/src/lib/noteStorage.ts` | AES-256-GCM note vault |
 | `frontend/src/lib/solanaClient.ts` | Wallet/RPC/program instruction boundaries; PROGRAM_IDS |
+| `frontend/src/lib/privacyRails/umbra.ts` | Official Umbra SDK adapter, fail-closed route planning, SPL/Token-2022 action wrappers |
 | `frontend/src/app/` | Pages: Deposit, Withdraw, Borrow, Repay, Positions, History |
-| `frontend/package.json` | Next.js 15, React 19, @solana/web3.js, @ika.xyz/sdk, @encrypt.xyz/pre-alpha-solana-client |
+| `frontend/package.json` | Next.js 15, React 19, @solana/web3.js, @ika.xyz/sdk, @encrypt.xyz/pre-alpha-solana-client, @umbra-privacy/sdk |
 
 ---
 
@@ -102,6 +103,8 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 |---|---|
 | `.env.example` | All env vars needed (Solana, MagicBlock, IKA, Encrypt, Umbra) |
 | `scripts/check-env.mjs` | Validates cargo, solana, anchor, circom, snarkjs + env vars |
+| `scripts/check-umbra.mjs` | Validates Umbra SDK package, program ID, devnet indexer health, relayer health |
+| `scripts/umbra-smoke.mjs` | Initializes Umbra SDK client and queries devnet user account without submitting token action |
 | `package.json` | Root workspace scripts |
 
 ---

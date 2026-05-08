@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-07 (C2H complete)
+Last reconciled: 2026-05-08 (Umbra funded devnet wSOL smoke complete)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -14,7 +14,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags | IKA relay, PER batching, Private Payments, Umbra exits, and Encrypt/FHE health computation are not live |
+| External privacy rails | Adapter/status scaffolding exists for IKA, Encrypt, MagicBlock Private Payments, PER, VRF, and Umbra status flags; Umbra SDK funded wSOL encrypted-balance deposit/withdraw smoke passed on devnet | IKA relay, PER batching, Private Payments, ShieldLend-native Umbra payout wiring, and Encrypt/FHE health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -35,6 +35,9 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
 | `anchor deploy` (lending_pool) | **deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill |
 | `node scripts/devnet-smoke.mjs` | **confirmed** | store_withdraw_proof tx on devnet; sig 66Bmcz54... |
+| `npm run check:umbra` | **confirmed** | SDK/package/program check passed; devnet indexer and relayer health returned 200 |
+| `npm run smoke:umbra` | **confirmed** | SDK client init + devnet user query passed; no token action submitted |
+| `npm run smoke:umbra-funded` | **confirmed** | wSOL wrap + Umbra encrypted-balance deposit + Umbra withdrawal passed on devnet |
 
 ## Program IDs
 
@@ -70,6 +73,7 @@ Additional synced references:
 | Full round-trip (`devnet-fullround.mjs`) | **Confirmed** | deposit + flush_epoch + store_proof + **withdraw with Groth16 verified on-chain** (198,502 CU); `scripts/devnet-fullround.mjs` |
 | `nullifier_registry::update_authorized_programs` | **Confirmed** | Fixed authorized_programs list to contain registry_writer PDA addresses (not program IDs); sig `5nqg3EDx...` |
 | On-chain Groth16 BN254 verification | **Confirmed** | DEV/TEST trusted setup; withdraw sig `3s7zqUmu...`; 198,502 CU consumed |
+| Umbra funded devnet wSOL smoke | **Confirmed** | Mint `So11111111111111111111111111111111111111112`; deposit queue `SZeGJ9FM...`; withdraw queue `yVdTJQi...`; callbacks finalized |
 
 ## ZK Constants And Artifacts
 
@@ -136,7 +140,9 @@ Artifact details:
 | MagicBlock PER batching | Not wired | No |
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | Not wired; URL env var absent by default | No |
-| Umbra stealth exits | Not wired; env-gated status only | No |
+| Umbra SDK encrypted-balance token flow | Funded devnet wSOL deposit and withdrawal confirmed via `scripts/umbra-funded-smoke.mjs` | Yes — SDK-side wSOL encrypted-balance flow only |
+| Umbra mixer/UTXO path | SDK functions exposed, but compatible prover not installed | No |
+| ShieldLend native SOL payout via Umbra | Not wired; C2H native SOL route preserved | No — requires wSOL/SPL settlement bridge |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
 | On-chain Groth16 verification | DEV/TEST verifier confirmed on devnet; 198,502 CU; full withdraw round-trip passes; B7 stack frame resolved (C2G-A) | No — DEV/TEST trusted setup only; production ceremony required |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
@@ -156,7 +162,7 @@ Artifact details:
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
 | ~~No integration test past UnknownRoot~~ | **Resolved (C2H)** — full deposit → flush_epoch → store_proof → withdraw round-trip confirmed on devnet with on-chain Groth16 verification |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable |
-| Umbra network/config not set | Stealth exits unavailable |
+| ShieldLend native SOL -> Umbra token settlement not wired | Existing C2H remains native SOL direct `stealth_address`; cannot claim ShieldLend withdraws are Umbra-routed |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |
 | PER not wired | No private batching or unified exit batching |
 
@@ -170,7 +176,9 @@ Safe wording:
 - "On-chain Groth16 BN254 withdraw verification confirmed on devnet (DEV/TEST trusted setup only)."
 - "DEV/TEST zkeys and vkeys generated; production trusted setup is missing."
 - "Borrow and repay verifiers are wired; devnet end-to-end flows not yet exercised."
-- "External privacy rails (IKA, MagicBlock PER/Private Payments, Umbra, Encrypt/FHE) are not wired."
+- "Umbra SDK funded wSOL encrypted-balance deposit and withdrawal are confirmed on devnet."
+- "ShieldLend native SOL C2H withdraw is not Umbra-routed yet; it needs a wSOL/SPL settlement bridge."
+- "External privacy rails (IKA, MagicBlock PER/Private Payments, ShieldLend-native Umbra payout, Encrypt/FHE) are not wired."
 
 Unsafe wording (do not use):
 
@@ -180,5 +188,6 @@ Unsafe wording (do not use):
 - "Groth16 proofs are verified on-chain." (partial truth — withdraw only, DEV/TEST only; say it precisely)
 - "Production trusted setup is complete."
 - "IKA, MagicBlock, Umbra, or Encrypt privacy is active."
+- "Native SOL ShieldLend withdrawals are fully Umbra-routed."
 - "Production privacy artifacts are ready."
 - "On-chain privacy is live." (privacy rails are not wired; Groth16 verification alone is not end-to-end privacy)
