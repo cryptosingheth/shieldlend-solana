@@ -35,10 +35,12 @@ import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/proto
 import {
   getUmbraFundedFlowStatus,
   getUmbraStatus,
+  getWsolUmbraPayoutPath,
   planUmbraDestinationRoute,
   type UmbraDestinationMode,
   type UmbraFundedFlowStatus,
   type UmbraStatus,
+  type WsolUmbraPayoutPath,
 } from "../lib/privacyRails/umbra";
 import {
   getConnection,
@@ -92,6 +94,7 @@ export default function HomePage() {
   const protocolMode = useMemo(() => modeFromRails(FULL_PRIVACY_RAILS), []);
   const umbraStatus = useMemo(() => getUmbraStatus(), []);
   const umbraFundedFlowStatus = useMemo(() => getUmbraFundedFlowStatus(), []);
+  const wsolUmbraPayoutPath = useMemo(() => getWsolUmbraPayoutPath(), []);
 
   const refreshAccount = useCallback(async (nextAddress = address, key = vaultKey) => {
     if (!nextAddress) return;
@@ -354,6 +357,7 @@ export default function HomePage() {
             setDestinationMode={setWithdrawDestinationMode}
             umbraStatus={umbraStatus}
             umbraFundedFlowStatus={umbraFundedFlowStatus}
+            wsolUmbraPayoutPath={wsolUmbraPayoutPath}
           />
         )}
         {screen === "borrow" && (
@@ -662,6 +666,7 @@ function Withdraw({
   setDestinationMode,
   umbraStatus,
   umbraFundedFlowStatus,
+  wsolUmbraPayoutPath,
 }: {
   notes: StoredNote[];
   connected: boolean;
@@ -670,19 +675,21 @@ function Withdraw({
   setDestinationMode: (mode: UmbraDestinationMode) => void;
   umbraStatus: UmbraStatus;
   umbraFundedFlowStatus: UmbraFundedFlowStatus;
+  wsolUmbraPayoutPath: WsolUmbraPayoutPath;
 }) {
   const route = planUmbraDestinationRoute({
     mode: destinationMode,
-    assetKind: "native-sol",
+    assetKind: destinationMode === "wsol_umbra_adapter" ? "wsol" : "native-sol",
     config: umbraStatus.config,
   });
-  const canPrepare = connected && vaultReady && notes.length > 0 && route.canRoute;
+  const canPrepare = connected && vaultReady && notes.length > 0 && route.canRoute &&
+    destinationMode !== "wsol_umbra_adapter"; // adapter path uses the roundtrip script, not the UI submit path
 
   return (
     <section className="stack">
       <Hero
         title="Withdraw"
-        subtitle="C2H direct stealth_address withdraw remains available as the lower-privacy path. Umbra routing is fail-closed until the withdrawal asset is a supported SPL/Token-2022 mint."
+        subtitle="Three payout paths: native SOL direct, Umbra SPL direct, or wSOL Umbra settlement adapter (post-withdraw two-step)."
       />
 
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 45%, var(--line))" }}>
@@ -691,7 +698,8 @@ function Withdraw({
           <strong style={{ display: "block", marginBottom: "4px" }}>Umbra does not make the existing native SOL C2H exit private by itself.</strong>
           <span>
             The official SDK shields SPL/Token-2022 balances, with wSOL as the SOL-compatible token route.
-            ShieldLend still needs a wSOL/SPL exit leg before an Umbra transaction can be submitted.
+            The wSOL Umbra settlement adapter wraps SOL post-withdraw and routes through Umbra — it is a
+            devnet demo adapter, not a native protocol-level exit.
           </span>
         </div>
       </div>
@@ -703,20 +711,28 @@ function Withdraw({
               className={destinationMode === "direct_stealth_address" ? "active" : ""}
               onClick={() => setDestinationMode("direct_stealth_address")}
             >
-              Direct
+              Direct SOL
+            </button>
+            <button
+              className={destinationMode === "wsol_umbra_adapter" ? "active" : ""}
+              onClick={() => setDestinationMode("wsol_umbra_adapter")}
+            >
+              wSOL via Umbra
             </button>
             <button
               className={destinationMode === "umbra" ? "active" : ""}
               onClick={() => setDestinationMode("umbra")}
             >
-              Umbra
+              Umbra SPL
             </button>
           </div>
 
-          <div className="route-card">
+          <div className="route-card" style={{ marginTop: "14px" }}>
             <strong>{route.title}</strong>
             <span>{route.summary}</span>
-            <small className={route.canRoute ? "green" : "amber"}>{route.canRoute ? "Route can be prepared" : route.nextStep}</small>
+            <small className={route.canRoute ? "green" : "amber"}>
+              {route.canRoute ? "Route available" : route.nextStep}
+            </small>
           </div>
 
           {route.blockers.length > 0 && (
@@ -725,43 +741,97 @@ function Withdraw({
             </ul>
           )}
 
-          <button disabled={!canPrepare} style={{ marginTop: "16px", padding: "10px 14px" }}>
-            Prepare withdraw route
-          </button>
+          {destinationMode === "wsol_umbra_adapter"
+            ? (
+              <div className="notice" style={{ marginTop: "14px", borderColor: "color-mix(in srgb, var(--success) 35%, var(--line))", background: "color-mix(in srgb, var(--success) 6%, var(--surface-1))" }}>
+                <CheckCircle size={15} style={{ color: "var(--success)", flexShrink: 0 }} />
+                <span style={{ fontSize: "12px" }}>
+                  Run <code>node scripts/devnet-wsol-umbra-roundtrip.mjs</code> to execute the full adapter flow on devnet.
+                  This path is outside the frontend submit button — it requires the roundtrip script and a funded devnet wallet.
+                </span>
+              </div>
+            )
+            : (
+              <button disabled={!canPrepare} style={{ marginTop: "16px", padding: "10px 14px" }}>
+                Prepare withdraw route
+              </button>
+            )
+          }
           <p className="muted" style={{ marginTop: "10px", fontSize: "12px" }}>
             Available notes in local vault: {notes.length}. The transaction submit path remains disabled until proof inputs,
             deployed programs, and the selected destination rail are all ready.
           </p>
         </Panel>
 
-        <Panel title="Umbra status">
-          <RailStateLine status={umbraStatus} />
-          <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
-            <dt>SDK</dt>
-            <dd>@umbra-privacy/sdk 4.0.0</dd>
-            <dt>Network</dt>
-            <dd>{umbraStatus.config.network}</dd>
-            <dt>Program</dt>
-            <dd><code>{umbraStatus.config.programId}</code></dd>
-            <dt>Indexer</dt>
-            <dd>{umbraStatus.config.indexerApiEndpoint ? "Configured" : "Missing"}</dd>
-            <dt>Funded flow</dt>
-            <dd>{umbraFundedFlowStatus.label}</dd>
-            <dt>Funded mint</dt>
-            <dd>{umbraFundedFlowStatus.mintAddress ? <code>{shortHash(umbraFundedFlowStatus.mintAddress)}</code> : "Not confirmed"}</dd>
-          </dl>
-          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
-            Supported route: public SPL/Token-2022 balance to Umbra encrypted balance or receiver-claimable UTXO,
-            then Umbra withdrawal/claim. Native SOL requires wSOL or another supported token representation.
-          </p>
-          {umbraFundedFlowStatus.state !== "live" && (
-            <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
-              Funded Umbra status: {umbraFundedFlowStatus.blocker}
-            </p>
-          )}
-        </Panel>
+        {destinationMode === "wsol_umbra_adapter"
+          ? <WsolUmbraAdapterPanel path={wsolUmbraPayoutPath} />
+          : (
+            <Panel title="Umbra status">
+              <RailStateLine status={umbraStatus} />
+              <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+                <dt>SDK</dt>
+                <dd>@umbra-privacy/sdk 4.0.0</dd>
+                <dt>Network</dt>
+                <dd>{umbraStatus.config.network}</dd>
+                <dt>Program</dt>
+                <dd><code>{umbraStatus.config.programId}</code></dd>
+                <dt>Indexer</dt>
+                <dd>{umbraStatus.config.indexerApiEndpoint ? "Configured" : "Missing"}</dd>
+                <dt>Funded flow</dt>
+                <dd>{umbraFundedFlowStatus.label}</dd>
+                <dt>Funded mint</dt>
+                <dd>{umbraFundedFlowStatus.mintAddress ? <code>{shortHash(umbraFundedFlowStatus.mintAddress)}</code> : "Not confirmed"}</dd>
+              </dl>
+              <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+                Supported route: public SPL/Token-2022 balance to Umbra encrypted balance or receiver-claimable UTXO,
+                then Umbra withdrawal/claim. Native SOL requires wSOL or another supported token representation.
+              </p>
+              {umbraFundedFlowStatus.state !== "live" && (
+                <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+                  Funded Umbra status: {umbraFundedFlowStatus.blocker}
+                </p>
+              )}
+            </Panel>
+          )
+        }
       </div>
     </section>
+  );
+}
+
+function WsolUmbraAdapterPanel({ path }: { path: WsolUmbraPayoutPath }) {
+  return (
+    <Panel title="wSOL Umbra settlement adapter">
+      <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
+        Post-withdraw Umbra settlement adapter — two steps after the C2H proof verifies on-chain.
+        Not a native protocol-level Umbra payout.
+      </p>
+      <dl className="facts" style={{ fontSize: "13px" }}>
+        <dt>Step 1 — C2H</dt>
+        <dd style={{ color: "var(--success)" }}>{path.step1}</dd>
+        <dt>Step 2 — Wrap</dt>
+        <dd>{path.step2}</dd>
+        <dt>Step 3 — Umbra</dt>
+        <dd>{path.step3}</dd>
+      </dl>
+      <div className="notice" style={{ marginTop: "14px", borderColor: "color-mix(in srgb, var(--success) 35%, var(--line))", background: "color-mix(in srgb, var(--success) 6%, var(--surface-1))" }}>
+        <CheckCircle size={15} style={{ color: "var(--success)", flexShrink: 0 }} />
+        <div style={{ fontSize: "12px" }}>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Confirmed on devnet</strong>
+          <span>{path.claimBoundary}</span>
+        </div>
+      </div>
+      <div className="notice" style={{ marginTop: "10px", borderColor: "color-mix(in srgb, var(--danger) 35%, var(--line))", background: "color-mix(in srgb, var(--danger) 6%, var(--surface-1))" }}>
+        <XCircle size={15} style={{ color: "var(--danger)", flexShrink: 0 }} />
+        <div style={{ fontSize: "12px" }}>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Not live — do not claim</strong>
+          <span>{path.notLive}</span>
+        </div>
+      </div>
+      <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+        Script: <code>{path.scriptPath}</code>
+      </p>
+    </Panel>
   );
 }
 

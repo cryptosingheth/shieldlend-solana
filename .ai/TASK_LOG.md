@@ -808,4 +808,38 @@ Create final hackathon demo/submission package based on `convergence/privacy-rai
 
 - `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
 - `npm run typecheck:frontend` — PASS
+
+---
+
+## 2026-05-08 — wSOL Umbra Payout Path (branch: live/wsol-umbra-e2e)
+
+### Objective
+
+Move Umbra from "separate funded wSOL smoke" to a ShieldLend-compatible wSOL/SPL payout path with a two-step post-withdraw settlement adapter. Native SOL C2H path preserved.
+
+### Files Added/Changed
+
+| File | Action |
+|---|---|
+| `scripts/devnet-wsol-umbra-roundtrip.mjs` | New — two-step devnet adapter: C2H phase (skip if nullifier consumed) + wSOL wrap + Umbra deposit/withdraw; embedded claim boundary |
+| `frontend/src/lib/privacyRails/umbra.ts` | Updated — added `wsol_umbra_adapter` mode, `WsolUmbraPayoutPath` interface, `getWsolUmbraPayoutPath()`, updated `planUmbraDestinationRoute()` |
+| `frontend/src/app/page.tsx` | Updated — Withdraw: third mode button, `WsolUmbraAdapterPanel` with step 1/2/3 + confirmed/not-live panels |
+| `package.json` | Updated — added `smoke:wsol-umbra-roundtrip` script |
+| `docs/UMBRA_WSOL_PAYOUT.md` | New — full design doc, claim boundary table, safe/unsafe wording, UI modes |
+| `docs/HACKATHON.md` | Updated — Umbra row and blocker table |
+| `docs/SUBMISSION_CHECKLIST.md` | Updated — Scene 3b and Scene 8 |
+| `docs/IMPLEMENTATION_STATUS.md` | Updated — Umbra payout rows and Known Blockers |
+| `README.md` | Updated — Umbra row in status table |
+
+### Key Decision
+
+Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-level Umbra payout) because flush_exits is fail-closed (PER adapter requires Anchor 0.32.1). The wrap step uses fresh wallet SOL in the demo to simulate the hypothetical post-flush payout amount. This is honestly labeled throughout.
+
+### Validations
+
+- `npm run typecheck:frontend` — pending
+- `npm run build:frontend` — pending
+- `cargo test --workspace` — pending
+- `anchor build --no-idl` — pending
+- `npm run demo:status` — pending
 - `npm run build:frontend` — PASS

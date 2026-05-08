@@ -2,33 +2,34 @@
 
 ## Task Objective
 
-Hackathon Demo and Submission Package — COMPLETE on `convergence/privacy-rails-integration`.
+wSOL Umbra payout path — COMPLETE on `live/wsol-umbra-e2e`.
 
 ## Current Status
 
-All four privacy rail branches merged (93375d4). Hackathon demo package committed. Branch ready to push.
+wSOL Umbra settlement adapter implemented. Validations pending. Branch ready to commit and push.
 
 ---
 
-## Hackathon Package (2026-05-08)
+## wSOL Umbra Payout Path (2026-05-08, branch: live/wsol-umbra-e2e)
 
 ### Files Added/Changed
 
 | File | Action |
 |---|---|
-| `docs/HACKATHON.md` | Replaced — submission-focused, confirmed rail status table, claim boundary |
-| `docs/DEMO_SCRIPT.md` | New — step-by-step demo walkthrough, commands, what not to claim |
-| `docs/SUBMISSION_CHECKLIST.md` | New — GitHub, tx signatures, video scenes, screenshots, env vars, claim boundary |
-| `scripts/demo-status.mjs` | New — self-verifying manifest: git/artifacts/program IDs/rail scripts/claim boundary |
-| `package.json` | Updated — added `demo:status` script |
-| `README.md` | Updated — date/branch ref, split privacy rail rows to reflect four adapters, added doc links |
-| `.ai/SESSION_HANDOFF.md` | This file |
-| `.ai/CURRENT_TASK.md` | Updated |
-| `.ai/TASK_LOG.md` | Updated |
+| `scripts/devnet-wsol-umbra-roundtrip.mjs` | New — two-step post-withdraw adapter: C2H phase + wSOL wrap + Umbra deposit/withdraw |
+| `frontend/src/lib/privacyRails/umbra.ts` | Updated — `wsol_umbra_adapter` mode, `WsolUmbraPayoutPath`, `getWsolUmbraPayoutPath()` |
+| `frontend/src/app/page.tsx` | Updated — Withdraw: "wSOL via Umbra" mode + `WsolUmbraAdapterPanel` |
+| `package.json` | Updated — added `smoke:wsol-umbra-roundtrip` |
+| `docs/UMBRA_WSOL_PAYOUT.md` | New — design doc, claim boundary, safe/unsafe wording |
+| `docs/HACKATHON.md` | Updated — Umbra row + blocker table |
+| `docs/SUBMISSION_CHECKLIST.md` | Updated — Scene 3b + Scene 8 |
+| `docs/IMPLEMENTATION_STATUS.md` | Updated — Umbra payout rows + Known Blockers |
+| `README.md` | Updated — Umbra row in status table |
+| `.ai/` files | Updated — CURRENT_TASK, TASK_LOG, SESSION_HANDOFF |
 
 ### Commit
 
-`docs: add hackathon demo and submission package`
+`feat: add wsol umbra payout path`
 
 ---
 
@@ -104,18 +105,18 @@ All four privacy rail branches merged (93375d4). Hackathon demo package committe
 - MagicBlock Private Payments live
 - MagicBlock PER Rust macros in Anchor programs
 - MagicBlock TDX attestation verified
-- Umbra native SOL ShieldLend payout
+- Native protocol-level Umbra payout (flush_exits fail-closed; wSOL adapter is post-withdraw simulation)
 - Encrypt on-chain FHE active
 
 ---
 
 ## Next Actions
 
-1. `git push origin convergence/privacy-rails-integration` (user must authorize)
-2. Create PR against `main` with description linking to `docs/HACKATHON.md`
-3. Fill in C2H devnet tx signatures in `docs/SUBMISSION_CHECKLIST.md`
-4. Record demo video (9 scenes)
-5. Capture 5 screenshots
-6. Submit to hackathon form
+1. Run `npm run smoke:wsol-umbra-roundtrip` on devnet to get live tx signatures
+2. Commit: `git add . && git commit -m "feat: add wsol umbra payout path"`
+3. `git push origin live/wsol-umbra-e2e` (user must authorize)
+4. Create PR against `main` with description linking to `docs/UMBRA_WSOL_PAYOUT.md`
+5. Fill in wSOL roundtrip tx signatures in `docs/SUBMISSION_CHECKLIST.md`
+6. Record Scene 3b (roundtrip output) and updated Scene 8 (wSOL via Umbra UI mode)
 
 Safe to `/clear` after this handoff.

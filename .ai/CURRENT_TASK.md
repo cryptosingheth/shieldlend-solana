@@ -1,23 +1,22 @@
 # Current Task
 
-## Status: Hackathon demo and submission package COMPLETE on `convergence/privacy-rails-integration`.
+## Status: wSOL Umbra payout path implemented on `live/wsol-umbra-e2e`.
 
 ## Completed This Session
 
-### Hackathon Package (2026-05-08)
+### wSOL Umbra Payout Path (2026-05-08, branch: live/wsol-umbra-e2e)
 
-- `docs/HACKATHON.md` — replaced with submission-focused doc: one-liner, confirmed rail status table, Umbra tx signatures, claim boundary, blocker table
-- `docs/DEMO_SCRIPT.md` — new: step-by-step demo walkthrough, all commands, honest framing script for judges
-- `docs/SUBMISSION_CHECKLIST.md` — new: GitHub branch/PR, Umbra tx signatures pre-filled, C2H signatures placeholder, video scenes, screenshots, env vars, claim boundary
-- `scripts/demo-status.mjs` — new: self-verifying manifest (git/artifacts/program IDs/rail scripts/optional live checks/claim boundary)
-- `package.json` — added `demo:status` script
-- `README.md` — updated date/branch ref; split "Other external privacy rails | Not wired" into four accurate rows; added doc links
+- `scripts/devnet-wsol-umbra-roundtrip.mjs` — new: two-step post-withdraw Umbra settlement adapter (wrap SOL → wSOL → Umbra deposit → Umbra withdraw); honest claim boundary embedded; C2H phase skipped if nullifier already consumed
+- `frontend/src/lib/privacyRails/umbra.ts` — added `UmbraDestinationMode` `"wsol_umbra_adapter"`, `WsolUmbraPayoutPath` interface, `getWsolUmbraPayoutPath()`, updated `planUmbraDestinationRoute()`
+- `frontend/src/app/page.tsx` — Withdraw screen: third mode button ("wSOL via Umbra"), `WsolUmbraAdapterPanel` with step 1/2/3 + confirmed/not-live panels; imported `getWsolUmbraPayoutPath` and `WsolUmbraPayoutPath`
+- `package.json` — added `smoke:wsol-umbra-roundtrip` script
+- `docs/UMBRA_WSOL_PAYOUT.md` — new: full doc covering design, claim boundary, safe/unsafe wording, UI modes
+- `docs/HACKATHON.md` — updated Umbra rail row and blocker table
+- `docs/SUBMISSION_CHECKLIST.md` — added Scene 3b (roundtrip script) and Scene 8 update (wSOL via Umbra UI mode)
+- `docs/IMPLEMENTATION_STATUS.md` — updated Umbra payout rows and Known Blockers
+- `README.md` — updated Umbra row in status table
 
-### Validations (all pass)
-
-- `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
-- `npm run typecheck:frontend` — PASS
-- `npm run build:frontend` — PASS
+### Validations (pending)
 
 ---
 
@@ -27,7 +26,8 @@
 - Do not claim IKA relay signing active
 - Do not claim MagicBlock Private Payments live
 - Do not claim MagicBlock PER macros in Anchor programs
-- Do not claim Umbra native SOL ShieldLend payout
+- Do not claim native protocol-level Umbra payout (wSOL adapter is post-withdraw simulation)
+- Do not claim flush_exits transfers SOL (PER adapter fail-closed)
 - Do not claim Encrypt on-chain FHE active
 - Do not fake any blocker as resolved
 
@@ -35,9 +35,8 @@
 
 ## Pending (requires user action)
 
-1. Push: `git push origin convergence/privacy-rails-integration`
-2. Create PR against `main`
-3. Fill C2H devnet tx signatures into `docs/SUBMISSION_CHECKLIST.md`
-4. Record demo video (9 scenes from `SUBMISSION_CHECKLIST.md`)
-5. Capture 5 screenshots
-6. Obtain `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` from MagicBlock Discord
+1. Run `npm run smoke:wsol-umbra-roundtrip` on devnet to obtain live tx signatures
+2. Record Scene 3b in demo video (roundtrip script output)
+3. Push: `git push origin live/wsol-umbra-e2e`
+4. Create PR against `main`
+5. Fill C2H devnet tx signatures into `docs/SUBMISSION_CHECKLIST.md`
