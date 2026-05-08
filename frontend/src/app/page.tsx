@@ -548,40 +548,38 @@ function EncryptStatusPanel({ status }: { status: EncryptStatus | null }) {
 
 function WhatWorksTodayPanel() {
   return (
-    <Panel title="Scaffold status — what works, what is planned, what is blocked">
+    <Panel title="Privacy rail status — confirmed, partial, and not live">
       <div className="grid two" style={{ gap: "12px" }}>
         <div>
-          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--success)" }}>Working now</p>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--success)" }}>Confirmed on devnet</p>
           <ul className="plain-list" style={{ fontSize: "13px" }}>
-            <li>Wallet connection (Phantom, Solana devnet)</li>
-            <li>Devnet balance via RPC</li>
-            <li>Note secret generation (browser WebCrypto)</li>
-            <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key)</li>
-            <li>History log encryption (AES-256-GCM, same vault key)</li>
-            <li>Note backup export / import</li>
-            <li>Deposit blocked until programs deployed (assertProgramDeployed)</li>
-            <li>Rust unit tests (8 categories, local only)</li>
+            <li>All 3 Anchor programs deployed (NullifierRegistry, ShieldedPool, LendingPool)</li>
+            <li>On-chain Groth16 BN254 withdraw verification — DEV/TEST trusted setup; 198,502 CU; full C2H round-trip passed</li>
+            <li>DEV/TEST ZK artifacts (withdraw_ring, collateral_ring, repay_ring) — browser WASM + zkey + vkey generated</li>
+            <li>Umbra funded devnet wSOL encrypted-balance deposit/withdraw confirmed via SDK 4.0.0</li>
+            <li>Encrypt pre-alpha gRPC CreateInput confirmed — live network key + ciphertext returned</li>
+            <li>MagicBlock SDK installed; TEE RPC + Router RPC HTTP 200; PER sidecar instruction builders confirmed</li>
+            <li>IKA SDK probe confirmed — capability matrix and exact Solana blockers documented with source evidence</li>
+            <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key); history encryption</li>
           </ul>
         </div>
         <div>
-          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--amber)" }}>Scaffolded / fail-closed</p>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--amber)" }}>Partial / fail-closed</p>
           <ul className="plain-list" style={{ fontSize: "13px" }}>
-            <li>All 3 Anchor programs (cargo check passes, not deployed)</li>
-            <li>ZK circuits written, not compiled to final artifacts</li>
-            <li>Withdraw / Borrow / Repay UI (intentionally blocked)</li>
-            <li>IKA adapter in privacyRails/ika.ts (SDK probe + signer context builder)</li>
-            <li>Encrypt API routes (return context JSON, no SDK calls)</li>
-            <li>Protocol mode logic (always Degraded until rails go online)</li>
+            <li>Umbra SDK adapter — fail-closed for native SOL exits; wSOL/SPL bridge needed for ShieldLend payout routing</li>
+            <li>Encrypt gRPC — client/probe only; program-side FHE fail-closed (Anchor 0.32 not upgraded)</li>
+            <li>MagicBlock PER sidecar — TypeScript only; Rust macros blocked on Anchor 0.32.1; on-chain PER tx not submitted</li>
+            <li>IKA adapter — SDK probe + signer context builder; direct wallet fallback labelled reduced privacy</li>
+            <li>Withdraw / Borrow / Repay UI — intentionally blocked until full rail dependencies are live</li>
           </ul>
-          <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Unsafe to claim today</p>
+          <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Not live — do not claim</p>
           <ul className="plain-list" style={{ fontSize: "13px", color: "var(--fg-2)" }}>
-            <li>Depositor wallet hidden — user wallet is on-chain signer today</li>
-            <li>K=16 anonymity — ring decoys are integers 2–16, not real commitments</li>
-            <li>Double-spend prevention — NullifierRegistry CPIs absent</li>
-            <li>IKA dWallet relay active — SDK pre-alpha (mock signer, not real MPC); Solana CPI not wired</li>
-            <li>MagicBlock PER batching — no PER macros in any program</li>
-            <li>Encrypt FHE oracle — verifier returns error, no ciphertexts</li>
-            <li>Umbra SDK — installed, but native SOL exits remain blocked unless routed through a supported SPL/Token-2022 rail</li>
+            <li>Production trusted setup — DEV/TEST ptau only; no production ceremony</li>
+            <li>IKA relay signing — mock signer (pre-alpha); ika-dwallet-anchor CPI not wired in Anchor programs</li>
+            <li>MagicBlock Private Payments — URL not configured; TDX attestation challenge mismatch (SDK 0.8.8 delta)</li>
+            <li>Encrypt on-chain FHE health computation — verifier fail-closed; no encrypted oracle</li>
+            <li>Umbra ShieldLend payout routing — native SOL C2H path remains direct stealth_address</li>
+            <li>NullifierRegistry CPIs in withdraw/borrow/repay — scaffolded, not executed end-to-end</li>
           </ul>
         </div>
       </div>
