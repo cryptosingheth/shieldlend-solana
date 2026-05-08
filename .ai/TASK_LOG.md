@@ -483,3 +483,54 @@ Implement MagicBlock as a real privacy rail (not a docs/status placeholder). Res
 ### Commit
 
 `feat: integrate MagicBlock privacy rails`
+
+---
+
+## 2026-05-08 — MagicBlock PER Live Integration Path (rail/magicblock, Session 2)
+
+### Branch
+
+`rail/magicblock`
+
+### Objective
+
+Build the strongest real MagicBlock PER path possible without breaking ShieldLend C2H.
+Add an isolated sidecar example with the full Permission/Delegation/Commit lifecycle.
+
+### What was done
+
+1. Inventoried full SDK 0.8.8 export surface (85 exports vs 13 previously known).
+   Key additions: `createDelegateInstruction`, `createCommitInstruction`,
+   `ConnectionMagicRouter`, `delegationRecordPdaFromDelegatedAccount`, `getPermissionStatus`,
+   `waitUntilPermissionActive`, and a full set of delegation/commit PDAs.
+2. Created `examples/magicblock-per-sidecar/` — standalone TypeScript sidecar (NOT in workspace):
+   - `src/accounts.ts` — 4 ShieldLend intent account types + `PerPdaBundle` (8 PDAs per account)
+   - `src/lifecycle.ts` — `buildSetupInstructions`, `buildCommitAndUndelegateInstructions`,
+     `buildCommitOnlyInstructions`, `buildFullLifecycle`
+   - `src/shieldlend.ts` — 4 use-case bundles: private deposit intent, proof intent,
+     queued withdrawal intent, batched deposit counter
+   - `src/index.ts` — demo entry point; derives all PDAs, builds all ixs, hits live RPCs
+3. Created `scripts/magicblock-per-smoke.mjs` — 12-section live smoke test.
+4. Added `check:magicblock`, `smoke:magicblock`, `typecheck:sidecar` to root `package.json`.
+
+### Live smoke output (2026-05-08)
+
+- 17 pass, 3 warn (expected), 0 fail
+- TEE RPC: HTTP 200, Router RPC: HTTP 200
+- ConnectionMagicRouter.getDelegationStatus: `isDelegated=false` (correct — account not on devnet)
+- getPermissionStatus: `{authorizedUsers:null}` (correct — permission account not created)
+- TDX attestation: `challenge must decode to 64 bytes` (known SDK 0.8.8 delta — warn)
+- Private Payments URL: not set (blocker — requires Discord)
+- Rust macros: blocked on Anchor 0.32.1
+
+### Validations passed
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` (with PATH fix) — PASS
+- `examples/magicblock-per-sidecar` typecheck — PASS (0 errors)
+
+### Commit
+
+`feat: add MagicBlock PER live integration path`

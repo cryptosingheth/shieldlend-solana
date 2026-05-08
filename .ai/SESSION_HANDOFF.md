@@ -6,7 +6,7 @@ rail/magicblock: Implement MagicBlock as a real privacy rail — COMPLETE.
 
 ## Current Status
 
-**MagicBlock TypeScript integration complete.** SDK installed, TEE RPC verified live, Permission + Delegation instruction builders wired, Private Payments adapter implemented. Rust macros blocked on Anchor 0.32.1. C2H round-trip preserved (all validations pass).
+**MagicBlock PER sidecar added.** Full isolated TypeScript example with 4 ShieldLend use cases, complete Permission/Delegation/Commit lifecycle, live smoke test (17 pass, 0 fail). TEE RPC + Router RPC + ConnectionMagicRouter + getDelegationStatus + getPermissionStatus all verified live. Rust macros still blocked on Anchor 0.32.1. C2H preserved.
 
 ## Deployed Programs (Devnet) — Unchanged
 
@@ -44,17 +44,16 @@ Full deposit → flush_epoch → store_withdraw_proof → withdraw with on-chain
 | Private Payments URL | Requires Discord access (`discord.com/invite/MBkdC3gxcv`) |
 | VRF | No VRF module in SDK 0.8.x |
 
-## Files Changed (this session)
+## Files Changed (this session — Session 2)
 
-- `frontend/package.json` — added `@magicblock-labs/ephemeral-rollups-sdk: "^0.8.0"`
-- `frontend/src/lib/privacyRails/magicblock.ts` — new; full TypeScript PER/Private Payments adapter
-- `scripts/check-magicblock.mjs` — new; live CLI check script
-- `frontend/src/lib/protocolAdapters.ts` — minor comment update on `per` rail
-- `.env.example` (root) — expanded with all MagicBlock env vars
-- `frontend/.env.example` — new; frontend-specific env var reference
-- `docs/HACKATHON.md` — MagicBlock track implementation status + live check output
-- `docs/IMPLEMENTATION_STATUS.md` — updated all MagicBlock rail statuses + blocker table
-- `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/TASK_LOG.md` — updated
+- `examples/magicblock-per-sidecar/package.json` — sidecar package (not in workspace)
+- `examples/magicblock-per-sidecar/tsconfig.json` — standalone TypeScript config
+- `examples/magicblock-per-sidecar/src/accounts.ts` — 4 ShieldLend intent account types + PDA derivation
+- `examples/magicblock-per-sidecar/src/lifecycle.ts` — Permission/Delegation/Commit instruction builders
+- `examples/magicblock-per-sidecar/src/shieldlend.ts` — 4 use-case bundles
+- `examples/magicblock-per-sidecar/src/index.ts` — demo entry point
+- `scripts/magicblock-per-smoke.mjs` — 12-section live smoke test (17 pass, 0 fail)
+- `package.json` — added `check:magicblock`, `smoke:magicblock`, `typecheck:sidecar` scripts
 
 ## Active Wallet
 

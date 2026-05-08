@@ -1,6 +1,6 @@
 # Current Task
 
-## Status: rail/magicblock complete — MagicBlock PER TypeScript adapter integrated.
+## Status: rail/magicblock complete — MagicBlock PER sidecar + live smoke test added.
 
 ## Active Objective
 
@@ -8,31 +8,33 @@ Implement MagicBlock as a real privacy rail (branch: rail/magicblock).
 
 ## What Was Done
 
+### Session 1 (prior)
 1. Installed `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` in frontend workspace.
-2. Created `frontend/src/lib/privacyRails/magicblock.ts`:
-   - TEE connectivity check (`verifyTeeRpc`)
-   - Auth token acquisition (`acquireAuthToken`)
-   - Permission instruction builders: create, delegate, commit/undelegate
-   - Permission PDA deriver (`derivePermissionPda`)
-   - Live status check (`getMagicBlockLiveStatus`)
-   - Private Payments API: deposit, transfer, withdraw, balance, settleRepayment
-3. Created `scripts/check-magicblock.mjs` — live CLI check:
-   - TEE RPC reachable: HTTP 200 (`devnet-tee.magicblock.app`)
-   - Router RPC reachable: HTTP 200 (`devnet-router.magicblock.app`)
-   - Program IDs verified: Permission + Delegation match SDK 0.8.8
-   - 13/13 SDK functions verified
-   - TDX attestation: `challenge must decode to 64 bytes` (minor API delta)
-4. Updated `frontend/src/lib/protocolAdapters.ts` with per-rail comment noting TEE reachability.
-5. Updated `.env.example` (root and frontend) with all MagicBlock env vars.
-6. Updated `docs/HACKATHON.md` and `docs/IMPLEMENTATION_STATUS.md`.
+2. Created `frontend/src/lib/privacyRails/magicblock.ts` — full TypeScript PER/Private Payments adapter.
+3. Created `scripts/check-magicblock.mjs` — SDK export + connectivity check.
 
-## Live Check Output (2026-05-08)
+### Session 2 (2026-05-08) — PER Sidecar
+4. Created `examples/magicblock-per-sidecar/` — isolated TypeScript sidecar:
+   - `src/accounts.ts` — 4 ShieldLend intent account types + PDA derivation + PerPdaBundle
+   - `src/lifecycle.ts` — Permission/Delegation/Commit lifecycle instruction builders
+   - `src/shieldlend.ts` — 4 ShieldLend use-case bundles (deposit intent, proof intent, withdrawal intent, batched counter)
+   - `src/index.ts` — demo entry point; builds all use-case bundles, checks connectivity
+5. Created `scripts/magicblock-per-smoke.mjs` — 12-section live smoke test:
+   - Program ID verification, PDA derivation (4 use cases), instruction building
+   - ConnectionMagicRouter instantiation + getDelegationStatus (live devnet)
+   - getPermissionStatus via TEE RPC (live devnet)
+   - TDX attestation (warn on challenge mismatch — known SDK 0.8.8 delta)
+   - Smoke result: 17 pass, 3 warn (expected), 0 fail
+6. Added `npm run check:magicblock`, `npm run smoke:magicblock`, `npm run typecheck:sidecar` to root package.json.
 
-- TEE RPC: HTTP 200 — `{"jsonrpc":"2.0","result":"ok","id":1}`
-- Router RPC: HTTP 200 — `Method not found` (expected)
-- SDK functions: 13/13 present
-- TDX attestation: Exception: `challenge must decode to 64 bytes` (challenge format delta)
-- Private Payments URL: not set (requires Discord access)
+## Live Smoke Output (2026-05-08)
+
+- TEE RPC: HTTP 200 — `{"result":"ok"}`
+- Router RPC: HTTP 200 — `{"error":{"code":-32601,"message":"Method not found"}}` (expected)
+- ConnectionMagicRouter.getDelegationStatus: `isDelegated=false` (correct — account not on devnet)
+- getPermissionStatus: `{authorizedUsers:null}` (correct — permission account not created)
+- TDX attestation: `challenge must decode to 64 bytes` (warn — known SDK 0.8.8 delta)
+- All 4 use-case instruction sets built successfully
 
 ## Current Blockers
 
