@@ -2,8 +2,8 @@
 
 ## Task Objective
 
-Privacy Rails Integration Merge — in progress on `convergence/privacy-rails-integration`.
-Merging rail/encrypt (97ec94d) + rail/umbra (b3a63c1) + rail/magicblock (8d31e20) + rail/ika (bb27511) into this branch.
+Privacy Rails Integration Merge — COMPLETE on `convergence/privacy-rails-integration`.
+All four rails merged: rail/encrypt (97ec94d), rail/umbra (b3a63c1), rail/magicblock (8d31e20), rail/ika (bb27511).
 
 ## Current Status
 
@@ -18,15 +18,13 @@ C2H milestone intact. Three programs deployed and verified. Full deposit → flu
 - Program ID: `4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8`
 - Active network key: `f00f3465b66ff8034600706ed05bf70ef5318edc511398085a3ab4512b875197`
 - Health-ratio ciphertext: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
-- Program-side FHE: fail-closed (`LendingError::EncryptVerifierNotWired`).
-- Anchor 0.32 sidecar: blocked by account-type conflict in upstream `encrypt-anchor`.
-- Pre-alpha disclaimer: no production FHE guarantee; data may be plaintext/public.
+- Program-side FHE: fail-closed. Anchor 0.32 sidecar blocked.
 
 ---
 
 ## Umbra Rail (b3a63c1)
 
-- `@umbra-privacy/sdk@4.0.0` installed. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
+- `@umbra-privacy/sdk@4.0.0`. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
 - Funded devnet wSOL flow confirmed:
 
 | Step | Signature |
@@ -37,22 +35,31 @@ C2H milestone intact. Three programs deployed and verified. Full deposit → flu
 | Umbra withdraw queue | `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUQdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` |
 | Umbra withdraw callback | `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau` |
 
-- ShieldLend C2H payout still native SOL direct `stealth_address`; Umbra rail needs wSOL/SPL bridge.
+- ShieldLend C2H payout still native SOL direct `stealth_address`; Umbra needs wSOL/SPL bridge.
 
 ---
 
 ## MagicBlock Rail (8d31e20)
 
-- `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` installed.
+- `@magicblock-labs/ephemeral-rollups-sdk@0.8.8`.
 - TEE RPC `https://devnet-tee.magicblock.app` — HTTP 200.
 - Router RPC `https://devnet-router.magicblock.app` — HTTP 200.
-- ConnectionMagicRouter.getDelegationStatus: `isDelegated=false` (correct — account not on devnet).
-- getPermissionStatus: `{authorizedUsers:null}` (correct — permission account not created).
-- TDX attestation: `challenge must decode to 64 bytes` — SDK 0.8.8 delta, labelled warn.
-- `examples/magicblock-per-sidecar/` — full TypeScript sidecar (4 ShieldLend use-case bundles).
-- `scripts/magicblock-per-smoke.mjs` — 17 pass, 0 fail.
-- Rust PER macros blocked: Anchor 0.32.1 required, workspace uses 0.30.1.
+- `examples/magicblock-per-sidecar/` — 4 ShieldLend use-case bundles. Smoke: 17 pass, 0 fail.
+- Rust PER macros blocked: Anchor 0.32.1 required, workspace 0.30.1.
+- TDX attestation warn: challenge mismatch SDK 0.8.8 vs devnet TEE.
 - Private Payments URL: not configured; adapter fails closed.
+
+---
+
+## IKA Rail (bb27511)
+
+- `@ika.xyz/sdk@0.4.0` + `@ika.xyz/ika-wasm@0.2.1`.
+- SDK/capability probe: createDWallet, approveMessage, createSignature, SignatureScheme — all present.
+- Real Solana relay signing blocked:
+  - `ika-dwallet-anchor` CPI crate not published / no `ika-dwallet-anchor` Cargo dependency.
+  - Anchor integration depends on Sui object model (DWallet network is Sui-based).
+  - No Solana CPI crate for Anchor programs in the IKA pre-alpha.
+- Direct wallet fallback: labelled "reduced privacy" in UI. No fake relay signing.
 
 ---
 
@@ -66,14 +73,7 @@ C2H milestone intact. Three programs deployed and verified. Full deposit → flu
 
 ## Active Wallet
 
-- Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V` — Solana devnet
-
-## Validations Passed
-
-- `npm run typecheck:frontend` — PASS
-- `npm run build:frontend` — PASS
-- `cargo test --workspace` — PASS (47 tests)
-- `anchor build --no-idl` — PASS
+- `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V` — Solana devnet
 
 ## Do Not Claim
 
@@ -81,6 +81,7 @@ C2H milestone intact. Three programs deployed and verified. Full deposit → flu
 - TDX attestation verified (challenge mismatch, labelled warn).
 - Rust PER macros wired (Anchor version gap).
 - MagicBlock Private Payments live (URL not configured).
+- IKA relay signing active (mock signer, no CPI).
 - ShieldLend native SOL C2H is Umbra-routed.
 - Any full privacy rail end-to-end active.
 - Production ZK proof artifacts (DEV/TEST only).

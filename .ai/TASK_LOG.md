@@ -647,6 +647,37 @@ Implement MagicBlock as a real privacy rail (not a docs/status placeholder). Res
 
 ### Validations passed
 
+---
+
+## 2026-05-08 — IKA dWallet Privacy Rail (rail/ika branch)
+
+**Branch**: rail/ika
+**Objective**: Implement IKA dWallet rail or strict capability probe + exact blocker.
+
+### Research Findings (verified 2026-05-08)
+
+- `@ika.xyz/sdk ^0.3.1` is in `frontend/package.json`; installed at root via npm workspaces.
+- SDK exports: `IkaClient`, `coordinatorTransactions` (DKG, sign, FutureSign), 4 curves (Ed25519, SECP256K1, Ristretto, SECP256R1).
+- Endpoint: `https://pre-alpha-dev-1.ika.ika-network.net:443` (gRPC, auth via user signature).
+- **BLOCKER 1**: Single mock signer — not real distributed MPC. Source: https://solana-pre-alpha.ika.xyz/
+- **BLOCKER 2**: `ika-dwallet-anchor` Rust CPI crate absent from both Anchor programs — Solana relay not wired.
+- **Architecture**: TypeScript SDK manages Sui-side dWallet lifecycle; Solana relay is a Rust CPI concern.
+
+### Files Created
+
+- `frontend/src/lib/privacyRails/ika.ts` — capability probe, `IkaCapabilityReport` type, `buildSignerContext()`, signer mode types
+- `scripts/check-ika.mjs` — local probe: SDK availability, CPI presence, exact blockers, capability matrix
+
+### Files Updated
+
+- `frontend/src/lib/protocolAdapters.ts` — IKA rail `healthy: false`, updated role to "pre-alpha / mock signer — CPI not wired"; re-exported `SignerMode` type
+- `frontend/src/app/page.tsx` — WhatWorksTodayPanel IKA entry updated; deposit signer mode warning updated
+- `.env.example` — removed `NEXT_PUBLIC_IKA_ENABLED=true` (was misleading); added accurate comment
+- `package.json` — added `check:ika` script
+- `node_modules/@ika.xyz/sdk` — installed at root via `npm install @ika.xyz/sdk@0.3.1`
+
+### Validations (all pass)
+
 - `npm run typecheck:frontend` — PASS
 - `npm run build:frontend` — PASS
 - `cargo test --workspace` — PASS (47 tests)
@@ -706,3 +737,49 @@ Add an isolated sidecar example with the full Permission/Delegation/Commit lifec
 ### Commit
 
 `feat: add MagicBlock PER live integration path`
+
+---
+
+### IKA Solana Path (from IKA rail)
+
+**Does NOT work today.** Solana CPI is not wired; mock signer only. Signer mode is `direct_wallet` (reduced privacy). The SDK probe correctly reports all blockers with source-backed evidence.
+
+---
+
+## 2026-05-08 — IKA Live-Hardening
+
+### Objective
+
+Attempt to make IKA genuinely live for ShieldLend or prove exact Solana blockers with source evidence.
+
+### Findings
+
+- **SDK bumped** to `@ika.xyz/sdk@0.4.0` (latest; was ^0.3.1). 44 exports confirmed.
+- **WASM functional**: `createClassGroupsKeypair(ED25519)` runs locally — encKey 261B, decKey 194B.
+- **B1 [NO_SOLANA_SDK]**: `@ika.xyz/sdk` contains no Solana code. All `coordinatorTransactions` functions (`requestSign`, `approveMessage`, `requestFutureSign`, `requestDWalletDKG`) call `tx.moveCall` against Sui Move targets (`ikaDwallet2pcMpcPackage::coordinator::*`). Zero matches for `solana|web3.js|signTransaction` in `dist/cjs/index.js`. Source: `node_modules/@ika.xyz/sdk/dist/cjs/tx/coordinator.js`.
+- **B2 [NO_CPI_CRATE]**: `ika-dwallet-anchor` absent from all three Anchor programs' `Cargo.toml`. Source: `programs/{shielded_pool,lending_pool,nullifier_registry}/Cargo.toml`.
+- **B3 [SUI_DEPENDENCY]**: `IkaClient` constructor requires `suiClient` (Sui JSON-RPC). Source: `node_modules/@ika.xyz/sdk/dist/cjs/client/ika-client.js:64`.
+- `parseSignatureFromSignOutput` does produce raw bytes from WASM, but only after a completed IKA network sign session on Sui (funded Sui wallet + IKA coins required).
+- `getNetworkConfig` supports only `testnet` and `mainnet` (Sui). No Solana network case.
+
+### Files Created
+
+- `scripts/ika-live-sign-smoke.mjs` — local-only Solana-focused probe: SDK load, WASM run, source-backed blocker evidence for B1/B2/B3.
+
+### Files Updated
+
+- `frontend/package.json` — `@ika.xyz/sdk` version bumped `^0.3.1` → `^0.4.0`
+- `package-lock.json` — lock updated for @ika.xyz/sdk 0.4.0 + @ika.xyz/ika-wasm 0.2.1 dependencies
+
+### Validations (all pass)
+
+- `node scripts/check-ika.mjs` — exits 0 (SDK available; blockers documented)
+- `node scripts/ika-live-sign-smoke.mjs` — exits 0 (all findings confirmed with source evidence)
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS
+
+### IKA Solana Path
+
+**Still blocked.** `requestSign` is a Sui Move call, not an Ed25519 byte output. No Solana SDK exists in `@ika.xyz/sdk`. CPI crate absent. Adapter stays `direct_wallet` / reduced-privacy until IKA releases a Solana-native signing path and CPI crate is wired.

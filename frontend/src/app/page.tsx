@@ -569,7 +569,8 @@ function WhatWorksTodayPanel() {
             <li>All 3 Anchor programs (cargo check passes, not deployed)</li>
             <li>ZK circuits written, not compiled to final artifacts</li>
             <li>Withdraw / Borrow / Repay UI (intentionally blocked)</li>
-            <li>IKA + Encrypt API routes (return context JSON, no SDK calls)</li>
+            <li>IKA adapter in privacyRails/ika.ts (SDK probe + signer context builder)</li>
+            <li>Encrypt API routes (return context JSON, no SDK calls)</li>
             <li>Protocol mode logic (always Degraded until rails go online)</li>
           </ul>
           <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Unsafe to claim today</p>
@@ -577,7 +578,7 @@ function WhatWorksTodayPanel() {
             <li>Depositor wallet hidden — user wallet is on-chain signer today</li>
             <li>K=16 anonymity — ring decoys are integers 2–16, not real commitments</li>
             <li>Double-spend prevention — NullifierRegistry CPIs absent</li>
-            <li>IKA FutureSign wired — API routes echo JSON, no SDK call</li>
+            <li>IKA dWallet relay active — SDK pre-alpha (mock signer, not real MPC); Solana CPI not wired</li>
             <li>MagicBlock PER batching — no PER macros in any program</li>
             <li>Encrypt FHE oracle — verifier returns error, no ciphertexts</li>
             <li>Umbra SDK — installed, but native SOL exits remain blocked unless routed through a supported SPL/Token-2022 rail</li>
@@ -610,11 +611,12 @@ function Deposit({
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--danger) 40%, var(--line))", background: "color-mix(in srgb, var(--danger) 10%, var(--surface-1))" }}>
         <AlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} />
         <div>
-          <strong style={{ display: "block", marginBottom: "4px" }}>Privacy warning: your wallet is the on-chain signer today.</strong>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Signer mode: direct_wallet (reduced privacy)</strong>
           <span>
-            IKA dWallet relay is not wired. Your Phantom wallet public key will be the permanent transaction
-            signer for every deposit. The claim &ldquo;depositor wallet hidden&rdquo; is false until the IKA relay
-            is deployed and wired in solanaClient.ts. Do not deposit with real funds expecting privacy.
+            IKA dWallet relay is not active. Your Phantom wallet public key is the on-chain signer for every
+            deposit. IKA pre-alpha SDK is available but uses a single mock signer (not real MPC), and the
+            ika-dwallet-anchor Solana CPI is not wired in the Anchor programs. The claim
+            &ldquo;depositor wallet hidden&rdquo; is false in this mode. Do not deposit real funds expecting privacy.
           </span>
         </div>
       </div>
