@@ -2,120 +2,105 @@
 
 ## Task Objective
 
-Hackathon Demo and Submission Package — COMPLETE on `convergence/privacy-rails-integration`.
+Implement MagicBlock Private Payments API live SPL devnet flow on `live/magicblock-private-payments`, based on `origin/convergence/privacy-rails-integration`.
 
 ## Current Status
 
-All four privacy rail branches merged (93375d4). Hackathon demo package committed. Branch ready to push.
+Implementation complete and committed locally. MagicBlock Private Payments is now partially live:
 
----
+- Public API endpoint: `https://payments.magicblock.app`
+- Default mint: wSOL `So11111111111111111111111111111111111111112`
+- Health/challenge/login/mint/balance/builders work.
+- wSOL deposit and withdraw transactions returned by the API were signed locally and submitted on devnet.
+- Private transfer builder works, but submit remains blocked by ephemeral `Blockhash not found`.
 
-## Hackathon Package (2026-05-08)
+## Files Changed
 
-### Files Added/Changed
-
-| File | Action |
+| File | Status |
 |---|---|
-| `docs/HACKATHON.md` | Replaced — submission-focused, confirmed rail status table, claim boundary |
-| `docs/DEMO_SCRIPT.md` | New — step-by-step demo walkthrough, commands, what not to claim |
-| `docs/SUBMISSION_CHECKLIST.md` | New — GitHub, tx signatures, video scenes, screenshots, env vars, claim boundary |
-| `scripts/demo-status.mjs` | New — self-verifying manifest: git/artifacts/program IDs/rail scripts/claim boundary |
-| `package.json` | Updated — added `demo:status` script |
-| `README.md` | Updated — date/branch ref, split privacy rail rows to reflect four adapters, added doc links |
-| `.ai/SESSION_HANDOFF.md` | This file |
-| `.ai/CURRENT_TASK.md` | Updated |
-| `.ai/TASK_LOG.md` | Updated |
+| `frontend/src/lib/privacyRails/magicblock.ts` | Updated with typed `/v1/spl` client helpers and challenge/login flow |
+| `frontend/src/lib/protocolAdapters.ts` | Old repayment-settlement placeholder made fail-closed for unsigned-builder API boundary |
+| `scripts/check-magicblock.mjs` | Updated to probe public Private Payments API endpoints |
+| `scripts/magicblock-private-payments-live.mjs` | New dry-run/live SPL flow script |
+| `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md` | New endpoint/runbook/live-result doc |
+| `docs/HACKATHON.md` | Updated MagicBlock claim boundary |
+| `docs/IMPLEMENTATION_STATUS.md` | Updated implementation ledger and tx signatures |
+| `docs/SUBMISSION_CHECKLIST.md` | Updated env vars, signatures, and validation checklist |
+| `package.json`, `package-lock.json` | Added direct `tweetnacl` dependency for local challenge signing |
+| `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/TASK_LOG.md` | Updated shared memory |
 
-### Commit
+## Live Endpoint Results
 
-`docs: add hackathon demo and submission package`
+Core endpoint results from 2026-05-08:
 
----
+- `GET /health` -> `200 {"status":"ok"}`
+- `GET /v1/spl/is-mint-initialized?mint=So11111111111111111111111111111111111111112&cluster=devnet` -> `200 initialized=true`
+- `GET /v1/spl/challenge?pubkey=<wallet>&cluster=devnet` -> `200`
+- `POST /v1/spl/login` -> `200` (bearer token redacted)
+- `GET /v1/spl/balance` -> `200`
+- `GET /v1/spl/private-balance` -> `200`
+- `POST /v1/spl/deposit` -> `200` unsigned tx; live submit succeeded
+- `POST /v1/spl/transfer` public -> `200` unsigned tx, `sendTo=base`
+- `POST /v1/spl/transfer` private -> `200` unsigned tx, `sendTo=ephemeral`; live submit blocked
+- `POST /v1/spl/withdraw` -> `200` unsigned tx; live submit succeeded
+- `GET /v1/mcp` -> `404 {"error":{"code":"NOT_FOUND","message":"Route not found"}}`
 
-## Confirmed Integration State (unchanged from previous session)
+## Devnet Signatures
 
-### C2H / Groth16
+Minimized live run:
 
-- Full devnet round-trip: deposit → flush_epoch → store_withdraw_proof → withdraw
-- On-chain Groth16 BN254: PASSED — 198,502 CU; nullifier consumed; nullifier registry CPI succeeded
-- Trusted setup: DEV/TEST pot14 only — NOT production
+```bash
+node scripts/magicblock-private-payments-live.mjs --live --amount-base-units=1
+```
 
-### Encrypt Rail
-
-- gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet
-- Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`
-- Ciphertext handle: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
-- Program-side FHE: fail-closed. Anchor 0.32.1 sidecar blocked.
-
-### Umbra Rail
-
-- `@umbra-privacy/sdk@4.0.0`. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
-- Funded devnet wSOL deposit/withdraw: 7 confirmed tx signatures on record
-- ShieldLend C2H payout: still native SOL direct `stealth_address`; wSOL/SPL bridge not wired
-
-### MagicBlock Rail
-
-- `@magicblock-labs/ephemeral-rollups-sdk@0.8.8`
-- TEE RPC HTTP 200; Router RPC HTTP 200
-- PER sidecar: 4 ShieldLend use-case bundles; 17/17 smoke pass; 13/13 SDK functions verified
-- Rust PER macros blocked: Anchor 0.32.1 required, workspace 0.30.1
-- TDX attestation warn: challenge mismatch SDK 0.8.8 vs devnet TEE
-- Private Payments URL: not configured; adapter fails closed
-
-### IKA Rail
-
-- `@ika.xyz/sdk@0.4.0` + `@ika.xyz/ika-wasm@0.2.1`
-- SDK/capability probe: all four functions present
-- WASM `createClassGroupsKeypair(ED25519)` runs locally
-- Real Solana relay signing blocked: B1 (no Solana code in SDK), B2 (no CPI crate), B3 (Sui dependency)
-- Direct wallet fallback: labelled "reduced privacy" in UI
-
----
-
-## Deployed Programs (Devnet)
-
-| Program | Program ID |
+| Step | Signature |
 |---|---|
-| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
-| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
+| wSOL wrap | `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP` |
+| MagicBlock deposit | `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct` |
+| MagicBlock withdraw | `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP` |
 
-## Active Wallet
+Private transfer blocker:
 
-`HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V` — Solana devnet
+```text
+Simulation failed.
+Message: solana rpc request error: RPC response error -32002: Transaction simulation failed: Blockhash not found; .
+```
 
----
+Retrying with `MAGICBLOCK_EPHEMERAL_RPC_URL=https://devnet-tee.magicblock.app` also failed with:
 
-## Missing User Assets for Final Submission
+```text
+Simulation failed.
+Message: transaction verification error: Blockhash not found.
+```
 
-- C2H devnet transaction signatures from `devnet-fullround.mjs` run (fill into `SUBMISSION_CHECKLIST.md`)
-- Demo video (9 scenes described in `SUBMISSION_CHECKLIST.md`)
-- Screenshots (5 listed in `SUBMISSION_CHECKLIST.md`)
-- `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` — requires Discord access
-- GitHub remote push + PR creation
+## Validation
 
----
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS with existing `web-worker`/ffjavascript warning
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS with existing Anchor CLI/version and cfg/syscall warnings
+- `node scripts/check-magicblock.mjs` — PASS; TEE/router/API reachable; TDX attestation still warns
+- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS; all core SPL builders returned 200; `/v1/mcp` returned 404
 
-## Do Not Claim
+## Claim Boundary
 
-- Production ZK trusted setup (DEV/TEST pot14 only)
-- Production privacy
-- IKA relay signing active
-- MagicBlock Private Payments live
-- MagicBlock PER Rust macros in Anchor programs
-- MagicBlock TDX attestation verified
-- Umbra native SOL ShieldLend payout
-- Encrypt on-chain FHE active
+Allowed:
 
----
+- MagicBlock Private Payments public API is live/reachable.
+- wSOL mint queue is initialized on MagicBlock devnet API.
+- Challenge/login bearer auth works for the local devnet wallet.
+- Unsigned transaction builders work for deposit, withdraw, public transfer, and private transfer.
+- wSOL deposit and withdraw were signed locally and submitted on devnet.
+
+Not allowed:
+
+- Full MagicBlock Private Payments private transfer is live end-to-end.
+- ShieldLend repay settlement is MagicBlock-bound.
+- MagicBlock PER Rust macros are wired into Anchor programs.
+- TDX attestation is verified.
 
 ## Next Actions
 
-1. `git push origin convergence/privacy-rails-integration` (user must authorize)
-2. Create PR against `main` with description linking to `docs/HACKATHON.md`
-3. Fill in C2H devnet tx signatures in `docs/SUBMISSION_CHECKLIST.md`
-4. Record demo video (9 scenes)
-5. Capture 5 screenshots
-6. Submit to hackathon form
-
-Safe to `/clear` after this handoff.
+1. Ask MagicBlock which RPC should accept `sendTo=ephemeral` private transfer transactions, or whether the API must return a different ephemeral blockhash.
+2. Once private transfer submit works, wire confirmed transaction signature/receipt into ShieldLend repay settlement binding.
+3. Keep PER Rust macro integration separate until Anchor 0.32.1 upgrade is isolated and C2H is revalidated.

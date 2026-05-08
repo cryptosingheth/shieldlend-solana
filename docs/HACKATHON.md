@@ -55,7 +55,7 @@ Trusted setup: DEV/TEST `pot14` ceremony only. Not production.
 | **C2H / Groth16** | Full devnet round-trip: deposit → flush_epoch → store_withdraw_proof → withdraw. On-chain BN254 pairing passed. 198,502 CU. Nullifier consumed. | Production trusted setup. Production privacy guarantee. |
 | **Umbra** | `@umbra-privacy/sdk@4.0.0` installed. Funded devnet wSOL encrypted-balance deposit and withdrawal confirmed. Seven transaction signatures on record. | Native SOL ShieldLend payout routed through Umbra. C2H still exits via direct `stealth_address`. wSOL/SPL bridge not implemented. |
 | **Encrypt** | Live pre-alpha gRPC `encrypt.v1.EncryptService/CreateInput` probe confirmed. Health-ratio test value submitted. Ciphertext handle returned: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`. | On-chain FHE. `encrypt-anchor` CPI integration (blocked by Anchor 0.32.1 requirement). Production encryption guarantee. |
-| **MagicBlock** | TEE RPC `https://devnet-tee.magicblock.app` HTTP 200. Router RPC `https://devnet-router.magicblock.app` HTTP 200. PER sidecar TypeScript builders: 4 ShieldLend use-case bundles, 17/17 pass. 13/13 SDK functions verified. | Rust PER macros in Anchor programs (blocked: Anchor 0.30.1 vs 0.32.1 required). Private Payments URL (requires Discord access). TDX attestation (challenge format mismatch with SDK 0.8.8). On-chain PER transaction submitted. |
+| **MagicBlock** | TEE RPC `https://devnet-tee.magicblock.app` HTTP 200. Router RPC `https://devnet-router.magicblock.app` HTTP 200. PER sidecar TypeScript builders: 4 ShieldLend use-case bundles, 17/17 pass. Private Payments API `https://payments.magicblock.app` health/challenge/mint/balance/builders live; wSOL deposit and withdraw signed/submitted on devnet. | Rust PER macros in Anchor programs (blocked: Anchor 0.30.1 vs 0.32.1 required). Private transfer submit is blocked by ephemeral `Blockhash not found`. TDX attestation challenge format mismatch with SDK 0.8.8. |
 | **IKA** | `@ika.xyz/sdk@0.4.0` + WASM loaded. SDK/capability probe: `createDWallet`, `approveMessage`, `createSignature`, `SignatureScheme` all present. WASM `createClassGroupsKeypair(ED25519)` runs locally. | Real Solana relay signing. `ika-dwallet-anchor` CPI crate not published. IKA SDK has no Solana code — all `coordinatorTransactions` functions call Sui Move targets. Direct wallet fallback is labelled "reduced privacy" in UI. |
 
 ---
@@ -87,6 +87,8 @@ These claims are accurate and supported by devnet evidence:
 - Encrypt live pre-alpha gRPC `CreateInput` probe confirmed with returned ciphertext handle.
 - MagicBlock TEE RPC + Router RPC HTTP 200 on devnet.
 - MagicBlock PER sidecar TypeScript SDK builders verified (not submitted on-chain).
+- MagicBlock Private Payments public API health/challenge/login/mint/balance and unsigned transaction builders verified on devnet.
+- MagicBlock Private Payments wSOL deposit and withdraw signed locally and submitted on devnet.
 - IKA SDK/capability probe and WASM confirmed.
 - Frontend privacy status panel shows live-checked adapter status for all four rails.
 - All four rail adapters present in `frontend/src/lib/privacyRails/`.
@@ -96,7 +98,7 @@ These claims are NOT accurate and must NOT be made:
 - Production ZK trusted setup (DEV/TEST `pot14` ceremony only).
 - Production privacy (no production trusted setup means no production ZK privacy guarantee).
 - IKA relay signing active (direct wallet fallback only; no `ika-dwallet-anchor` CPI).
-- MagicBlock Private Payments live (URL not configured; adapter fails closed).
+- MagicBlock Private Payments private transfer end-to-end live (builder returns 200; submit blocked by ephemeral `Blockhash not found`).
 - MagicBlock PER macros in Anchor programs (Anchor version gap: 0.30.1 vs 0.32.1 required).
 - MagicBlock TDX attestation verified (challenge format mismatch).
 - Umbra native SOL ShieldLend payout (C2H exits native SOL directly; wSOL bridge not wired).
@@ -113,7 +115,7 @@ These are engineering blockers discovered during integration, not design failure
 |---|---|---|
 | Encrypt on-chain FHE | `encrypt-anchor` requires Anchor 0.32.1; workspace uses 0.30.1 to protect confirmed Groth16 round-trip | Isolated Anchor 0.32 sidecar program; re-run C2H devnet round-trip after upgrade |
 | MagicBlock PER Rust macros | Same Anchor version gap | Same isolated upgrade path |
-| MagicBlock Private Payments | Discord-gated devnet URL | Join MagicBlock Discord; request `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` |
+| MagicBlock Private Payments private transfer submit | API returns unsigned `sendTo=ephemeral` transaction, but Router and TEE RPC submit attempts reject it with `Blockhash not found` | Confirm the correct ephemeral submit RPC or API blockhash behavior with MagicBlock |
 | MagicBlock TDX attestation | SDK 0.8.8 challenge format mismatch with current devnet TEE | Upgrade SDK or match challenge encoding |
 | IKA Solana relay signing | `ika-dwallet-anchor` CPI crate not published; IKA SDK calls Sui Move, not Solana | Wait for IKA Solana CPI crate; or implement Sui-side relay adapter |
 | Umbra native SOL payout | Umbra SDK supports SPL/Token-2022 only; C2H exits native SOL | Add SOL → wSOL wrap leg in ShieldedPool before Umbra SDK call |
@@ -124,6 +126,7 @@ These are engineering blockers discovered during integration, not design failure
 
 - Track design details: this document, Sections above
 - Implementation status full ledger: [`docs/IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md)
+- MagicBlock Private Payments live notes: [`docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`](MAGICBLOCK_PRIVATE_PAYMENTS.md)
 - ZK circuit design: [`docs/architecture.md`](architecture.md)
 - Privacy threat model: [`docs/PRIVACY_AND_THREAT_MODEL.md`](PRIVACY_AND_THREAT_MODEL.md)
 - Demo instructions: [`docs/DEMO_SCRIPT.md`](DEMO_SCRIPT.md)

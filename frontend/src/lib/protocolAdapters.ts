@@ -154,20 +154,10 @@ function receiptHashFromPayload(payload: unknown): string {
 
 export const magicBlockPrivatePayments: PrivatePaymentAdapter = {
   async settleRepayment(params) {
-    // Delegated to the typed adapter in privacyRails/magicblock.ts.
-    // Full Private Payments surface (deposit, transfer, withdraw, balance) lives there.
-    const baseUrl = process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL;
-    if (!baseUrl) throw new AdapterNotConfiguredError("MagicBlock Private Payments");
-    const payload = await postJson<unknown>(`${baseUrl.replace(/\/$/, "")}/repayments/settle`, params);
-    const receiptHash = receiptHashFromPayload(payload);
-    if (!receiptHash) {
-      throw new Error("MagicBlock Private Payments response did not include a settlement receipt hash.");
-    }
-    return {
-      provider: "private_payments",
-      receiptHash,
-      raw: payload,
-    };
+    void params;
+    throw new AdapterNotConfiguredError(
+      "MagicBlock Private Payments repayment settlement. The public API now returns unsigned /v1/spl transactions; the frontend must sign, submit, and bind the confirmed tx signature before this adapter can return a receipt."
+    );
   },
 };
 

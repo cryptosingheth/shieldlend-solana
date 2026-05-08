@@ -27,7 +27,11 @@ const ROUTER_RPC_URL =
   "https://devnet-router.magicblock.app";
 
 const PRIVATE_PAYMENTS_URL =
-  process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL ?? "";
+  process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL ||
+  "https://payments.magicblock.app";
+
+const WSOL_MINT = "So11111111111111111111111111111111111111112";
+const DOCS_SAMPLE_WALLET = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 
 // Known program IDs from MagicBlock docs (stable, verified against SDK 0.8.x)
 const PERMISSION_PROGRAM_ID = "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1";
@@ -169,20 +173,69 @@ console.log("\n--- Private Payments API ---");
 
 if (PRIVATE_PAYMENTS_URL) {
   ok("NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL", PRIVATE_PAYMENTS_URL);
+  const ppBase = PRIVATE_PAYMENTS_URL.replace(/\/$/, "");
   try {
-    const res = await fetch(
-      `${PRIVATE_PAYMENTS_URL.replace(/\/$/, "")}/health`,
-      {
-        method: "GET",
-        signal: AbortSignal.timeout(8_000),
-      }
-    );
+    const res = await fetch(`${ppBase}/health`, {
+      method: "GET",
+      signal: AbortSignal.timeout(8_000),
+    });
     ok(
       "Private Payments /health",
       `HTTP ${res.status} — ${res.statusText}`
     );
   } catch (err) {
     warn("Private Payments /health", `unreachable: ${err.message}`);
+  }
+
+  try {
+    const url = new URL(`${ppBase}/v1/spl/is-mint-initialized`);
+    url.searchParams.set("mint", WSOL_MINT);
+    url.searchParams.set("cluster", "devnet");
+    const res = await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const text = await res.text().catch(() => "");
+    if (res.ok) {
+      ok("Private Payments /v1/spl/is-mint-initialized", `HTTP ${res.status} — ${text}`);
+    } else {
+      warn("Private Payments /v1/spl/is-mint-initialized", `HTTP ${res.status} — ${text}`);
+    }
+  } catch (err) {
+    warn("Private Payments /v1/spl/is-mint-initialized", `unreachable: ${err.message}`);
+  }
+
+  try {
+    const url = new URL(`${ppBase}/v1/spl/challenge`);
+    url.searchParams.set("pubkey", DOCS_SAMPLE_WALLET);
+    url.searchParams.set("cluster", "devnet");
+    const res = await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const text = await res.text().catch(() => "");
+    if (res.ok) {
+      ok("Private Payments /v1/spl/challenge", `HTTP ${res.status} — challenge issued`);
+    } else {
+      warn("Private Payments /v1/spl/challenge", `HTTP ${res.status} — ${text}`);
+    }
+  } catch (err) {
+    warn("Private Payments /v1/spl/challenge", `unreachable: ${err.message}`);
+  }
+
+  try {
+    const res = await fetch(`${ppBase}/v1/mcp`, {
+      method: "GET",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const text = await res.text().catch(() => "");
+    if (res.ok) {
+      ok("Private Payments /v1/mcp", `HTTP ${res.status}`);
+    } else {
+      warn("Private Payments /v1/mcp", `HTTP ${res.status} — ${text.slice(0, 200)}`);
+    }
+  } catch (err) {
+    warn("Private Payments /v1/mcp", `unreachable: ${err.message}`);
   }
 } else {
   warn(
@@ -254,7 +307,7 @@ if (integrityVerified) {
 }
 
 if (PRIVATE_PAYMENTS_URL) {
-  console.log("CONFIGURED — Private Payments API URL is set.");
+  console.log("CONFIGURED — Private Payments API URL is set; SPL endpoint probes above are live HTTP checks.");
 } else {
   console.log("BLOCKED    — Private Payments API URL not set (requires Discord access).");
 }

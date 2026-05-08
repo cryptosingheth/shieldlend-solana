@@ -50,6 +50,7 @@ export const DEVNET_VALIDATORS = {
 
 const DEFAULT_TEE_RPC_URL = "https://devnet-tee.magicblock.app";
 const DEFAULT_ROUTER_RPC_URL = "https://devnet-router.magicblock.app";
+export const DEFAULT_PRIVATE_PAYMENTS_API_URL = "https://payments.magicblock.app";
 
 function getTeeRpcUrl(): string {
   return (
@@ -64,7 +65,10 @@ function getRouterRpcUrl(): string {
 }
 
 function getPrivatePaymentsBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL ?? "";
+  return (
+    process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL ||
+    DEFAULT_PRIVATE_PAYMENTS_API_URL
+  );
 }
 
 // ─── TEE connectivity ───────────────────────────────────────────────────────
@@ -300,36 +304,314 @@ export class MagicBlockNotConfiguredError extends Error {
   }
 }
 
-async function ppPost<T>(path: string, body: unknown): Promise<T> {
+export interface MagicBlockHttpErrorDetail {
+  path: string;
+  status: number;
+  statusText: string;
+  body: string;
+}
+
+export class MagicBlockHttpError extends Error {
+  readonly detail: MagicBlockHttpErrorDetail;
+
+  constructor(detail: MagicBlockHttpErrorDetail) {
+    super(
+      `MagicBlock Private Payments ${detail.path} failed ` +
+        `(${detail.status}): ${detail.body || detail.statusText}`
+    );
+    this.name = "MagicBlockHttpError";
+    this.detail = detail;
+  }
+}
+
+export type MagicBlockCluster = "mainnet" | "devnet" | string;
+
+export interface MagicBlockRequestOptions {
+  bearerToken?: string;
+}
+
+export interface MagicBlockChallengeParams {
+  pubkey: string;
+  cluster?: MagicBlockCluster;
+  mock?: boolean;
+}
+
+export interface MagicBlockChallengeResponse {
+  challenge: string;
+}
+
+export interface MagicBlockLoginParams {
+  pubkey: string;
+  challenge: string;
+  signature: string;
+  cluster?: MagicBlockCluster;
+  mock?: boolean;
+}
+
+export interface MagicBlockLoginResponse {
+  token: string;
+}
+
+export interface MagicBlockTransactionBuild {
+  kind: "deposit" | "transfer" | "withdraw" | string;
+  version: "legacy" | "v0";
+  transactionBase64: string;
+  sendTo: "base" | "ephemeral";
+  recentBlockhash: string;
+  lastValidBlockHeight: number;
+  instructionCount: number;
+  requiredSigners: string[];
+  validator?: string;
+}
+
+export interface MagicBlockMintStatus {
+  initialized: boolean;
+}
+
+export interface MagicBlockBalance {
+  address: string;
+  mint: string;
+  ata: string;
+  location: "base" | "ephemeral";
+  balance: string;
+}
+
+export interface MagicBlockInitializeMintParams {
+  owner: string;
+  mint: string;
+  cluster?: MagicBlockCluster;
+  validator?: string;
+}
+
+export interface MagicBlockDepositSplParams {
+  owner: string;
+  amount: number;
+  cluster?: MagicBlockCluster;
+  mint?: string;
+  validator?: string;
+  initIfMissing?: boolean;
+  initVaultIfMissing?: boolean;
+  initAtasIfMissing?: boolean;
+  idempotent?: boolean;
+}
+
+export interface MagicBlockTransferSplParams {
+  from: string;
+  to: string;
+  mint: string;
+  amount: number;
+  visibility: "public" | "private";
+  fromBalance: "base" | "ephemeral";
+  toBalance: "base" | "ephemeral";
+  cluster?: MagicBlockCluster;
+  validator?: string;
+  initIfMissing?: boolean;
+  initAtasIfMissing?: boolean;
+  initVaultIfMissing?: boolean;
+  memo?: string;
+  minDelayMs?: string;
+  maxDelayMs?: string;
+  clientRefId?: string;
+  split?: number;
+  gasless?: boolean;
+  legacy?: boolean;
+}
+
+export interface MagicBlockWithdrawSplParams {
+  owner: string;
+  mint: string;
+  amount: number;
+  cluster?: MagicBlockCluster;
+  validator?: string;
+  initIfMissing?: boolean;
+  initAtasIfMissing?: boolean;
+  escrowIndex?: number;
+  idempotent?: boolean;
+}
+
+function appendQuery(path: string, query: object): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      params.set(key, String(value));
+    }
+  }
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+async function ppPost<T>(
+  path: string,
+  body: unknown,
+  options: MagicBlockRequestOptions = {}
+): Promise<T> {
   const base = getPrivatePaymentsBaseUrl();
   if (!base) throw new MagicBlockNotConfiguredError(path);
   const url = `${base.replace(/\/$/, "")}${path}`;
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (options.bearerToken) headers.authorization = `Bearer ${options.bearerToken}`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `MagicBlock Private Payments ${path} failed (${res.status}): ${text || res.statusText}`
-    );
+    throw new MagicBlockHttpError({
+      path,
+      status: res.status,
+      statusText: res.statusText,
+      body: text,
+    });
   }
   return res.json() as Promise<T>;
 }
 
-async function ppGet<T>(path: string): Promise<T> {
+async function ppGet<T>(
+  path: string,
+  options: MagicBlockRequestOptions = {}
+): Promise<T> {
   const base = getPrivatePaymentsBaseUrl();
   if (!base) throw new MagicBlockNotConfiguredError(path);
   const url = `${base.replace(/\/$/, "")}${path}`;
-  const res = await fetch(url, { method: "GET" });
+  const headers: Record<string, string> = {};
+  if (options.bearerToken) headers.authorization = `Bearer ${options.bearerToken}`;
+  const res = await fetch(url, { method: "GET", headers });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `MagicBlock Private Payments ${path} failed (${res.status}): ${text || res.statusText}`
-    );
+    throw new MagicBlockHttpError({
+      path,
+      status: res.status,
+      statusText: res.statusText,
+      body: text,
+    });
   }
   return res.json() as Promise<T>;
+}
+
+const BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function base58Encode(bytes: Uint8Array): string {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) + BigInt(byte);
+
+  let encoded = "";
+  while (value > 0n) {
+    const mod = Number(value % 58n);
+    encoded = BASE58_ALPHABET[mod] + encoded;
+    value /= 58n;
+  }
+
+  for (const byte of bytes) {
+    if (byte === 0) encoded = "1" + encoded;
+    else break;
+  }
+
+  return encoded || "1";
+}
+
+export async function getPrivatePaymentsHealth(): Promise<{ status: "ok" | string }> {
+  return ppGet<{ status: "ok" | string }>("/health");
+}
+
+export async function getSplChallenge(
+  params: MagicBlockChallengeParams
+): Promise<MagicBlockChallengeResponse> {
+  return ppGet<MagicBlockChallengeResponse>(
+    appendQuery("/v1/spl/challenge", params)
+  );
+}
+
+export async function loginSpl(
+  params: MagicBlockLoginParams
+): Promise<MagicBlockLoginResponse> {
+  return ppPost<MagicBlockLoginResponse>("/v1/spl/login", params);
+}
+
+export async function loginSplWithSigner(params: {
+  pubkey: PublicKey;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+  cluster?: MagicBlockCluster;
+  mock?: boolean;
+}): Promise<MagicBlockLoginResponse & { challenge: string }> {
+  const pubkey = params.pubkey.toBase58();
+  const challenge = await getSplChallenge({
+    pubkey,
+    cluster: params.cluster,
+    mock: params.mock,
+  });
+  const message = new TextEncoder().encode(challenge.challenge);
+  const signature = base58Encode(await params.signMessage(message));
+  const login = await loginSpl({
+    pubkey,
+    challenge: challenge.challenge,
+    signature,
+    cluster: params.cluster,
+    mock: params.mock,
+  });
+  return { ...login, challenge: challenge.challenge };
+}
+
+export async function isSplMintInitialized(params: {
+  mint: string;
+  cluster?: MagicBlockCluster;
+  validator?: string;
+}): Promise<MagicBlockMintStatus> {
+  return ppGet<MagicBlockMintStatus>(
+    appendQuery("/v1/spl/is-mint-initialized", params)
+  );
+}
+
+export async function initializeSplMint(
+  params: MagicBlockInitializeMintParams
+): Promise<MagicBlockTransactionBuild> {
+  return ppPost<MagicBlockTransactionBuild>("/v1/spl/initialize-mint", params);
+}
+
+export async function depositSpl(
+  params: MagicBlockDepositSplParams
+): Promise<MagicBlockTransactionBuild> {
+  return ppPost<MagicBlockTransactionBuild>("/v1/spl/deposit", params);
+}
+
+export async function transferSpl(
+  params: MagicBlockTransferSplParams,
+  options: MagicBlockRequestOptions = {}
+): Promise<MagicBlockTransactionBuild> {
+  return ppPost<MagicBlockTransactionBuild>("/v1/spl/transfer", params, options);
+}
+
+export async function withdrawSpl(
+  params: MagicBlockWithdrawSplParams
+): Promise<MagicBlockTransactionBuild> {
+  return ppPost<MagicBlockTransactionBuild>("/v1/spl/withdraw", params);
+}
+
+export async function getSplBalance(params: {
+  address: string;
+  mint: string;
+  cluster?: MagicBlockCluster;
+}): Promise<MagicBlockBalance> {
+  return ppGet<MagicBlockBalance>(appendQuery("/v1/spl/balance", params));
+}
+
+export async function getSplPrivateBalance(
+  params: {
+    address: string;
+    mint: string;
+    cluster?: MagicBlockCluster;
+  },
+  options: MagicBlockRequestOptions
+): Promise<MagicBlockBalance> {
+  return ppGet<MagicBlockBalance>(
+    appendQuery("/v1/spl/private-balance", params),
+    options
+  );
 }
 
 function extractReceiptHash(payload: unknown): string {
@@ -351,9 +633,13 @@ function extractReceiptHash(payload: unknown): string {
 // ─── Deposit ────────────────────────────────────────────────────────────────
 
 export interface PrivateDepositParams {
-  senderPublicKey: string;
-  recipientPublicKey: string;
-  amountLamports: string;
+  senderPublicKey?: string;
+  recipientPublicKey?: string;
+  owner?: string;
+  mint?: string;
+  amountLamports?: string;
+  amount?: number;
+  cluster?: MagicBlockCluster;
   memo?: string;
 }
 
@@ -365,11 +651,25 @@ export interface PrivateDepositResult {
 export async function privateDeposit(
   params: PrivateDepositParams
 ): Promise<PrivateDepositResult> {
-  const payload = await ppPost<unknown>("/payments/deposit", params);
+  const owner = params.owner ?? params.senderPublicKey;
+  const amount = params.amount ?? Number(params.amountLamports);
+  if (!owner || !Number.isFinite(amount) || amount < 1) {
+    throw new Error("MagicBlock deposit requires owner and amount base units.");
+  }
+  const payload = await depositSpl({
+    owner,
+    amount,
+    cluster: params.cluster,
+    mint: params.mint,
+    initIfMissing: true,
+    initVaultIfMissing: true,
+    initAtasIfMissing: true,
+    idempotent: true,
+  });
   const receiptHash = extractReceiptHash(payload);
   if (!receiptHash) {
     throw new Error(
-      "MagicBlock Private Payments deposit response did not include a receipt hash."
+      "MagicBlock Private Payments deposit only returned an unsigned transaction. Sign and submit it before treating the payment as settled."
     );
   }
   return { receiptHash, raw: payload };
@@ -378,9 +678,18 @@ export async function privateDeposit(
 // ─── Transfer ───────────────────────────────────────────────────────────────
 
 export interface PrivateTransferParams {
-  senderPublicKey: string;
-  recipientPublicKey: string;
-  amountLamports: string;
+  senderPublicKey?: string;
+  recipientPublicKey?: string;
+  from?: string;
+  to?: string;
+  mint: string;
+  amountLamports?: string;
+  amount?: number;
+  visibility?: "public" | "private";
+  fromBalance?: "base" | "ephemeral";
+  toBalance?: "base" | "ephemeral";
+  cluster?: MagicBlockCluster;
+  bearerToken?: string;
   memo?: string;
 }
 
@@ -392,11 +701,36 @@ export interface PrivateTransferResult {
 export async function privateTransfer(
   params: PrivateTransferParams
 ): Promise<PrivateTransferResult> {
-  const payload = await ppPost<unknown>("/payments/transfer", params);
+  const from = params.from ?? params.senderPublicKey;
+  const to = params.to ?? params.recipientPublicKey;
+  const amount = params.amount ?? Number(params.amountLamports);
+  if (!from || !to || !Number.isFinite(amount) || amount < 1) {
+    throw new Error("MagicBlock transfer requires from, to, mint, and amount base units.");
+  }
+  const payload = await transferSpl(
+    {
+      from,
+      to,
+      mint: params.mint,
+      amount,
+      visibility: params.visibility ?? "private",
+      fromBalance: params.fromBalance ?? "ephemeral",
+      toBalance: params.toBalance ?? "ephemeral",
+      cluster: params.cluster,
+      initIfMissing: true,
+      initAtasIfMissing: true,
+      initVaultIfMissing: false,
+      memo: params.memo,
+      minDelayMs: "0",
+      maxDelayMs: "0",
+      split: 1,
+    },
+    params.bearerToken ? { bearerToken: params.bearerToken } : {}
+  );
   const receiptHash = extractReceiptHash(payload);
   if (!receiptHash) {
     throw new Error(
-      "MagicBlock Private Payments transfer response did not include a receipt hash."
+      "MagicBlock Private Payments transfer only returned an unsigned transaction. Sign and submit it before treating the payment as settled."
     );
   }
   return { receiptHash, raw: payload };
@@ -405,9 +739,13 @@ export async function privateTransfer(
 // ─── Withdraw ───────────────────────────────────────────────────────────────
 
 export interface PrivateWithdrawParams {
-  ownerPublicKey: string;
-  destinationPublicKey: string;
-  amountLamports: string;
+  ownerPublicKey?: string;
+  owner?: string;
+  destinationPublicKey?: string;
+  mint: string;
+  amountLamports?: string;
+  amount?: number;
+  cluster?: MagicBlockCluster;
 }
 
 export interface PrivateWithdrawResult {
@@ -418,11 +756,24 @@ export interface PrivateWithdrawResult {
 export async function privateWithdraw(
   params: PrivateWithdrawParams
 ): Promise<PrivateWithdrawResult> {
-  const payload = await ppPost<unknown>("/payments/withdraw", params);
+  const owner = params.owner ?? params.ownerPublicKey;
+  const amount = params.amount ?? Number(params.amountLamports);
+  if (!owner || !Number.isFinite(amount) || amount < 1) {
+    throw new Error("MagicBlock withdraw requires owner, mint, and amount base units.");
+  }
+  const payload = await withdrawSpl({
+    owner,
+    mint: params.mint,
+    amount,
+    cluster: params.cluster,
+    initIfMissing: true,
+    initAtasIfMissing: true,
+    idempotent: true,
+  });
   const receiptHash = extractReceiptHash(payload);
   if (!receiptHash) {
     throw new Error(
-      "MagicBlock Private Payments withdraw response did not include a receipt hash."
+      "MagicBlock Private Payments withdraw only returned an unsigned transaction. Sign and submit it before treating the payment as settled."
     );
   }
   return { receiptHash, raw: payload };
@@ -437,10 +788,17 @@ export interface PrivateBalanceResult {
 }
 
 export async function privateBalance(
-  publicKey: string
+  publicKey: string,
+  mint = "So11111111111111111111111111111111111111112",
+  bearerToken?: string
 ): Promise<PrivateBalanceResult> {
-  const payload = await ppGet<unknown>(`/payments/balance/${publicKey}`);
-  const r = payload as Record<string, unknown>;
+  const payload = bearerToken
+    ? await getSplPrivateBalance(
+        { address: publicKey, mint, cluster: "devnet" },
+        { bearerToken }
+      )
+    : await getSplBalance({ address: publicKey, mint, cluster: "devnet" });
+  const r = payload as unknown as Record<string, unknown>;
   const balanceLamports =
     typeof r["balanceLamports"] === "string"
       ? r["balanceLamports"]
@@ -467,14 +825,11 @@ export interface SettleRepaymentResult {
 export async function settleRepayment(
   params: SettleRepaymentParams
 ): Promise<SettleRepaymentResult> {
-  const payload = await ppPost<unknown>("/repayments/settle", params);
-  const receiptHash = extractReceiptHash(payload);
-  if (!receiptHash) {
-    throw new Error(
-      "MagicBlock Private Payments settle response did not include a receipt hash."
-    );
-  }
-  return { receiptHash, raw: payload };
+  throw new Error(
+    "MagicBlock Private Payments settlement now uses /v1/spl unsigned transaction builders. " +
+      "Call transferSpl(...), sign the returned transaction locally, submit it, then bind the confirmed transaction signature as the settlement receipt. " +
+      `Repayment params were not submitted: loanId=${params.loanId}, nullifierHash=${params.nullifierHash}, outstandingLamports=${params.outstandingLamports}, repaymentVault=${params.repaymentVault}`
+  );
 }
 
 // ─── Re-export SDK flags for callers ────────────────────────────────────────

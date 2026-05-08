@@ -809,3 +809,76 @@ Create final hackathon demo/submission package based on `convergence/privacy-rai
 - `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
 - `npm run typecheck:frontend` — PASS
 - `npm run build:frontend` — PASS
+
+---
+
+## 2026-05-08 — MagicBlock Private Payments Live SPL API
+
+### Objective
+
+Move MagicBlock Private Payments from placeholder routes and PER sidecar builders to the public MagicBlock Private Payments SPL API on devnet.
+
+### Files Added
+
+- `scripts/magicblock-private-payments-live.mjs` — dry-run/live SPL flow harness for MagicBlock Private Payments API.
+- `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md` — runbook, endpoint list, live result ledger, tx signatures, and claim boundary.
+
+### Files Updated
+
+- `frontend/src/lib/privacyRails/magicblock.ts` — typed `/v1/spl` API client: health, challenge/login, mint init check/init builder, deposit, transfer, withdraw, public/private balance.
+- `frontend/src/lib/protocolAdapters.ts` — removed old `/repayments/settle` placeholder behavior; repayment adapter now fails closed until signed tx/receipt binding is wired.
+- `scripts/check-magicblock.mjs` — probes public Private Payments API, wSOL mint status, challenge, and MCP route.
+- `docs/HACKATHON.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/SUBMISSION_CHECKLIST.md` — updated MagicBlock claim boundary and live signatures.
+- `package.json`, `package-lock.json` — added direct `tweetnacl` dependency for challenge signing.
+- `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/TASK_LOG.md` — updated shared memory.
+
+### Live Endpoint Results
+
+- `GET /health` -> `200 {"status":"ok"}`
+- `GET /v1/spl/is-mint-initialized` for wSOL -> `200 initialized=true`, transfer queue `BPLzXbpayTxP8KVoNtV2uTKyrY7fErS7xdTx6LF82Nua`
+- `GET /v1/spl/challenge` -> `200`
+- `POST /v1/spl/login` -> `200`; bearer token redacted
+- `GET /v1/spl/balance` -> `200`
+- `GET /v1/spl/private-balance` -> `200`
+- `POST /v1/spl/deposit` -> `200`; live submit succeeded
+- `POST /v1/spl/transfer` public -> `200`; unsigned builder only
+- `POST /v1/spl/transfer` private -> `200`; submit blocked
+- `POST /v1/spl/withdraw` -> `200`; live submit succeeded
+- `GET /v1/mcp` -> `404 {"error":{"code":"NOT_FOUND","message":"Route not found"}}`
+
+### Devnet Signatures
+
+Minimized live run: `node scripts/magicblock-private-payments-live.mjs --live --amount-base-units=1`
+
+- wSOL wrap: `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP`
+- MagicBlock deposit: `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct`
+- MagicBlock withdraw: `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP`
+
+### Blocker
+
+Private transfer builder returns a valid unsigned `sendTo=ephemeral` transaction, but submit fails:
+
+```text
+Simulation failed.
+Message: solana rpc request error: RPC response error -32002: Transaction simulation failed: Blockhash not found; .
+```
+
+Retry with `MAGICBLOCK_EPHEMERAL_RPC_URL=https://devnet-tee.magicblock.app` also failed:
+
+```text
+Simulation failed.
+Message: transaction verification error: Blockhash not found.
+```
+
+### Validations
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS with existing `web-worker`/ffjavascript warning
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS with existing Anchor CLI/version and cfg/syscall warnings
+- `node scripts/check-magicblock.mjs` — PASS; TEE/router/API reachable; TDX attestation still warns
+- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS; all core SPL builders returned 200; `/v1/mcp` returned 404
+
+### Claim Boundary
+
+MagicBlock Private Payments is partially live: API, auth, builders, wSOL deposit, and wSOL withdraw are live on devnet. Do not claim private transfer or ShieldLend repay settlement is live end-to-end until the ephemeral submit blocker is resolved and a confirmed tx signature/receipt is bound into the protocol path.

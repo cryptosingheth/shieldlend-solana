@@ -169,6 +169,7 @@ ok('Umbra funded wSOL deposit/withdraw: CONFIRMED — 7 devnet tx signatures on 
 ok('Encrypt gRPC CreateInput probe: CONFIRMED — ciphertext 5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y');
 ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
+ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
@@ -184,6 +185,7 @@ console.log(`
   ✓ Encrypt pre-alpha gRPC CreateInput probe live; ciphertext handle returned
   ✓ MagicBlock TEE RPC + Router RPC HTTP 200 on devnet
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
+  ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
   ✓ IKA SDK/WASM loaded; capability probe passed; blockers source-documented
   ✓ All four rail adapters in frontend/src/lib/privacyRails/
   ✓ Frontend privacy status panel shows live rail statuses
@@ -192,7 +194,7 @@ console.log(`
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
   ✗ IKA relay signing active (no ika-dwallet-anchor CPI; direct wallet fallback)
-  ✗ MagicBlock Private Payments live (URL Discord-gated; adapter fails closed)
+  ✗ MagicBlock Private Payments private transfer end-to-end live (ephemeral submit blocked)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.30.1 vs 0.32.1 gap)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)
   ✗ Umbra native SOL ShieldLend payout (C2H exits direct stealth_address; no wSOL bridge)

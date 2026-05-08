@@ -29,6 +29,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "bn.js": "^5.2.3"
+    "bn.js": "^5.2.3",
+    "tweetnacl": "^1.0.3"
   }
 }
