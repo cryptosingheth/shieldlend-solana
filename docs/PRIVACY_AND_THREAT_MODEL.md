@@ -112,8 +112,10 @@ Goal: preserve bad-debt protection while avoiding public health-factor leakage a
 
 Current `rail/encrypt` branch boundary:
 - Encrypt pre-alpha is integrated as a real client/gRPC rail, not as production FHE.
-- `scripts/check-encrypt.mjs --live` submitted a non-sensitive health-ratio test value through `encrypt.v1.EncryptService/CreateInput` and received ciphertext identifier `7Ss3kGMQAVXGRSuU1CuggFjMgDjtssiUhZqNmMh5NugW`.
+- `scripts/check-encrypt.mjs --live` submitted a non-sensitive health-ratio test value through `encrypt.v1.EncryptService/CreateInput` and received ciphertext identifier `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`.
+- `scripts/encrypt-health-smoke.mjs --live` submits modeled non-sensitive collateral, debt, and liquidation-threshold inputs through the same CreateInput service.
 - Program-side encrypted-health verification remains fail-closed with `EncryptVerifierNotWired`.
+- No Anchor 0.32 sidecar is included because the real `encrypt_anchor::EncryptContext` CPI path currently has incompatible Anchor/Solana account crate versions.
 - Official Encrypt pre-alpha docs disclaim production encryption guarantees and state pre-alpha data may be plaintext/public. No sensitive or real user data should be submitted through this rail.
 
 Mechanisms:

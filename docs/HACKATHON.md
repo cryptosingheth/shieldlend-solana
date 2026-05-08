@@ -18,7 +18,7 @@ ShieldLend targets three tracks simultaneously. Each track covers an orthogonal 
 
 > **Pre-Alpha Status**: IKA dWallet, Encrypt FHE, and MagicBlock private payment surfaces may require gated devnet access during the hackathon. The implementation target is real protocol adapters first. If a devnet dependency is unavailable, a clearly labeled fallback adapter can be used only to preserve the integration surface for judging; privacy claims are reduced in that mode. This disclosure is included here so judges reviewing this file independently have the full picture.
 
-> **Encrypt branch status (`rail/encrypt`)**: Encrypt is wired at the client/gRPC adapter level through `frontend/src/lib/privacyRails/encrypt.ts` and `scripts/check-encrypt.mjs`. A live pre-alpha `encrypt.v1.EncryptService/CreateInput` probe succeeded for a non-sensitive ShieldLend health-ratio test value and returned ciphertext identifier `7Ss3kGMQAVXGRSuU1CuggFjMgDjtssiUhZqNmMh5NugW`. This proves developer tooling and devnet gRPC connectivity only. It does not prove production FHE privacy, and it does not execute a ShieldLend on-chain encrypted-health instruction.
+> **Encrypt branch status (`rail/encrypt`)**: Encrypt is wired at the client/gRPC adapter level through `frontend/src/lib/privacyRails/encrypt.ts`, `scripts/check-encrypt.mjs`, and `scripts/encrypt-health-smoke.mjs`. A live pre-alpha `encrypt.v1.EncryptService/CreateInput` probe succeeded for a non-sensitive ShieldLend health-ratio test value and returned ciphertext identifier `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`. The health smoke also models collateral, debt, and liquidation-threshold inputs. This proves developer tooling and devnet gRPC connectivity only. It does not prove production FHE privacy, and it does not execute a ShieldLend on-chain encrypted-health instruction.
 
 ---
 
@@ -46,7 +46,7 @@ The design property: liquidation is trustless consent, not operator permission.
 
 ### Encrypt integration points (4)
 
-Current implementation boundary: the branch implements a real Encrypt pre-alpha client probe and health-ratio input submission. The on-chain Anchor integration remains fail-closed because current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`, while ShieldLend's C2H-verified programs remain on Anchor `0.30.1`. Upgrading Anchor is not part of this branch because it could disturb the confirmed Groth16 withdraw round-trip.
+Current implementation boundary: the branch implements a real Encrypt pre-alpha client probe and modeled health/collateral threshold input submission. The on-chain Anchor integration remains fail-closed because current Encrypt docs require `encrypt-anchor` with `anchor-lang = "0.32"`, while ShieldLend's C2H-verified programs remain on Anchor `0.30.1`. A throwaway Anchor 0.32 sidecar feasibility check failed at the actual `EncryptContext` CPI boundary because current upstream `encrypt-anchor` resolves to newer Anchor/Solana account types. Upgrading Anchor is not part of this branch because it could disturb the confirmed Groth16 withdraw round-trip.
 
 **1. FHE oracle input (price feeds)**
 Liquidation requires knowing the market price of SOL relative to the loan's collateral denomination. Price feeds are submitted as Encrypt FHE ciphertext inputs. The health_factor computation runs homomorphically on encrypted oracle data — MEV bots cannot compute the health factor breach condition from encrypted mempool data.
