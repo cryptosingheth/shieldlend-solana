@@ -45,6 +45,20 @@ export interface UmbraStatus {
   blockers: string[];
 }
 
+export type UmbraFundedFlowState = "live" | "blocked" | "not-run";
+
+export interface UmbraFundedFlowStatus {
+  state: UmbraFundedFlowState;
+  label: string;
+  assetKind: UmbraAssetKind | "unknown";
+  mintAddress: string;
+  depositSignature: string;
+  withdrawSignature: string;
+  txSignatures: string[];
+  blocker: string;
+  nativeSolRouteRequiresTokenBridge: boolean;
+}
+
 export interface UmbraRoutePlan {
   mode: UmbraDestinationMode;
   status: UmbraRailState;
@@ -150,6 +164,29 @@ export function getUmbraStatus(config = getUmbraRailConfig()): UmbraStatus {
     details: `SDK ${UMBRA_SDK_VERSION} resolves ${config.network} program ${config.programId}. Live action still requires a wallet, funded token account, and supported mint.`,
     config,
     blockers: [],
+  };
+}
+
+export function getUmbraFundedFlowStatus(): UmbraFundedFlowStatus {
+  const state = (requiredPublicEnv("NEXT_PUBLIC_UMBRA_FUNDED_FLOW_STATUS", "not-run") || "not-run") as UmbraFundedFlowState;
+  const depositSignature = requiredPublicEnv("NEXT_PUBLIC_UMBRA_FUNDED_FLOW_DEPOSIT_SIGNATURE");
+  const withdrawSignature = requiredPublicEnv("NEXT_PUBLIC_UMBRA_FUNDED_FLOW_WITHDRAW_SIGNATURE");
+  const txSignatures = [depositSignature, withdrawSignature].filter(Boolean);
+  const blocker = requiredPublicEnv(
+    "NEXT_PUBLIC_UMBRA_FUNDED_FLOW_BLOCKER",
+    "No funded devnet Umbra token action has been confirmed yet."
+  );
+
+  return {
+    state,
+    label: state === "live" ? "Funded flow live" : state === "blocked" ? "Funded flow blocked" : "Funded flow not run",
+    assetKind: (requiredPublicEnv("NEXT_PUBLIC_UMBRA_FUNDED_FLOW_ASSET", "unknown") || "unknown") as UmbraAssetKind | "unknown",
+    mintAddress: requiredPublicEnv("NEXT_PUBLIC_UMBRA_FUNDED_FLOW_MINT", requiredPublicEnv("NEXT_PUBLIC_UMBRA_MINT_ADDRESS")),
+    depositSignature,
+    withdrawSignature,
+    txSignatures,
+    blocker,
+    nativeSolRouteRequiresTokenBridge: true,
   };
 }
 

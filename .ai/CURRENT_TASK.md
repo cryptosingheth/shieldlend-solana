@@ -1,10 +1,10 @@
 # Current Task
 
-## Status: Umbra privacy rail adapter implemented on `rail/umbra`; C2H full devnet withdraw round-trip preserved.
+## Status: Umbra funded devnet wSOL encrypted-balance smoke complete on `rail/umbra`; C2H full devnet withdraw round-trip preserved.
 
 ## Active Objective
 
-Umbra Solana Privacy Rail implementation task — COMPLETE for SDK install, adapter, UI route selection, docs, and local validations.
+Umbra Live-Hardening task — COMPLETE for SDK-side funded devnet wSOL encrypted-balance deposit/withdraw. ShieldLend-native C2H payout is still native SOL and still needs a wSOL/SPL settlement bridge before claiming Umbra-routed withdrawals.
 
 Previous C2H remains intact:
 
@@ -17,9 +17,14 @@ Previous C2H remains intact:
 Umbra rail work completed:
 - Installed official `@umbra-privacy/sdk@4.0.0`.
 - Added `frontend/src/lib/privacyRails/umbra.ts` with SDK-backed client/register/deposit/withdraw/receiver-UTXO functions and fail-closed route planning.
-- Added `scripts/check-umbra.mjs` and `scripts/umbra-smoke.mjs`.
+- Added `scripts/check-umbra.mjs`, `scripts/umbra-smoke.mjs`, `scripts/umbra-funded-smoke.mjs`, and `scripts/umbra-wsol-smoke.mjs`.
 - Wired Withdraw UI destination mode: direct `stealth_address` fallback vs Umbra SDK route.
 - Updated `.env.example`, README, `docs/HACKATHON.md`, and `docs/PRIVACY_AND_THREAT_MODEL.md`.
+- Funded devnet wSOL flow confirmed:
+  - Mint: `So11111111111111111111111111111111111111112`
+  - wSOL wrap + SyncNative: `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As`
+  - Umbra deposit queue/callback: `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx` / `2nPcvgkfXhYWuAAxHfhjH8WCi4afguYbhqu3uYdpYgEH1As5jB8R2evfiUWXmFekz1CXfhB1HwHosiQKYGjCxMVL`
+  - Umbra withdraw queue/callback: `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUQdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` / `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau`
 
 ## Current Local Truth
 
@@ -46,8 +51,9 @@ Umbra rail work completed:
     - Devnet program ID: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
     - Devnet indexer health: 200 `{"status":"ok"}`
     - Devnet relayer health: 200 `{"status":"ok"}`
-19. Umbra smoke initialized a client and queried devnet user account state, but did not submit a token action.
-20. Current ShieldLend C2H withdrawal is native SOL direct `stealth_address`; Umbra supports SPL/Token-2022 balances, so true Umbra routing needs wSOL/SPL exit wiring.
+19. Umbra smoke initialized a client and queried devnet user account state.
+20. `npm run smoke:umbra-funded` submitted a funded devnet wSOL Umbra encrypted-balance deposit and withdrawal; both callbacks finalized.
+21. Current ShieldLend C2H withdrawal is still native SOL direct `stealth_address`; Umbra supports SPL/Token-2022 balances, so true ShieldLend payout routing needs wSOL/SPL exit wiring.
 
 ## Deployed Programs (Devnet) — All Verified
 
@@ -72,16 +78,16 @@ Umbra rail work completed:
 
 ## Known Blockers
 
-None blocking C2H. Umbra rail blockers for live transfer:
+None blocking C2H. Umbra rail blockers for ShieldLend-native payout:
 - Full Groth16 round-trip on devnet: CONFIRMED
 - UnauthorizedWriter (registry_writer PDA vs program ID): RESOLVED
 - Native SOL is not a direct Umbra SDK balance type; use wSOL or another supported SPL/Token-2022 mint.
 - `@umbra-privacy/web-zk-prover@2.0.1` peers `@umbra-privacy/sdk@2.0.3`, so this branch did not force-install it beside SDK 4.0.0.
-- No funded Umbra supported-mint devnet action was submitted.
+- Funded SDK-side wSOL deposit/withdraw is live, but ShieldedPool C2H has not been bridged into that wSOL/SPL rail.
 
 ## Immediate Next Actions
 
-1. **Umbra live action** — choose supported mint (wSOL for SOL-like exits), fund signer, then submit a real SDK register/deposit or receiver-UTXO smoke.
+1. **ShieldLend payout bridge** — wire a program/API settlement leg that converts native SOL C2H exits into wSOL/SPL before calling Umbra SDK functions.
 2. **Privacy rails** — wire IKA, MagicBlock PER/PrivatePayments, Encrypt.
 3. **Production realloc design** — ShieldedPoolState should use realloc constraints for production-scale capacity.
 4. **Trusted setup ceremony** — DEV/TEST ptau is not production-ready.

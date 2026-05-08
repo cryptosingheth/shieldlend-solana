@@ -130,6 +130,33 @@ Integration: private payment settlement + receipt binding in `lending_pool::repa
 - Supported assets are SPL and Token-2022 balances. Native SOL is not a direct Umbra balance type; SOL-like routing should use wSOL or another supported SPL representation.
 - Wallet model: the SDK expects an `IUmbraSigner` with transaction signing, batch transaction signing, and message signing. The SDK also exports `createSignerFromWalletAccount` for Wallet Standard wallet accounts.
 
+### Funded devnet smoke
+
+`scripts/umbra-funded-smoke.mjs` now performs the live funded path against devnet using wSOL:
+
+1. Confirms the configured Solana CLI wallet balance.
+2. Creates or reuses the wallet's wSOL ATA, transfers native devnet SOL into it, and calls SPL Token `SyncNative`.
+3. Initializes the Umbra SDK client for devnet.
+4. Reuses the existing confidential Umbra registration when present.
+5. Deposits 0.001 wSOL from the public ATA into the Umbra encrypted balance.
+6. Queries the encrypted balance and withdraws the same 0.001 wSOL back to the public ATA.
+
+Confirmed devnet mint: `So11111111111111111111111111111111111111112` (wSOL).
+
+Confirmed transaction signatures:
+
+| Step | Signature |
+|---|---|
+| wSOL wrap + SyncNative | `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As` |
+| Umbra deposit queue | `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx` |
+| Umbra deposit callback | `2nPcvgkfXhYWuAAxHfhjH8WCi4afguYbhqu3uYdpYgEH1As5jB8R2evfiUWXmFekz1CXfhB1HwHosiQKYGjCxMVL` |
+| Umbra deposit rent reclaim | `2MFBu2kb2VFPHRRhDYK4ip9uwm3Vm8vaYGdhCogx9V4LBCwjw3nrjx1oY6JefQkRPX3T9P2ttcVPcw6L4Rkh7Uib` |
+| Umbra withdraw queue | `yVdTJQi8DxnRyB1BBW2zkTenm7WhxXAqztXqoAsqUQdnEdKhqUBQrWACbMeLkdEGkCuGbPGKVYfGAVzRLLeHg5u` |
+| Umbra withdraw callback | `31UinqaCswx1kNJGpZbGoFgr6AH8nrBfLMEhgm1z3FNgJdAtbjDsPxvbv3iC7r6i7DpR5t3YvUyMcpHUeD4HnVau` |
+| Umbra withdraw rent reclaim | `4zm2xwJ4TfCGTTwtcG72wfj3xXjsYiDfNqZBRY1Kp2qyszwezjywjJCC63LphzUK9Qbs5jhbv37NLYEFcLfoqKEm` |
+
+Result: funded Umbra encrypted-balance deposit and withdrawal are live on devnet for wSOL. This does **not** mean the existing ShieldLend C2H native SOL withdraw is Umbra-routed. C2H still exits native SOL through `WithdrawArgs.stealth_address`; ShieldLend needs a program/API settlement leg that converts native SOL exits to wSOL or another supported SPL/Token-2022 mint before calling the Umbra SDK.
+
 ### Umbra integration points (3)
 
 **1. Withdrawal receiving path**
@@ -139,6 +166,8 @@ ShieldLend now has a frontend Umbra adapter at `frontend/src/lib/privacyRails/um
 - public SPL/Token-2022 balance -> receiver-claimable UTXO
 
 Current C2H withdraw releases native SOL to `WithdrawArgs.stealth_address`. That path remains preserved and is labeled lower privacy in the UI. It is not an Umbra mixer/encrypted-balance action.
+
+The funded smoke proves the SDK-side wSOL rail works. It does not yet wire the ShieldedPool payout path into that rail.
 
 **2. Loan disbursement receiving path**
 Borrow disbursement can use the same adapter once the disbursement asset is represented as a supported SPL/Token-2022 mint. For SOL-denominated lending, the practical route is wSOL or a program-level SOL -> wSOL leg before calling Umbra SDK functions.

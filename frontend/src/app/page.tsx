@@ -32,9 +32,11 @@ import {
 } from "../lib/noteStorage";
 import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/protocolAdapters";
 import {
+  getUmbraFundedFlowStatus,
   getUmbraStatus,
   planUmbraDestinationRoute,
   type UmbraDestinationMode,
+  type UmbraFundedFlowStatus,
   type UmbraStatus,
 } from "../lib/privacyRails/umbra";
 import {
@@ -72,6 +74,7 @@ export default function HomePage() {
   const vaultReady = Boolean(vaultKey);
   const protocolMode = useMemo(() => modeFromRails(FULL_PRIVACY_RAILS), []);
   const umbraStatus = useMemo(() => getUmbraStatus(), []);
+  const umbraFundedFlowStatus = useMemo(() => getUmbraFundedFlowStatus(), []);
 
   const refreshAccount = useCallback(async (nextAddress = address, key = vaultKey) => {
     if (!nextAddress) return;
@@ -300,6 +303,7 @@ export default function HomePage() {
             connected={connected}
             vaultReady={vaultReady}
             umbraStatus={umbraStatus}
+            umbraFundedFlowStatus={umbraFundedFlowStatus}
             setScreen={setScreen}
             onExport={handleExportNotes}
             onImportClick={() => importFileRef.current?.click()}
@@ -316,6 +320,7 @@ export default function HomePage() {
             destinationMode={withdrawDestinationMode}
             setDestinationMode={setWithdrawDestinationMode}
             umbraStatus={umbraStatus}
+            umbraFundedFlowStatus={umbraFundedFlowStatus}
           />
         )}
         {screen === "borrow" && (
@@ -361,6 +366,7 @@ function Positions({
   connected,
   vaultReady,
   umbraStatus,
+  umbraFundedFlowStatus,
   setScreen,
   onExport,
   onImportClick,
@@ -369,6 +375,7 @@ function Positions({
   connected: boolean;
   vaultReady: boolean;
   umbraStatus: UmbraStatus;
+  umbraFundedFlowStatus: UmbraFundedFlowStatus;
   setScreen: (screen: Screen) => void;
   onExport: () => void;
   onImportClick: () => void;
@@ -442,6 +449,20 @@ function Positions({
                 {umbraStatus.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
               </ul>
             )}
+          </Panel>
+
+          <Panel title="Umbra funded flow">
+            <FundedFlowLine status={umbraFundedFlowStatus} />
+            <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+              <dt>Asset</dt>
+              <dd>{umbraFundedFlowStatus.assetKind}</dd>
+              <dt>Mint</dt>
+              <dd>{umbraFundedFlowStatus.mintAddress ? <code>{shortHash(umbraFundedFlowStatus.mintAddress)}</code> : "Not confirmed"}</dd>
+              <dt>Deposit tx</dt>
+              <dd>{umbraFundedFlowStatus.depositSignature ? <code>{shortHash(umbraFundedFlowStatus.depositSignature)}</code> : "None"}</dd>
+              <dt>Withdraw tx</dt>
+              <dd>{umbraFundedFlowStatus.withdrawSignature ? <code>{shortHash(umbraFundedFlowStatus.withdrawSignature)}</code> : "None"}</dd>
+            </dl>
           </Panel>
         </div>
       </div>
@@ -564,6 +585,7 @@ function Withdraw({
   destinationMode,
   setDestinationMode,
   umbraStatus,
+  umbraFundedFlowStatus,
 }: {
   notes: StoredNote[];
   connected: boolean;
@@ -571,6 +593,7 @@ function Withdraw({
   destinationMode: UmbraDestinationMode;
   setDestinationMode: (mode: UmbraDestinationMode) => void;
   umbraStatus: UmbraStatus;
+  umbraFundedFlowStatus: UmbraFundedFlowStatus;
 }) {
   const route = planUmbraDestinationRoute({
     mode: destinationMode,
@@ -646,11 +669,20 @@ function Withdraw({
             <dd><code>{umbraStatus.config.programId}</code></dd>
             <dt>Indexer</dt>
             <dd>{umbraStatus.config.indexerApiEndpoint ? "Configured" : "Missing"}</dd>
+            <dt>Funded flow</dt>
+            <dd>{umbraFundedFlowStatus.label}</dd>
+            <dt>Funded mint</dt>
+            <dd>{umbraFundedFlowStatus.mintAddress ? <code>{shortHash(umbraFundedFlowStatus.mintAddress)}</code> : "Not confirmed"}</dd>
           </dl>
           <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
             Supported route: public SPL/Token-2022 balance to Umbra encrypted balance or receiver-claimable UTXO,
             then Umbra withdrawal/claim. Native SOL requires wSOL or another supported token representation.
           </p>
+          {umbraFundedFlowStatus.state !== "live" && (
+            <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+              Funded Umbra status: {umbraFundedFlowStatus.blocker}
+            </p>
+          )}
         </Panel>
       </div>
     </section>
@@ -757,6 +789,20 @@ function RailStateLine({ status }: { status: UmbraStatus }) {
       <div>
         <strong>Umbra {status.label}</strong>
         <span>{status.details}</span>
+      </div>
+    </div>
+  );
+}
+
+function FundedFlowLine({ status }: { status: UmbraFundedFlowStatus }) {
+  const Icon = status.state === "live" ? CheckCircle : XCircle;
+  const color = status.state === "live" ? "green" : status.state === "blocked" ? "danger" : "amber";
+  return (
+    <div className="rail">
+      <Icon size={16} className={color} />
+      <div>
+        <strong>{status.label}</strong>
+        <span>{status.state === "live" ? "Funded Umbra token transaction signature recorded." : status.blocker}</span>
       </div>
     </div>
   );
