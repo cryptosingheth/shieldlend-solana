@@ -15,6 +15,9 @@
     "check:umbra": "node scripts/check-umbra.mjs",
     "smoke:umbra": "node scripts/umbra-smoke.mjs",
     "smoke:umbra-funded": "node scripts/umbra-funded-smoke.mjs",
+    "check:magicblock": "node scripts/check-magicblock.mjs",
+    "smoke:magicblock": "node scripts/magicblock-per-smoke.mjs",
+    "typecheck:sidecar": "cd examples/magicblock-per-sidecar && npx tsc --noEmit",
     "test:programs": "cargo test --workspace",
     "test:anchor": "anchor test",
     "circuits:compile": "circom circuits/withdraw_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/collateral_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/repay_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits"

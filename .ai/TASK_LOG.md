@@ -604,3 +604,105 @@ Latest live-hardening CreateInput IDs:
 - Existing C2H withdraw still uses native SOL direct `stealth_address`.
 - ShieldLend payout route still needs native SOL -> wSOL/SPL settlement wiring before claiming Umbra-routed withdrawals.
 - Umbra mixer/UTXO path was not claimed; compatible prover remains unresolved for SDK 4.0.0.
+
+---
+
+## 2026-05-08 — MagicBlock PER TypeScript Rail Integration (rail/magicblock)
+
+### Branch
+
+`rail/magicblock` (base: `origin/convergence/zk-constants-artifacts`)
+
+### Objective
+
+Implement MagicBlock as a real privacy rail (not a docs/status placeholder). Research, implement, validate.
+
+### What was done
+
+1. Researched MagicBlock PER docs (`docs.magicblock.gg`), SDK exports, and real API behavior.
+2. Confirmed: Anchor 0.32.1 required for Rust macros; workspace uses 0.30.1. Rust macros deferred.
+3. Installed `@magicblock-labs/ephemeral-rollups-sdk@0.8.8` in frontend workspace.
+4. Created `frontend/src/lib/privacyRails/magicblock.ts` — full TypeScript adapter.
+5. Created `scripts/check-magicblock.mjs` — live CLI check (runs real TEE RPC call).
+6. Updated `frontend/src/lib/protocolAdapters.ts` — per-rail comment with TEE status.
+7. Updated `.env.example` (root + frontend) with all MagicBlock env vars and comments.
+8. Updated `docs/HACKATHON.md` and `docs/IMPLEMENTATION_STATUS.md`.
+
+### Live check output
+
+- TEE RPC (`https://devnet-tee.magicblock.app`): **HTTP 200** — `{"jsonrpc":"2.0","result":"ok","id":1}`
+- Router RPC (`https://devnet-router.magicblock.app`): **HTTP 200**
+- Permission Program ID: `ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1` (verified vs SDK)
+- Delegation Program ID: `DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh` (verified vs SDK)
+- SDK functions: 13/13 present
+- TDX attestation: exception `challenge must decode to 64 bytes` (challenge format delta in SDK vs TEE)
+- Private Payments: URL not set (requires Discord access)
+
+### Blockers documented
+
+- TDX attestation challenge encoding mismatch (SDK 0.8.8 vs current devnet TEE)
+- Rust PER macros require Anchor 0.32.1 (current 0.30.1)
+- Private Payments URL requires Discord access
+- VRF: no module in SDK 0.8.x
+
+### Validations passed
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS (zero errors)
+
+### Commit
+
+`feat: integrate MagicBlock privacy rails`
+
+---
+
+## 2026-05-08 — MagicBlock PER Live Integration Path (rail/magicblock, Session 2)
+
+### Branch
+
+`rail/magicblock`
+
+### Objective
+
+Build the strongest real MagicBlock PER path possible without breaking ShieldLend C2H.
+Add an isolated sidecar example with the full Permission/Delegation/Commit lifecycle.
+
+### What was done
+
+1. Inventoried full SDK 0.8.8 export surface (85 exports vs 13 previously known).
+   Key additions: `createDelegateInstruction`, `createCommitInstruction`,
+   `ConnectionMagicRouter`, `delegationRecordPdaFromDelegatedAccount`, `getPermissionStatus`,
+   `waitUntilPermissionActive`, and a full set of delegation/commit PDAs.
+2. Created `examples/magicblock-per-sidecar/` — standalone TypeScript sidecar (NOT in workspace):
+   - `src/accounts.ts` — 4 ShieldLend intent account types + `PerPdaBundle` (8 PDAs per account)
+   - `src/lifecycle.ts` — `buildSetupInstructions`, `buildCommitAndUndelegateInstructions`,
+     `buildCommitOnlyInstructions`, `buildFullLifecycle`
+   - `src/shieldlend.ts` — 4 use-case bundles: private deposit intent, proof intent,
+     queued withdrawal intent, batched deposit counter
+   - `src/index.ts` — demo entry point; derives all PDAs, builds all ixs, hits live RPCs
+3. Created `scripts/magicblock-per-smoke.mjs` — 12-section live smoke test.
+4. Added `check:magicblock`, `smoke:magicblock`, `typecheck:sidecar` to root `package.json`.
+
+### Live smoke output (2026-05-08)
+
+- 17 pass, 3 warn (expected), 0 fail
+- TEE RPC: HTTP 200, Router RPC: HTTP 200
+- ConnectionMagicRouter.getDelegationStatus: `isDelegated=false` (correct — account not on devnet)
+- getPermissionStatus: `{authorizedUsers:null}` (correct — permission account not created)
+- TDX attestation: `challenge must decode to 64 bytes` (known SDK 0.8.8 delta — warn)
+- Private Payments URL: not set (blocker — requires Discord)
+- Rust macros: blocked on Anchor 0.32.1
+
+### Validations passed
+
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` (with PATH fix) — PASS
+- `examples/magicblock-per-sidecar` typecheck — PASS (0 errors)
+
+### Commit
+
+`feat: add MagicBlock PER live integration path`
