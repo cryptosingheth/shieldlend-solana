@@ -2,77 +2,97 @@
 
 ## Task Objective
 
-Convergence Task 2H: Full devnet round-trip proof smoke test — COMPLETE.
+Encrypt Live-Hardening Task — COMPLETE on branch `rail/encrypt`.
 
 ## Current Status
 
-**C2H complete.** All three programs deployed and verified. Full deposit → flush_epoch → store_withdraw_proof → withdraw round-trip confirmed on devnet. On-chain Groth16 BN254 verification confirmed: 198,502 CU consumed, pairing passed. UnauthorizedWriter blocker discovered and fixed.
+Encrypt is integrated where safe for this codebase: client/adapter-level gRPC integration against the Encrypt pre-alpha devnet endpoint. Program-side `encrypt-anchor` integration was intentionally not added because the current Encrypt installation docs require Anchor `0.32`, while this repo's C2H-verified programs and CLI remain on Anchor `0.30.1`.
 
-## Deployed Programs (Devnet) — All Verified
+The Anchor 0.32 sidecar feasibility check was re-run. A throwaway graph-only sidecar compiled, but the real `encrypt_anchor::EncryptContext` CPI path failed with duplicate `solana_account_info` and `anchor_lang` types because current upstream `encrypt-anchor` resolves to newer Anchor/Solana account crates. No sidecar was added.
 
-| Program | Program ID | Status |
-|---|---|---|
-| `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | Deployed |
-| `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | Deployed + upgraded (Vec cap fix) |
-| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Deployed |
+C2H is not broken. No Anchor program logic changed, and all required validations pass.
 
-All IDs match `Anchor.toml`, `anchor keys list`, and all three `declare_id!` values.
+## Encrypt Live Probe
 
-## C2H Round-Trip — Transaction Signatures
+Command run:
 
-| Step | Instruction | Signature |
-|---|---|---|
-| 0a | `nullifier_registry::update_authorized_programs` (PDA fix) | `5nqg3EDxMi6My224DV43xmqjbfzMWuCr5njQAkBFkzNwTkRKY9xQ8jjqGdRRoRPaUYfJWeF8UhsWkM48VPAnQcCK` |
-| 1 | `shielded_pool::deposit` | `3dsEYbRR7o66HYErueU6Fdzt1dSEhX6mpRm2XSZArzzWib7kbjnETUgw6dAfZBsXfw45nQuH8gbSGKfZEvNkGRtu` |
-| 2 | `shielded_pool::flush_epoch` | `2GXQhThHoHB7hBmZXWHxP9VCm2eU3e19NoRCaj8L5a2p6L7yUkv4vCH4yM4cUqMyY23xhqV51fsts5Wu8bsTgqBL` |
-| 3 | `shielded_pool::store_withdraw_proof` | `5vd2RnQJwCmqQ9YmNSFUA5dxZWRNmGudmMurGVgXtcgm1MKHP8LZJBi6EVra4vBinXqoX2b9tBidTYXxzW1JNBed` |
-| 4 | `shielded_pool::withdraw` (Groth16 PASS) | `3s7zqUmuTLmYCMKW6JtH27easQetAUZP6DUhuKAXzL5b27wfMPRL5nx6eRX64C59kRQ7LmfBsii18TJBpQi2FDhd` |
+```bash
+npm run check:encrypt -- --live
+```
 
-**Groth16 pairing**: 198,502 CU consumed and passed.
+Result:
+- SDK/package in lockfile: `@encrypt.xyz/pre-alpha-solana-client@0.1.0`
+- gRPC API used: `encrypt.v1.EncryptService/CreateInput`
+- Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`
+- Program ID: `4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8`
+- Active devnet keys discovered:
+  - `6L4bQjT2ao774nQQ6BkXqnKJMye4nmPW1SMeRRxfm2Yn`, disc `2`, key `f00f3465b66ff8034600706ed05bf70ef5318edc511398085a3ab4512b875197`
+  - `2YP2nxFoYcDFDBRygrN7C3Y3ENdcoaLjVeAmbX8HHwur`, disc `7`, key `5555555555555555555555555555555555555555555555555555555555555555`
+- Health-ratio test value: `15000` bps
+- Returned ciphertext identifier: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
 
-## Critical Discovery: UnauthorizedWriter (registry_writer PDA vs program ID)
+Additional live-hardening script:
 
-`nullifier_registry::assert_authorized` checks `writer.key()` — the account that appears as signer in the CPI. In Anchor `invoke_signed`, the signer is the **registry_writer PDA** derived from `[b"registry-writer"]` in the calling program, NOT the calling program's ID.
+```bash
+node scripts/encrypt-health-smoke.mjs --live
+```
 
-Registry_writer PDAs:
-- shielded_pool: `E4kXXwght9DYxDnAwcmtbcJ5cV2Azjn98eNJJa2q5Szf`
-- lending_pool: `CHCEx9fzSVQVxC9kAQ6K4tRgajjbcwNA2tg1LtbjqoCk`
+This submits modeled non-sensitive `collateral_value_lamports`, `debt_value_lamports`, and `liquidation_threshold_bps` inputs through the same CreateInput service. Latest IDs:
+- collateral: `8CtojVRaXkWnCB6pN6wq5jxEvkdmAe5BhfTsm5pBLZsc`
+- debt: `25EK8vDYPXB6kaT6EZEmz6gwjpu1SNKt57zn1cnYR1xw`
+- threshold: `2iA8vWgBaA8cKo6eGsQQMdZUgHyNNB3spSc93Sj6Fhos`
 
-The initial `authorized_programs` list was set to program IDs (wrong). Fixed by calling `update_authorized_programs` with the PDA addresses. `devnet-fullround.mjs` Step 0a auto-detects and corrects this.
+Important: this proves pre-alpha developer tooling and gRPC connectivity only. Official Encrypt docs state pre-alpha has no real encryption guarantee and data may be plaintext/public. Do not submit sensitive or real data.
 
-## Files Changed (C2H, this session)
+## Files Changed
 
-- `scripts/devnet-fullround.mjs` — new; full round-trip script (deposit + flush + auth fix + store_proof + withdraw)
-- `docs/IMPLEMENTATION_STATUS.md` — C2H entries added; on-chain Groth16 confirmed; lending_pool deployed row updated
-- `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` — C2H section added with full tx sigs and UnauthorizedWriter discovery/fix
-- `audit-reports/GROTH16_SOLANA_INTEGRATION_PLAN.md` — status updated to C2H complete; round-trip section added
-- `.ai/CURRENT_TASK.md` — C2H complete
-- `.ai/SESSION_HANDOFF.md` — this file
-- `.ai/DECISIONS.md` — registry_writer PDA authorization decision added
-- `.ai/TASK_LOG.md` — C2H complete entry appended
+- `frontend/src/lib/privacyRails/encrypt.ts` — Encrypt adapter with active key discovery and gRPC `CreateInput`
+- `scripts/check-encrypt.mjs` — CLI probe, including live `CreateInput` mode
+- `scripts/encrypt-health-smoke.mjs` — modeled health/collateral threshold live smoke
+- `docs/ENCRYPT_LIVE_HARDENING.md` — exact sidecar blocker and Anchor 0.32 migration path
+- `frontend/src/app/api/integrations/encrypt/status/route.ts` — real status probe
+- `frontend/src/app/api/integrations/encrypt/liquidation-reveal/route.ts` — probe-only default plus optional health-ratio `CreateInput`
+- `frontend/src/app/page.tsx` — Encrypt pre-alpha status panel
+- `.env.example` — optional network-key/probe env vars
+- `package.json` — `check:encrypt` script
+- `README.md`
+- `docs/HACKATHON.md`
+- `docs/PRIVACY_AND_THREAT_MODEL.md`
+- `.ai/CURRENT_TASK.md`
+- `.ai/SESSION_HANDOFF.md`
+- `.ai/DECISIONS.md`
+- `.ai/TASK_LOG.md`
 
-## Active Wallet
+## Program-Side Status
 
-- Wallet: `HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V`
-- Balance: 3.554668080 SOL (after C2H; net cost ≈ 0.108515 SOL including 0.1 SOL deposited)
-- Cluster: devnet
+Fail-closed. `lending_pool::verify_encrypt_reveal` still returns `LendingError::EncryptVerifierNotWired`. This is intentional until an Anchor 0.32 migration or an Anchor 0.30-compatible Encrypt program SDK path is approved.
 
-## Validations Passed (C2H)
+## Validations Passed
 
-- `cargo fmt --all -- --check` — PASS
-- `cargo test --workspace` — PASS (47 tests)
+- `npm run check:encrypt -- --live` — PASS
+- `node scripts/encrypt-health-smoke.mjs --live` — PASS
 - `npm run typecheck:frontend` — PASS
-- `npm run build:frontend` — PASS
-- `anchor build --no-idl` — PASS (zero stack-frame error diagnostics)
+- `npm run build:frontend` — PASS with existing `web-worker`/`ffjavascript` warning
+- `cargo test --workspace` — PASS, 47 tests; existing Anchor cfg warnings
+- `anchor build --no-idl` — PASS with existing Anchor/SBF warnings
 
-## Remaining Work (Next Task)
+## Current Claim Boundary
 
-1. **Privacy rails**: IKA, MagicBlock PER/PrivatePayments, Umbra, Encrypt not wired.
-2. **Production realloc design**: ShieldedPoolState should use `realloc` constraints on Deposit/FlushEpoch for production-scale capacity (current cap=8 for devnet).
-3. **Trusted setup ceremony**: DEV/TEST ptau is not production-ready.
+Live:
+- Encrypt pre-alpha devnet endpoint reachable.
+- Active network encryption key discovery works.
+- gRPC `CreateInput` accepts a non-sensitive ShieldLend health-ratio test input and returns a ciphertext identifier.
+- Frontend/API can display Encrypt rail status.
 
-## Do Not Claim
+Pre-alpha / not live:
+- No production FHE privacy guarantee.
+- No on-chain ShieldLend encrypted-health instruction.
+- No Encrypt threshold reveal verification in `lending_pool`.
+- No sensitive data should be submitted.
 
-- Production ZK proof artifacts (DEV/TEST only — `circuits/keys/dev_pot14_final.ptau`).
-- Any privacy rail (IKA, MagicBlock, Umbra, Encrypt) is active.
-- Full on-chain privacy (Groth16 verification confirmed with DEV/TEST setup only).
+## Next Recommended Task
+
+Choose one:
+
+1. Keep Encrypt as a sidecar/client rail until upstream package exports and Anchor compatibility stabilize.
+2. Open a separate Anchor 0.32 migration branch, wire `encrypt-anchor`, and rerun the full C2H devnet round-trip before merging.

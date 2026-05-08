@@ -110,6 +110,14 @@ Degraded mode:
 
 Goal: preserve bad-debt protection while avoiding public health-factor leakage and preventing unfair liquidation.
 
+Current `rail/encrypt` branch boundary:
+- Encrypt pre-alpha is integrated as a real client/gRPC rail, not as production FHE.
+- `scripts/check-encrypt.mjs --live` submitted a non-sensitive health-ratio test value through `encrypt.v1.EncryptService/CreateInput` and received ciphertext identifier `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`.
+- `scripts/encrypt-health-smoke.mjs --live` submits modeled non-sensitive collateral, debt, and liquidation-threshold inputs through the same CreateInput service.
+- Program-side encrypted-health verification remains fail-closed with `EncryptVerifierNotWired`.
+- No Anchor 0.32 sidecar is included because the real `encrypt_anchor::EncryptContext` CPI path currently has incompatible Anchor/Solana account crate versions.
+- Official Encrypt pre-alpha docs disclaim production encryption guarantees and state pre-alpha data may be plaintext/public. No sensitive or real user data should be submitted through this rail.
+
 Mechanisms:
 - Encrypt FHE keeps oracle price and health computation encrypted.
 - Breach confirmation requires consecutive unhealthy epochs before liquidation can proceed.
@@ -171,8 +179,8 @@ IP privacy is not enforced by ShieldLend. Users who need network-layer privacy m
 | Repayer wallet | Protected | IKA relay plus repay proof. |
 | Repayment transfer graph | Protected in Full Privacy mode | MagicBlock Private Payments receipt binding. |
 | Repayment amount | Mode-dependent | Hidden only when private payment settlement is active. |
-| Oracle price and health computation | Protected | Encrypt FHE ciphertext computation. |
-| Individual collateral health values | Protected until authorized reveal | Encrypt FHE and threshold decryption. |
+| Oracle price and health computation | Target only; pre-alpha client probe live | Encrypt gRPC `CreateInput` health-ratio probe works, but program-side FHE verification is not wired and pre-alpha has no production encryption guarantee. |
+| Individual collateral health values | Target only; not production-private | Encrypt threshold/FHE path is not live in ShieldLend programs; `verify_liquidation_reveal` still fails closed. |
 | Aggregate collateral coverage | Intentionally disclosed | Threshold decrypt aggregate only, not individual values. |
 | Borrow amount | Public or bucketed | Required for deterministic lending mechanics. |
 | Loan existence/count | Public | LoanAccount PDA creation is visible. |

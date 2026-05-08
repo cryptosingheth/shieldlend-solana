@@ -12,6 +12,7 @@ import {
   Home,
   KeyRound,
   LockKeyhole,
+  Radio,
   RotateCcw,
   Shield,
   Upload,
@@ -40,6 +41,21 @@ import {
 
 type Screen = "positions" | "deposit" | "withdraw" | "borrow" | "repay" | "history";
 
+type EncryptStatus = {
+  configured: boolean;
+  sdkPackage: string;
+  sdkVersion: string;
+  grpcApi: string;
+  grpcUrl: string;
+  programId: string;
+  clientConstructed: boolean;
+  sdkImportStatus: "blocked" | "not-checked";
+  sdkImportNote: string;
+  networkKeys: Array<{ account: string; discriminator: number; publicKeyHex: string; active: boolean }>;
+  selectedNetworkKeyHex?: string;
+  claimBoundary: string;
+};
+
 const nav = [
   { key: "positions" as const, label: "Positions", icon: Home },
   { key: "deposit" as const, label: "Deposit", icon: ArrowDownToLine },
@@ -60,6 +76,7 @@ export default function HomePage() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [hasPlaintext, setHasPlaintext] = useState(false);
+  const [encryptStatus, setEncryptStatus] = useState<EncryptStatus | null>(null);
 
   const connected = Boolean(wallet?.publicKey && address);
   const vaultReady = Boolean(vaultKey);
@@ -77,6 +94,21 @@ export default function HomePage() {
   useEffect(() => {
     const provider = getPhantomProvider();
     if (provider) setWallet(provider);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/integrations/encrypt/status")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((status: EncryptStatus | null) => {
+        if (!cancelled) setEncryptStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setEncryptStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function connectWallet() {
@@ -291,6 +323,7 @@ export default function HomePage() {
             notes={notes}
             connected={connected}
             vaultReady={vaultReady}
+            encryptStatus={encryptStatus}
             setScreen={setScreen}
             onExport={handleExportNotes}
             onImportClick={() => importFileRef.current?.click()}
@@ -348,6 +381,7 @@ function Positions({
   notes,
   connected,
   vaultReady,
+  encryptStatus,
   setScreen,
   onExport,
   onImportClick,
@@ -355,6 +389,7 @@ function Positions({
   notes: StoredNote[];
   connected: boolean;
   vaultReady: boolean;
+  encryptStatus: EncryptStatus | null;
   setScreen: (screen: Screen) => void;
   onExport: () => void;
   onImportClick: () => void;
@@ -365,6 +400,7 @@ function Positions({
 
       {/* What works today / planned / blocked */}
       <WhatWorksTodayPanel />
+      <EncryptStatusPanel status={encryptStatus} />
 
       <div className="grid two">
         <Panel
@@ -415,6 +451,46 @@ function Positions({
         </div>
       </div>
     </section>
+  );
+}
+
+function EncryptStatusPanel({ status }: { status: EncryptStatus | null }) {
+  const clientOk = Boolean(status?.clientConstructed);
+  const keyCount = status?.networkKeys.length ?? 0;
+  return (
+    <Panel title="Encrypt pre-alpha rail">
+      <div className="grid two" style={{ gap: "12px" }}>
+        <div>
+          <StatusLine label="gRPC client" value={status ? status.grpcApi : "loading"} healthy={clientOk} />
+          <StatusLine label="Active network keys" value={status ? `${keyCount}` : "loading"} healthy={keyCount > 0} />
+          <StatusLine label="SDK package" value={status ? `${status.sdkPackage}@${status.sdkVersion}` : "loading"} healthy={Boolean(status)} />
+        </div>
+        <div className="responsibility" style={{ margin: 0 }}>
+          <Radio size={16} />
+          <span>
+            {status?.claimBoundary ??
+              "Encrypt status probe has not returned yet. The rail must remain degraded until the adapter can prove the client surface and active pre-alpha key."}
+          </span>
+        </div>
+      </div>
+      {status && (
+        <dl className="facts" style={{ marginTop: "16px" }}>
+          <dt>Endpoint</dt>
+          <dd>{status.grpcUrl}</dd>
+          <dt>Program</dt>
+          <dd>{shortHash(status.programId, 8, 6)}</dd>
+          <dt>SDK import</dt>
+          <dd>{status.sdkImportStatus === "blocked" ? "Blocked by package export" : "Not checked"}</dd>
+          <dt>Selected key</dt>
+          <dd>{status.selectedNetworkKeyHex ? shortHash(status.selectedNetworkKeyHex, 10, 8) : "--"}</dd>
+        </dl>
+      )}
+      {status?.sdkImportNote && (
+        <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+          {status.sdkImportNote}
+        </p>
+      )}
+    </Panel>
   );
 }
 
