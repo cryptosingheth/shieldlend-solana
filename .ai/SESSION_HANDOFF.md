@@ -2,52 +2,44 @@
 
 ## Task Objective
 
-Anchor 0.32.1 workspace upgrade for MagicBlock PER and Encrypt Anchor compatibility — COMPLETE on `upgrade/anchor-032-privacy-rails`.
+Merge Anchor 0.32.1 upgrade + wSOL Umbra E2E reconciliation into `convergence/privacy-rails-integration` — in progress (merge commit pending).
 
 ## Current Status
 
-Workspace dependency/toolchain upgrade completed. Anchor compatibility gap is removed, but MagicBlock PER macros and Encrypt Anchor CPI are still not wired. No redeploy was performed.
+Conflict resolution complete. Merge commit not yet created — pending validations. All four rail branches plus two subsequent improvement branches are being merged.
 
 ---
 
-## Anchor 0.32.1 Upgrade (2026-05-08)
+## Combined Completed Work
 
-### Files Added/Changed
+### Anchor 0.32.1 Upgrade (2026-05-08)
 
-| File | Action |
+| Item | Outcome |
 |---|---|
 | `Anchor.toml` | Pins `anchor_version = "0.32.1"` |
-| `Cargo.toml` | Updates workspace `anchor-lang` to `0.32.1` |
-| `Cargo.lock` | Refreshed for Anchor 0.32.1 and Solana split crates |
-| `package.json` / `package-lock.json` | Adds `@coral-xyz/anchor@0.32.1` for checked-in TS tests |
-| `docs/ANCHOR_032_UPGRADE.md` | New upgrade ledger with validations and warnings |
-| `docs/IMPLEMENTATION_STATUS.md` | Updated current Anchor/toolchain and rail claim boundary |
-| `docs/HACKATHON.md`, `docs/DEMO_SCRIPT.md`, `docs/SUBMISSION_CHECKLIST.md`, `README.md` | Updated stale Anchor 0.30.1 blocker language |
-| `scripts/demo-status.mjs`, `scripts/check-magicblock.mjs`, `scripts/magicblock-per-smoke.mjs` | Updated status text: Anchor 0.32.1 present; rail macros/CPI not wired |
-| `.ai/*` | Updated handoff/current task/log/decisions/context |
-
-### Commit
-
-Pending at handoff until final commit command completes.
-
----
-
-## Validation Summary
-
-| Command | Result |
-|---|---|
+| Root `Cargo.toml` | `anchor-lang = "0.32.1"` |
+| Root `package.json` | Adds `@coral-xyz/anchor = "^0.32.1"` |
+| `Cargo.lock` / `package-lock.json` | Refreshed |
+| `docs/ANCHOR_032_UPGRADE.md` | New ledger: validations, warnings, crate graph notes |
 | `anchor --version` | PASS — `anchor-cli 0.32.1` |
 | `cargo fmt --all -- --check` | PASS |
-| `cargo test --workspace` | PASS — 47 tests |
-| `anchor build --no-idl` | PASS |
+| `cargo test --workspace` | PASS (47 tests) |
+| `anchor build --no-idl` | PASS (SBF syscall warnings — redeploy risk item) |
 | `npm run typecheck:frontend` | PASS |
 | `npm run build:frontend` | PASS |
-| `npm run demo:status` | PASS — branch warning only |
 
-Warnings to keep visible:
+No redeploy performed. Program IDs preserved. MagicBlock PER macros and Encrypt Anchor CPI still not wired.
 
-- Rust/Anchor macro `unexpected_cfgs` warnings remain.
-- `anchor build --no-idl` emits SBF post-processing warnings for undefined or not-known syscalls, including `sol_alt_bn128_group_op`. The build exits 0, but this should be runtime-validated before redeploying upgraded binaries.
+### wSOL Umbra E2E Reconciliation (2026-05-09)
+
+| Item | Outcome |
+|---|---|
+| `scripts/devnet-wsol-umbra-roundtrip.mjs` | `SKIP_C2H` flag; `c2hStatus` on all returns; `extractErrorCode()`; `FAILED` classification; conditional claim boundary |
+| `frontend/src/lib/privacyRails/umbra.ts` | `wsol_umbra_adapter` mode + `WsolUmbraPayoutPath` + `getWsolUmbraPayoutPath()` |
+| `frontend/src/app/page.tsx` | Withdraw: `wSOL via Umbra` mode + `WsolUmbraAdapterPanel` |
+| `docs/UMBRA_WSOL_PAYOUT.md` | New design doc; SKIP_C2H docs; live smoke result |
+| Phase 1 (C2H in roundtrip script) | FAILED — custom program error `0x0` |
+| Phase 2 (SOL→wSOL wrap + Umbra deposit + Umbra withdraw) | CONFIRMED live on devnet |
 
 ---
 
@@ -55,32 +47,34 @@ Warnings to keep visible:
 
 ### C2H / Groth16
 
-- Full devnet round-trip evidence remains from prior deployment: deposit → flush_epoch → store_withdraw_proof → withdraw.
-- On-chain Groth16 BN254 prior deployment evidence: PASSED — 198,502 CU; nullifier consumed; nullifier registry CPI succeeded.
-- In this upgrade task: local Rust tests preserved the C2H proof logic, including valid withdraw smoke proof and mutated/empty/mismatched proof rejection.
-- No upgraded binary redeploy or destructive `devnet-fullround.mjs` rerun was performed.
+- Full devnet round-trip via `devnet-fullround.mjs`: deposit → flush_epoch → store_withdraw_proof → withdraw.
+- On-chain Groth16 BN254: PASSED — 198,502 CU; nullifier consumed; nullifier registry CPI succeeded.
+- Trusted setup: DEV/TEST pot14 only — NOT production.
+- Roundtrip script Phase 1: FAILED with custom program error `0x0` (separate from fullround run; nullifier/root state likely consumed).
+
+### Umbra Rail
+
+- `@umbra-privacy/sdk@4.0.0`. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`.
+- Funded devnet wSOL deposit/withdraw: 7 confirmed tx signatures on record.
+- wSOL Umbra settlement adapter (Phase 2): confirmed live.
+- ShieldLend C2H payout: still native SOL direct `stealth_address`; flush_exits fail-closed.
+- `SKIP_C2H=1` mode available for clean Umbra-only demo runs.
 
 ### Encrypt Rail
 
 - gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet.
 - Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`.
 - Ciphertext handle: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`.
-- Program-side FHE: fail-closed. Anchor 0.32.1 compatibility is present, but Encrypt Anchor CPI is not wired.
+- Anchor 0.32.1 workspace compatibility is present; `encrypt-anchor` CPI not yet wired; program-side FHE fail-closed.
 
 ### MagicBlock Rail
 
 - `@magicblock-labs/ephemeral-rollups-sdk@0.8.8`.
 - TEE RPC HTTP 200; Router RPC HTTP 200.
 - PER sidecar: 4 ShieldLend use-case bundles; 17/17 smoke pass; 13/13 SDK functions verified.
-- Rust PER macros not wired: Anchor 0.32.1 compatibility is present, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs.
+- Anchor 0.32.1 workspace compatibility is present; Rust PER macros not yet wired in ShieldLend programs.
 - TDX attestation warn: challenge mismatch SDK 0.8.8 vs devnet TEE.
 - Private Payments URL: not configured; adapter fails closed.
-
-### Umbra Rail
-
-- `@umbra-privacy/sdk@4.0.0`. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`.
-- Funded devnet wSOL deposit/withdraw: 7 confirmed tx signatures on record.
-- ShieldLend C2H payout: still native SOL direct `stealth_address`; wSOL/SPL bridge not wired.
 
 ### IKA Rail
 
@@ -94,15 +88,17 @@ Warnings to keep visible:
 
 ## Deployed Programs (Devnet)
 
-Program IDs preserved:
-
 | Program | Program ID |
 |---|---|
 | `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
 | `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
 
-No redeploy was performed in this task.
+No redeploy was performed in either upgrade task.
+
+## Active Wallet
+
+`HDyzXccSkhSymx6ezTHAhF32dFhJMMYPLZhPDnXiTY6V` — Solana devnet
 
 ---
 
@@ -112,17 +108,22 @@ No redeploy was performed in this task.
 - Production privacy.
 - IKA relay signing active.
 - MagicBlock Private Payments live.
-- MagicBlock PER Rust macros in Anchor programs.
+- MagicBlock PER Rust macros wired in Anchor programs.
 - MagicBlock TDX attestation verified.
-- Umbra native SOL ShieldLend payout.
+- Native protocol-level Umbra payout (flush_exits fail-closed; wSOL adapter is post-withdraw simulation).
 - Encrypt on-chain FHE active.
-- Upgraded Anchor 0.32.1 binaries are live on devnet.
+- Upgraded Anchor 0.32.1 binaries live on devnet (no redeploy).
+- C2H confirmed by roundtrip script (Phase 1 FAILED with `0x0`; C2H confirmed only via `devnet-fullround.mjs`).
 
 ---
 
 ## Next Actions
 
-1. Commit/push `upgrade/anchor-032-privacy-rails`.
-2. If PER or Encrypt program-side wiring begins, wire one rail at a time and re-run C2H after any program-side change.
-3. Before redeploying upgraded binaries, investigate or accept the `anchor build --no-idl` SBF post-processing syscall warnings.
-4. Fill in C2H devnet tx signatures in `docs/SUBMISSION_CHECKLIST.md`.
+1. Complete merge commit.
+2. Push `convergence/privacy-rails-integration`.
+3. Create PR against `main`.
+4. Fill C2H devnet tx signatures into `docs/SUBMISSION_CHECKLIST.md`.
+5. Record demo video Scene 3b: `SKIP_C2H=1 node scripts/devnet-wsol-umbra-roundtrip.mjs`.
+6. Before redeploying upgraded binaries: investigate `anchor build --no-idl` SBF syscall warnings.
+
+Safe to `/clear` after this handoff.

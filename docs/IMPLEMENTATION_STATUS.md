@@ -143,7 +143,8 @@ Artifact details:
 | MagicBlock Private Payments | TypeScript adapter wired (deposit, transfer, withdraw, balance, settleRepayment); URL env var absent by default | No — requires Private Payments API access |
 | Umbra SDK encrypted-balance token flow | Funded devnet wSOL deposit and withdrawal confirmed via `scripts/umbra-funded-smoke.mjs` | Yes — SDK-side wSOL encrypted-balance flow only |
 | Umbra mixer/UTXO path | SDK functions exposed; compatible prover not installed | No |
-| ShieldLend native SOL payout via Umbra | Not wired; C2H native SOL route preserved | No — requires wSOL/SPL settlement bridge |
+| ShieldLend wSOL Umbra settlement adapter | Two-step post-withdraw adapter implemented: `scripts/devnet-wsol-umbra-roundtrip.mjs`. UI: Withdraw screen "wSOL via Umbra" mode with `WsolUmbraAdapterPanel` claim boundary. Phase 2 (wSOL wrap + Umbra deposit/withdraw) confirmed live. Phase 1 (C2H) failed with `0x0` in roundtrip script — use `SKIP_C2H=1` for demo; C2H confirmed separately via `devnet-fullround.mjs`. | Yes — post-withdraw simulation only; flush_exits fail-closed; Phase 1 C2H in roundtrip script failed |
+| ShieldLend native SOL payout via Umbra (protocol-level) | Not wired; flush_exits fail-closed; C2H native SOL route preserved | No — requires PER adapter + SPL ATA leg in shielded_pool |
 | Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
 | On-chain Groth16 verification | DEV/TEST verifier confirmed on devnet; 198,502 CU; full withdraw round-trip passes; B7 stack frame resolved (C2G-A) | No — DEV/TEST trusted setup only; production ceremony required |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
@@ -163,8 +164,8 @@ Artifact details:
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
 | ~~No integration test past UnknownRoot~~ | **Resolved (C2H)** — full deposit → flush_epoch → store_proof → withdraw round-trip confirmed on devnet with on-chain Groth16 verification |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable. Request at discord.com/invite/MBkdC3gxcv. TypeScript adapter fails closed. |
-| MagicBlock PER macros not wired | Anchor 0.32.1 compatibility is present, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet. Wire separately and re-run C2H. |
-| ShieldLend native SOL -> Umbra token settlement not wired | Existing C2H remains native SOL direct `stealth_address`; cannot claim ShieldLend withdraws are Umbra-routed |
+| MagicBlock PER macros not wired | Anchor 0.32.1 compatibility is present in the workspace, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet. Wire separately and re-run C2H after any program-side change. |
+| ShieldLend native SOL -> Umbra token settlement (protocol-level) | flush_exits fail-closed (PER not wired); wSOL adapter (`devnet-wsol-umbra-roundtrip.mjs`) is a post-withdraw simulation, not on-chain program routing |
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |
 | PER not wired | No private batching or unified exit batching |

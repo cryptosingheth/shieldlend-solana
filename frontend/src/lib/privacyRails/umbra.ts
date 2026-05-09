@@ -23,7 +23,10 @@ export const UMBRA_MAINNET_RELAYER = "https://relayer.api.umbraprivacy.com";
 export const UMBRA_WS_DEVNET = "wss://api.devnet.solana.com";
 
 export type UmbraRailState = "live" | "configured" | "blocked" | "unavailable";
-export type UmbraDestinationMode = "direct_stealth_address" | "umbra";
+// "wsol_umbra_adapter" = two-step post-withdraw adapter:
+//   C2H native withdraw → wrap received SOL to wSOL → Umbra encrypted-balance flow.
+// Labeled as a settlement adapter, not native protocol-level Umbra payout.
+export type UmbraDestinationMode = "direct_stealth_address" | "umbra" | "wsol_umbra_adapter";
 export type UmbraAssetKind = "native-sol" | "spl" | "token-2022" | "wsol";
 
 export interface UmbraRailConfig {
@@ -67,6 +70,16 @@ export interface UmbraRoutePlan {
   summary: string;
   blockers: string[];
   nextStep: string;
+}
+
+export interface WsolUmbraPayoutPath {
+  available: boolean;
+  step1: string;
+  step2: string;
+  step3: string;
+  claimBoundary: string;
+  notLive: string;
+  scriptPath: string;
 }
 
 export interface UmbraClientParams {
@@ -190,6 +203,18 @@ export function getUmbraFundedFlowStatus(): UmbraFundedFlowStatus {
   };
 }
 
+export function getWsolUmbraPayoutPath(): WsolUmbraPayoutPath {
+  return {
+    available: true,
+    step1: "ShieldLend C2H withdraw: Groth16 proof verified on-chain; nullifier consumed; exit queued in exit_queue.",
+    step2: "Post-withdraw wrap: received SOL wrapped to wSOL (So11111111111111111111111111111111111111112) representing the settled payout amount.",
+    step3: "Umbra encrypted-balance flow: wSOL public-balance → Umbra deposit → Umbra withdraw (SDK 4.0.0, devnet program DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ).",
+    claimBoundary: "C2H ZK proof + nullifier confirmed. wSOL Umbra deposit/withdraw confirmed. flush_exits is fail-closed (PER adapter not wired); SOL is not transferred to stealth_address in current devnet state.",
+    notLive: "flush_exits SOL transfer; native pool SOL routed directly to Umbra; production trusted setup; IKA relay.",
+    scriptPath: "scripts/devnet-wsol-umbra-roundtrip.mjs",
+  };
+}
+
 export function planUmbraDestinationRoute(params: {
   mode: UmbraDestinationMode;
   assetKind: UmbraAssetKind;
@@ -207,6 +232,23 @@ export function planUmbraDestinationRoute(params: {
     };
   }
 
+  if (params.mode === "wsol_umbra_adapter") {
+    return {
+      mode: params.mode,
+      status: "configured",
+      canRoute: true,
+      title: "wSOL Umbra settlement adapter (post-withdraw)",
+      summary:
+        "Two-step devnet adapter: C2H native withdraw → wrap received SOL to wSOL → Umbra encrypted-balance deposit/withdraw. " +
+        "This is a post-withdraw settlement path, not a native protocol-level Umbra payout. " +
+        "flush_exits is fail-closed (PER adapter not wired); the wrap uses fresh wallet SOL in the demo.",
+      blockers: [],
+      nextStep:
+        "Run scripts/devnet-wsol-umbra-roundtrip.mjs to execute the full adapter on devnet. " +
+        "Do not claim 'ShieldLend exits are Umbra-routed' — the SOL transfer from pool to stealth_address requires flush_exits.",
+    };
+  }
+
   const status = getUmbraStatus(params.config);
   const blockers = [...status.blockers];
   if (params.assetKind === "native-sol") {
@@ -220,7 +262,7 @@ export function planUmbraDestinationRoute(params: {
     mode: params.mode,
     status: blockers.length > 0 ? "blocked" : status.state,
     canRoute: blockers.length === 0 && status.state !== "unavailable",
-    title: "Umbra SDK rail",
+    title: "Umbra SDK rail (direct SPL/Token-2022)",
     summary: "Uses the official Umbra SDK for SPL/Token-2022 encrypted balances or receiver-claimable UTXOs.",
     blockers,
     nextStep: blockers.length

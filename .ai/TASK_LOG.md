@@ -808,38 +808,60 @@ Create final hackathon demo/submission package based on `convergence/privacy-rai
 
 - `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
 - `npm run typecheck:frontend` — PASS
+
+---
+
+## 2026-05-08 — wSOL Umbra Payout Path (branch: live/wsol-umbra-e2e)
+
+### Objective
+
+Move Umbra from "separate funded wSOL smoke" to a ShieldLend-compatible wSOL/SPL payout path with a two-step post-withdraw settlement adapter. Native SOL C2H path preserved.
+
+### Files Added/Changed
+
+| File | Action |
+|---|---|
+| `scripts/devnet-wsol-umbra-roundtrip.mjs` | New — two-step devnet adapter: C2H phase (skip if nullifier consumed) + wSOL wrap + Umbra deposit/withdraw; embedded claim boundary |
+| `frontend/src/lib/privacyRails/umbra.ts` | Updated — added `wsol_umbra_adapter` mode, `WsolUmbraPayoutPath` interface, `getWsolUmbraPayoutPath()`, updated `planUmbraDestinationRoute()` |
+| `frontend/src/app/page.tsx` | Updated — Withdraw: third mode button, `WsolUmbraAdapterPanel` with step 1/2/3 + confirmed/not-live panels |
+| `package.json` | Updated — added `smoke:wsol-umbra-roundtrip` script |
+| `docs/UMBRA_WSOL_PAYOUT.md` | New — full design doc, claim boundary table, safe/unsafe wording, UI modes |
+| `docs/HACKATHON.md` | Updated — Umbra row and blocker table |
+| `docs/SUBMISSION_CHECKLIST.md` | Updated — Scene 3b and Scene 8 |
+| `docs/IMPLEMENTATION_STATUS.md` | Updated — Umbra payout rows and Known Blockers |
+| `README.md` | Updated — Umbra row in status table |
+
+### Key Decision
+
+Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-level Umbra payout) because flush_exits is fail-closed (PER adapter requires Anchor 0.32.1). The wrap step uses fresh wallet SOL in the demo to simulate the hypothetical post-flush payout amount. This is honestly labeled throughout.
+
+### Validations
+
+- `npm run typecheck:frontend` — pending
+- `npm run build:frontend` — pending
+- `cargo test --workspace` — pending
+- `anchor build --no-idl` — pending
+- `npm run demo:status` — pending
 - `npm run build:frontend` — PASS
 
 ---
 
 ## 2026-05-08 — Anchor 0.32.1 Workspace Upgrade
 
-### Objective
+**Objective**: Upgrade workspace from Anchor 0.30.1 → 0.32.1 for MagicBlock PER and Encrypt Anchor compatibility while preserving the C2H Groth16 withdraw proof path.
 
-Upgrade the ShieldLend workspace from Anchor 0.30.1 to Anchor 0.32.1 for MagicBlock PER and Encrypt Anchor compatibility while preserving the C2H Groth16 withdraw proof path.
+**Changes**: `Anchor.toml` pinned `anchor_version = "0.32.1"`; root `Cargo.toml` `anchor-lang = "0.32.1"`; `@coral-xyz/anchor = "^0.32.1"` in `package.json`; `Cargo.lock` + `package-lock.json` refreshed; `docs/ANCHOR_032_UPGRADE.md` created; status docs updated.
 
-### What changed
+**Validations**: `anchor-cli 0.32.1`; `cargo fmt` PASS; `cargo test` 47 tests; `anchor build --no-idl` PASS (SBF syscall warnings — redeploy validation item); typecheck PASS; build PASS.
 
-- `Anchor.toml` now pins `anchor_version = "0.32.1"`.
-- Root `Cargo.toml` now uses `anchor-lang = "0.32.1"`.
-- Root `package.json` now includes `@coral-xyz/anchor = "^0.32.1"` for the checked-in Anchor TS tests.
-- `Cargo.lock` and `package-lock.json` refreshed.
-- `groth16-solana = "0.0.3"` remained pinned in `shielded_pool` and `lending_pool`.
-- No `anchor-spl` dependency was added because no program imports it.
-- Program IDs were preserved; no redeploy was performed.
+**Notes**: Anchor 0.32.1 compatibility present; PER macros and Encrypt CPI still not wired; no redeploy performed.
 
-### Validation
+---
 
-- `anchor --version` — PASS (`anchor-cli 0.32.1`)
-- `cargo fmt --all -- --check` — PASS
-- `cargo test --workspace` — PASS (47 tests)
-- `anchor build --no-idl` — PASS
-- `npm run typecheck:frontend` — PASS
-- `npm run build:frontend` — PASS
-- `npm run demo:status` — PASS (warns current branch differs from convergence branch)
+## 2026-05-09 — wSOL Umbra Reconciliation
 
-### Notes
+**Objective**: Reconcile roundtrip script with live smoke result — Phase 1 C2H FAILED with `0x0`; Phase 2 (wSOL Umbra) CONFIRMED.
 
-- Anchor 0.32.1 brings Solana split crates such as `solana-account-info 2.3.0`; `groth16-solana 0.0.3` still pulls `solana-program 1.18.26`. This mixed graph compiles and tests because ShieldLend calls Groth16 through byte-array helpers.
-- `anchor build --no-idl` emits SBF post-processing warnings for undefined/not-known syscalls including `sol_alt_bn128_group_op`. Treat this as a redeploy/runtime validation item before upgraded binaries go live.
-- Anchor 0.32.1 compatibility is now present, but MagicBlock PER macros and Encrypt Anchor CPI are still not wired.
+**Changes**: `scripts/devnet-wsol-umbra-roundtrip.mjs` — `SKIP_C2H` flag; `c2hStatus` on all returns; `extractErrorCode()`; `FAILED` classification; conditional claim boundary; `c2hStatus` + `umbrawSolFlowLive` report fields. `docs/UMBRA_WSOL_PAYOUT.md` — live smoke result; SKIP_C2H docs; claim boundary corrected. `docs/HACKATHON.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/SUBMISSION_CHECKLIST.md` updated accordingly.
+
+**Validations**: `npm run typecheck:frontend` PASS; `npm run build:frontend` PASS; `cargo test --workspace` PASS.

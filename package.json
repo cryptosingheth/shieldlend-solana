@@ -15,6 +15,7 @@
     "check:umbra": "node scripts/check-umbra.mjs",
     "smoke:umbra": "node scripts/umbra-smoke.mjs",
     "smoke:umbra-funded": "node scripts/umbra-funded-smoke.mjs",
+    "smoke:wsol-umbra-roundtrip": "node scripts/devnet-wsol-umbra-roundtrip.mjs",
     "check:magicblock": "node scripts/check-magicblock.mjs",
     "smoke:magicblock": "node scripts/magicblock-per-smoke.mjs",
     "typecheck:sidecar": "cd examples/magicblock-per-sidecar && npx tsc --noEmit",

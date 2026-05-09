@@ -51,11 +51,12 @@ Record in this order:
 - [ ] Scene 1: Terminal — run `node scripts/demo-status.mjs` — show branch, commit, artifact hashes, program IDs, claim boundary output
 - [ ] Scene 2: Terminal — run `node scripts/check-encrypt.mjs` — show gRPC endpoint reachable, ciphertext handle printed
 - [ ] Scene 3: Terminal — run `node scripts/check-umbra.mjs` — show SDK version, devnet program ID, funded tx signatures
+- [ ] Scene 3b: Terminal — run `SKIP_C2H=1 node scripts/devnet-wsol-umbra-roundtrip.mjs` — show wSOL wrap + Umbra deposit + Umbra withdraw + claim boundary (C2H skipped; use devnet-fullround.mjs for C2H scene; Phase 1 failed with `0x0` in full run)
 - [ ] Scene 4: Terminal — run `node scripts/check-magicblock.mjs` — show TEE HTTP 200, Router HTTP 200, 13/13 SDK functions, documented warns
 - [ ] Scene 5: Terminal — run `node scripts/check-ika.mjs` — show SDK/WASM confirmed, B1/B2/B3 blockers printed with source evidence
 - [ ] Scene 6: Browser — open `http://localhost:3000` — show Privacy Status panel with all four rail statuses
 - [ ] Scene 7: Browser — show Deposit screen — highlight IKA mode selector with "reduced privacy" label
-- [ ] Scene 8: Browser — show Withdraw screen — highlight Groth16 proof mode and stealth address output
+- [ ] Scene 8: Browser — show Withdraw screen — select "wSOL via Umbra" mode — show WsolUmbraAdapterPanel with step 1/2/3 and claim boundary
 - [ ] Scene 9: Solana Explorer — open devnet and show the C2H withdraw transaction confirming on-chain Groth16 BN254 result
 
 ---

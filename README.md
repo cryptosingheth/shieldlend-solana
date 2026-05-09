@@ -74,9 +74,9 @@ component addresses. These layers are not all live in the current local build:
 | DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
 | On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
-| Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; Anchor 0.32.1 compatibility present; on-chain FHE still fail-closed |
-| Umbra rail adapter | Funded devnet confirmed | wSOL deposit/withdraw: 7 devnet tx signatures; native SOL C2H payout bridge not yet wired |
-| MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Anchor 0.32.1 compatibility present; Rust macros not wired; Private Payments URL Discord-gated |
+| Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; Anchor 0.32.1 compatibility present; `encrypt-anchor` CPI not wired; on-chain FHE fail-closed |
+| Umbra rail adapter | Funded devnet + wSOL adapter confirmed | wSOL deposit/withdraw: 7 devnet tx signatures; wSOL settlement adapter (`devnet-wsol-umbra-roundtrip.mjs`) + UI mode added; flush_exits fail-closed; native SOL → Umbra protocol-level not wired |
+| MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Anchor 0.32.1 compatibility present; Rust macros not yet wired; Private Payments URL Discord-gated |
 | IKA rail adapter | SDK/WASM probe confirmed | Solana relay signing blocked: no `ika-dwallet-anchor` CPI; direct wallet fallback labelled reduced privacy |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
