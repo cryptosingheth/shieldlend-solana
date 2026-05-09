@@ -1,6 +1,18 @@
 # Current Task
 
-## Status: Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening — all merged to `convergence/privacy-rails-integration`.
+## Status: IKA Anchor CPI compile wiring on `live/ika-anchor-cpi`.
+
+### IKA Anchor CPI Update (2026-05-09)
+
+- Official IKA Solana pre-alpha docs/source inspected:
+  - `https://solana-pre-alpha.ika.xyz/frameworks/anchor.html`
+  - `https://github.com/dwallet-labs/ika-pre-alpha`
+- Source confirms `ika-dwallet-anchor`, program ID `87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY`, CPI authority seed `b"__ika_cpi_authority"`, and `DWalletContext::approve_message(...)`.
+- Official crate currently targets `anchor-lang = "1"`; ShieldLend uses a local source-equivalent compatibility crate at `crates/ika-dwallet-anchor` for Anchor 0.32.1.
+- `lending_pool::approve_ika_borrow_message` compile-wires IKA `approve_message` behind active-loan and `future_sign_authorized` guards.
+- No live devnet IKA approval tx was submitted because required external IKA dWallet/coordinator/MessageApproval state was not available.
+
+## Previous Status: Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening — all merged to `convergence/privacy-rails-integration`.
 
 ## Combined Completed Work
 
@@ -59,7 +71,7 @@
 ## Hard Constraints
 
 - Do not claim production ZK trusted setup (DEV/TEST pot14 only).
-- Do not claim IKA relay signing active.
+- Do not claim IKA relay signing active. Current status is compile-wired only; no real devnet `approve_message` tx is confirmed.
 - Do not claim MagicBlock PER Rust macros wired in Anchor programs.
 - Do not claim MagicBlock Private Payments private transfer via intended ephemeral/router path confirmed.
 - Do not claim native protocol-level Umbra payout (wSOL adapter is post-withdraw simulation; flush_exits fail-closed).

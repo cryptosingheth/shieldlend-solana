@@ -121,12 +121,13 @@ Allowed claims (confirmed by devnet evidence):
 | MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |
 | MagicBlock Private Payments private-transfer base-RPC fallback | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; not a claim that ephemeral/router private transfer is live |
 | IKA SDK/WASM confirmed with source-backed blockers | `check-ika.mjs` output |
+| IKA Anchor CPI compile-wired | `check:ika-cpi` output; no live approval tx |
 
 Not allowed (must not claim):
 
 - Production ZK trusted setup
 - Production privacy
-- IKA relay signing active
+- IKA relay signing active (compile-wired only; no live devnet approval tx)
 - MagicBlock Private Payments private transfer through the intended ephemeral/router path
 - MagicBlock PER macros in Anchor programs
 - MagicBlock TDX attestation verified

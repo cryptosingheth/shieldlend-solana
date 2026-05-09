@@ -3,13 +3,14 @@
 //
 // Pre-alpha status (verified 2026-05-08):
 //   @ika.xyz/sdk exports IkaClient + coordinatorTransactions (DKG, sign, FutureSign) for 4 curves.
+//   ika-dwallet-anchor source provides approve_message CPI ABI for Solana programs.
 //   Endpoint: https://pre-alpha-dev-1.ika.ika-network.net:443
 //
-// Blockers for ShieldLend Solana relay signing:
+// Current ShieldLend status:
 //   1. Single mock signer — pre-alpha does NOT use real distributed MPC.
-//   2. ika-dwallet-anchor Rust CPI crate absent from shielded_pool and lending_pool Cargo.toml.
-//      Solana programs cannot accept IKA-authorized instructions until CPI is wired.
-//   3. TypeScript SDK manages Sui-side dWallet lifecycle; Solana tx relay is a Rust-side concern.
+//   2. lending_pool has compile-level approve_message CPI scaffolding.
+//   3. No real devnet approve_message tx is confirmed because required IKA dWallet,
+//      coordinator, message approval, and authority-transfer state are not supplied.
 
 export type SignerMode = "direct_wallet" | "ika_dwallet_mock";
 
@@ -20,7 +21,8 @@ export interface IkaCapabilityReport {
   grpcUrl: string;
   programId: string;
   signerMode: "ika_dwallet_mock";
-  solanaCpiWired: false;
+  solanaCpiWired: true;
+  liveApprovalTxConfirmed: false;
   blockers: string[];
 }
 
@@ -42,6 +44,10 @@ export const MOCK_SIGNER_DISCLOSURE =
   "The no-single-party-can-sign guarantee is not yet delivered. " +
   "Source: https://solana-pre-alpha.ika.xyz/";
 
+export const IKA_CPI_DISCLOSURE =
+  "ShieldLend lending_pool is compile-wired to IKA approve_message via the official CPI authority seed. " +
+  "No live devnet IKA approval transaction is confirmed yet because real dWallet/coordinator/message approval accounts are required.";
+
 export const DIRECT_WALLET_DISCLOSURE =
   "Direct wallet mode: user Phantom wallet is the on-chain signer. " +
   "Depositor wallet is not hidden. Reduced privacy — IKA dWallet relay not active.";
@@ -60,8 +66,9 @@ export async function probeIkaCapabilities(): Promise<IkaCapabilityReport> {
   const endpointConfigured = Boolean(IKA_GRPC_URL && IKA_PROGRAM_ID);
 
   const blockers: string[] = [
-    "ika-dwallet-anchor Rust crate not present in shielded_pool or lending_pool Cargo.toml — " +
-      "Solana tx relay requires on-chain CPI integration that is not yet wired.",
+    "No real devnet IKA approve_message transaction has been submitted from ShieldLend. " +
+      "Required external state: IKA coordinator PDA, dWallet account controlled by the lending_pool CPI authority PDA, " +
+      "MessageApproval PDA, and an active ShieldLend loan with future_sign_authorized=true.",
     MOCK_SIGNER_DISCLOSURE,
   ];
   if (!sdkAvailable) {
@@ -77,7 +84,8 @@ export async function probeIkaCapabilities(): Promise<IkaCapabilityReport> {
     grpcUrl: IKA_GRPC_URL,
     programId: IKA_PROGRAM_ID,
     signerMode: "ika_dwallet_mock",
-    solanaCpiWired: false,
+    solanaCpiWired: true,
+    liveApprovalTxConfirmed: false,
     blockers,
   };
 }

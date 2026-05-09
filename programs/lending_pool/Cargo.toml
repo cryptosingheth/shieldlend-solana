@@ -18,3 +18,4 @@ default = []
 anchor-lang = { workspace = true }
 nullifier_registry = { path = "../nullifier_registry", features = ["cpi"] }
 groth16-solana = "0.0.3"
+ika-dwallet-anchor = { path = "../../crates/ika-dwallet-anchor" }

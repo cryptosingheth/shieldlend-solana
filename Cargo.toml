@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ika-dwallet-anchor",
     "programs/nullifier_registry",
     "programs/shielded_pool",
     "programs/lending_pool",

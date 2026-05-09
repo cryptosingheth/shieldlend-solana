@@ -34,7 +34,7 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
   {
     key: "ika",
     name: "IKA dWallet relay",
-    role: "Relay authorization (pre-alpha / mock signer) — ika-dwallet-anchor CPI not wired in Anchor programs; Solana relay not active",
+    role: "Relay authorization (pre-alpha / mock signer) — approve_message CPI compile-wired in lending_pool; no live devnet approval tx confirmed",
     healthy: false,
     requiredForFullPrivacy: true,
   },

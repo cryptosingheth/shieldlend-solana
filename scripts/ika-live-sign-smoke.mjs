@@ -11,7 +11,7 @@
 //   Q1. Does the SDK load and WASM initialize?
 //   Q2. Is there any Solana transaction / Ed25519 byte output in the SDK?
 //   Q3. Does requestSign return Ed25519 bytes or a Sui Move call?
-//   Q4. Is ika-dwallet-anchor wired into ShieldLend Anchor programs?
+//   Q4. Is ika-dwallet-anchor / approve_message CPI wired into ShieldLend Anchor programs?
 //
 // Usage: node scripts/ika-live-sign-smoke.mjs
 
@@ -191,6 +191,14 @@ async function main() {
   // ── Q4: ika-dwallet-anchor in ShieldLend programs ─────────────────────
   console.log("\nQ4. ika-dwallet-anchor CPI crate in ShieldLend Anchor programs");
 
+  const localCpiCrate = resolve(rootDir, "crates/ika-dwallet-anchor/Cargo.toml");
+  if (existsSync(localCpiCrate)) {
+    pass("local ika-dwallet-anchor compatibility crate PRESENT");
+    src("crates/ika-dwallet-anchor — source-equivalent to official pre-alpha CPI helper, adapted for Anchor 0.32.1");
+  } else {
+    fail("local ika-dwallet-anchor compatibility crate ABSENT");
+  }
+
   const programs = [
     ["shielded_pool",     resolve(rootDir, "programs/shielded_pool/Cargo.toml")],
     ["lending_pool",      resolve(rootDir, "programs/lending_pool/Cargo.toml")],
@@ -222,22 +230,36 @@ async function main() {
     info("the on-chain programs have no mechanism to check IKA authorization.");
     info("Fix: add ika-dwallet-anchor + wire approve_message CPI into instruction handlers.");
   }
+  const lendingLib = resolve(rootDir, "programs/lending_pool/src/lib.rs");
+  let approveInstructionFound = false;
+  if (existsSync(lendingLib)) {
+    const lendingSrc = readFileSync(lendingLib, "utf8");
+    approveInstructionFound = lendingSrc.includes("approve_ika_borrow_message") &&
+      lendingSrc.includes("DWalletContext") &&
+      lendingSrc.includes("CPI_AUTHORITY_SEED");
+    if (approveInstructionFound) {
+      pass("lending_pool approve_ika_borrow_message CPI scaffolding PRESENT");
+      src("programs/lending_pool/src/lib.rs — active loan + future_sign_authorized guard, then DWalletContext.approve_message");
+    } else {
+      fail("lending_pool approve_ika_borrow_message CPI scaffolding ABSENT");
+    }
+  }
 
   // ── Final verdict ──────────────────────────────────────────────────────
   console.log("\n=== Verdict: Can ShieldLend route through IKA today? ===");
   console.log("");
-  console.log("  Real IKA Solana signing: NO");
-  console.log("  Reason: three layered blockers —");
+  console.log("  Real IKA Solana signing: NO live approval tx confirmed");
+  console.log("  Reason: remaining pre-alpha/live-state blockers —");
   console.log("");
   console.log("  B1 [NO_SOLANA_SDK]");
   console.log("     @ika.xyz/sdk has no Solana code. All signing APIs are Sui Move calls.");
   console.log("     coordinatorTransactions.requestSign() builds a Sui tx, not an Ed25519 sig.");
   src  ("     node_modules/@ika.xyz/sdk/dist/cjs/tx/coordinator.js");
   console.log("");
-  console.log("  B2 [NO_CPI_CRATE]");
-  console.log("     ika-dwallet-anchor Rust CPI crate absent from all three Anchor programs.");
-  console.log("     Solana programs cannot verify IKA authorization headers.");
-  src  ("     programs/{shielded_pool,lending_pool,nullifier_registry}/Cargo.toml");
+  console.log("  B2 [NO_LIVE_IKA_ACCOUNTS]");
+  console.log("     Compile-level Anchor CPI is present, but no devnet coordinator, dWallet,");
+  console.log("     MessageApproval PDA, and active ShieldLend loan state were supplied.");
+  src  ("     scripts/ika-anchor-cpi-diagnostic.mjs");
   console.log("");
   console.log("  B3 [SUI_DEPENDENCY]");
   console.log("     IkaClient requires a funded Sui wallet + IKA coins to create a dWallet.");
@@ -246,12 +268,12 @@ async function main() {
   console.log("");
   console.log("  WASM crypto (createClassGroupsKeypair): FUNCTIONAL — local only");
   console.log("  Adapter mode today: direct_wallet (reduced privacy)");
-  console.log("  Adapter status: healthy=false, solanaCpiWired=false");
+  console.log(`  Adapter status: healthy=false, solanaCpiWired=${cpiFound && approveInstructionFound ? "true (compile-level)" : "false"}`);
   console.log("");
   console.log("  Path to real IKA Solana signing:");
-  console.log("    1. IKA releases a Solana-native SDK or CLI that outputs raw Ed25519 bytes");
-  console.log("    2. Add ika-dwallet-anchor to Anchor programs + wire approve_message CPI");
-  console.log("    3. Replace direct_wallet signer mode with ika_dwallet in tx builder");
+  console.log("    1. Create/obtain an IKA devnet dWallet whose authority is the lending_pool CPI authority PDA");
+  console.log("    2. Provide real coordinator/message approval/loan accounts and submit approve_ika_borrow_message");
+  console.log("    3. Replace direct_wallet mode only after a real devnet approve_message CPI succeeds");
 }
 
 main().catch((e) => {

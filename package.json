@@ -20,6 +20,7 @@
     "smoke:magicblock": "node scripts/magicblock-per-smoke.mjs",
     "typecheck:sidecar": "cd examples/magicblock-per-sidecar && npx tsc --noEmit",
     "check:ika": "node scripts/check-ika.mjs",
+    "check:ika-cpi": "node scripts/ika-anchor-cpi-diagnostic.mjs",
     "smoke:ika": "node scripts/ika-live-sign-smoke.mjs",
     "demo:status": "node scripts/demo-status.mjs",
     "test:programs": "cargo test --workspace",

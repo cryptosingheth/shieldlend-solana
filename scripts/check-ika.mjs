@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Probe the IKA dWallet pre-alpha rail.
-// Reports SDK availability, endpoint config, capability matrix, and exact blockers.
+// Reports SDK availability, endpoint config, Anchor CPI wiring, and exact blockers.
 // Does not make network calls to the gRPC endpoint — local probe only.
 //
 // Usage: node scripts/check-ika.mjs
@@ -76,9 +76,16 @@ async function main() {
 
   // 3. Anchor program CPI probe
   console.log("\n3. Solana CPI probe");
+  const localCpiCrate = resolve(__dirname, "../crates/ika-dwallet-anchor/Cargo.toml");
   const shieldedPoolCargo = resolve(__dirname, "../programs/shielded_pool/Cargo.toml");
   const lendingPoolCargo = resolve(__dirname, "../programs/lending_pool/Cargo.toml");
+  const lendingPoolLib = resolve(__dirname, "../programs/lending_pool/src/lib.rs");
   let cpiWired = false;
+  if (existsSync(localCpiCrate)) {
+    console.log("   [OK]   local ika-dwallet-anchor compatibility crate present");
+  } else {
+    console.log("   [MISS] local ika-dwallet-anchor compatibility crate absent");
+  }
   for (const [label, path] of [["shielded_pool", shieldedPoolCargo], ["lending_pool", lendingPoolCargo]]) {
     if (existsSync(path)) {
       const { readFileSync } = await import("fs");
@@ -92,8 +99,21 @@ async function main() {
       console.log(`   [SKIP] ${label}/Cargo.toml not found`);
     }
   }
+  if (existsSync(lendingPoolLib)) {
+    const { readFileSync } = await import("fs");
+    const content = readFileSync(lendingPoolLib, "utf8");
+    const hasInstruction = content.includes("approve_ika_borrow_message");
+    const hasSeed = content.includes("CPI_AUTHORITY_SEED");
+    const hasProgramId = content.includes(IKA_PROGRAM_ID);
+    console.log(`   ${hasInstruction ? "[OK]  " : "[MISS]"} lending_pool approve_ika_borrow_message instruction: ${hasInstruction ? "PRESENT" : "ABSENT"}`);
+    console.log(`   ${hasSeed ? "[OK]  " : "[MISS]"} official CPI authority seed usage: ${hasSeed ? "PRESENT" : "ABSENT"}`);
+    console.log(`   ${hasProgramId ? "[OK]  " : "[MISS]"} official IKA program ID: ${hasProgramId ? "PRESENT" : "ABSENT"}`);
+    cpiWired = cpiWired && hasInstruction && hasSeed && hasProgramId;
+  }
   if (!cpiWired) {
-    console.log("   Result: Solana tx relay blocked — CPI crate not wired in any program");
+    console.log("   Result: Solana tx relay blocked — compile-level CPI wiring incomplete");
+  } else {
+    console.log("   Result: compile-level IKA Anchor CPI wiring present; live tx still requires external IKA accounts");
   }
 
   // 4. Capability matrix
@@ -121,8 +141,10 @@ async function main() {
     },
     {
       name: "Solana tx relay         ika-dwallet-anchor CPI",
-      available: false,
-      note: "Requires Rust CPI crate in Anchor programs — NOT WIRED",
+      available: cpiWired,
+      note: cpiWired
+        ? "Compile-wired in lending_pool; no live approve_message tx submitted"
+        : "Requires Rust CPI crate + approve_message instruction in Anchor programs",
     },
     {
       name: "Real distributed MPC    network signing",
@@ -146,14 +168,21 @@ async function main() {
         "The security guarantee that no single party can move funds unilaterally is not yet delivered. " +
         "Pre-alpha on-chain data will be wiped before mainnet.",
     },
-    {
-      id: "SOLANA_CPI_ABSENT",
-      summary: "ika-dwallet-anchor Rust CPI crate not in shielded_pool or lending_pool Cargo.toml.",
-      source: "local — programs/shielded_pool/Cargo.toml, programs/lending_pool/Cargo.toml",
-      impact:
-        "Solana programs cannot verify IKA MessageApproval or accept IKA-relay-signed instructions. " +
-        "Fix: add ika-dwallet-anchor dependency and wire approve_message CPI into relevant instruction handlers.",
-    },
+    cpiWired
+      ? {
+          id: "LIVE_IKA_ACCOUNTS_MISSING",
+          summary: "Compile-level approve_message CPI is wired, but no real IKA coordinator/dWallet/message approval accounts were supplied for a devnet transaction.",
+          source: "local — programs/lending_pool/src/lib.rs; run `npm run check:ika-cpi` for required external accounts",
+          impact:
+            "ShieldLend can compile an IKA approve_message CPI path, but cannot claim live relay signing until a real devnet CPI transaction succeeds.",
+        }
+      : {
+          id: "SOLANA_CPI_INCOMPLETE",
+          summary: "ika-dwallet-anchor CPI wiring is incomplete.",
+          source: "local — crates/ika-dwallet-anchor and programs/lending_pool/src/lib.rs",
+          impact:
+            "Solana programs cannot call IKA approve_message until the CPI crate and instruction are present.",
+        },
     !sdk.available
       ? {
           id: "SDK_NOT_INSTALLED",
@@ -173,12 +202,12 @@ async function main() {
 
   // 6. Summary
   console.log("\n6. Summary");
-  console.log(`   IKA Solana relay path works : NO`);
-  console.log(`   Solana CPI wired            : NO`);
+  console.log(`   IKA Solana relay path works : NO live tx confirmed`);
+  console.log(`   Solana CPI wired            : ${cpiWired ? "YES (compile-level approve_message CPI)" : "NO"}`);
   console.log(`   SDK available               : ${sdk.available ? "YES (mock signer only — pre-alpha)" : "NO (run cd frontend && npm install)"}`);
   console.log(`   Real MPC signing            : NO (pre-alpha single mock signer)`);
   console.log(`   Safe to label as relay      : NO`);
-  console.log(`   UI label to use             : "IKA pre-alpha / mock signer — Solana relay not active"`);
+  console.log(`   UI label to use             : "IKA pre-alpha / compile-wired CPI — no live approval tx"`);
   console.log(`   Signer mode today           : direct_wallet (reduced privacy)`);
 
   // Exit 1 if SDK not installed (actionable); exit 0 if only architectural/pre-alpha blockers

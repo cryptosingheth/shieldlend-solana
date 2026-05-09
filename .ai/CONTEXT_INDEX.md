@@ -104,6 +104,8 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 |---|---|
 | `.env.example` | All env vars needed (Solana, MagicBlock, IKA, Encrypt, Umbra) |
 | `scripts/check-env.mjs` | Validates cargo, solana, anchor, circom, snarkjs + env vars |
+| `scripts/check-ika.mjs` | IKA SDK + Anchor CPI compile-wiring probe; no network call |
+| `scripts/ika-anchor-cpi-diagnostic.mjs` | Reports IKA CPI authority PDA, local compile wiring, and missing external dWallet/message approval state |
 | `scripts/check-umbra.mjs` | Validates Umbra SDK package, program ID, devnet indexer health, relayer health |
 | `scripts/umbra-smoke.mjs` | Initializes Umbra SDK client and queries devnet user account without submitting token action |
 | `package.json` | Root workspace scripts |
@@ -138,7 +140,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `https://github.com/cryptosingheth/shieldlend-solana.git` | Standalone public GitHub repo (last pushed: `bc891b9`) |
 | `groth16-solana` crate | On-chain BN254 Groth16 verifier — not yet wired |
 | MagicBlock PER/VRF/PrivatePayments | Discord: `discord.com/invite/MBkdC3gxcv` — join for devnet access |
-| IKA dWallet | Pre-alpha gated devnet — single mock signer in current build |
+| IKA dWallet | Pre-alpha gated devnet — single mock signer; `lending_pool` has compile-level `approve_message` CPI wiring, but no live approval tx |
 | Encrypt FHE | Pre-alpha — plaintext on-chain storage, no real encryption yet |
 | Umbra SDK | Solana mainnet alpha (Feb 2026) — strongest ready integration |
 

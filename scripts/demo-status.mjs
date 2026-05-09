@@ -114,6 +114,7 @@ const RAIL_SCRIPTS = [
   { name: 'check-umbra.mjs',      rail: 'Umbra',      runCmd: 'npm run check:umbra' },
   { name: 'check-magicblock.mjs', rail: 'MagicBlock', runCmd: 'npm run check:magicblock' },
   { name: 'check-ika.mjs',        rail: 'IKA',        runCmd: 'npm run check:ika' },
+  { name: 'ika-anchor-cpi-diagnostic.mjs', rail: 'IKA CPI', runCmd: 'npm run check:ika-cpi' },
   {
     name: 'devnet-fullround.mjs',
     rail: 'C2H',
@@ -139,6 +140,7 @@ if (LIVE) {
     { script: 'check-umbra.mjs',      label: 'Umbra SDK' },
     { script: 'check-magicblock.mjs', label: 'MagicBlock SDK' },
     { script: 'check-ika.mjs',        label: 'IKA SDK' },
+    { script: 'ika-anchor-cpi-diagnostic.mjs', label: 'IKA Anchor CPI' },
   ];
 
   for (const { script, label } of liveChecks) {
@@ -171,6 +173,7 @@ ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
+ok('IKA Anchor CPI: compile-wired approve_message path present in lending_pool; no live tx submitted');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
 
@@ -187,13 +190,14 @@ console.log(`
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
   ✓ IKA SDK/WASM loaded; capability probe passed; blockers source-documented
+  ✓ IKA Anchor CPI compile-wired in lending_pool against official pre-alpha approve_message ABI
   ✓ All four rail adapters in frontend/src/lib/privacyRails/
   ✓ Frontend privacy status panel shows live rail statuses
 
   NOT ALLOWED (do not claim):
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
-  ✗ IKA relay signing active (no ika-dwallet-anchor CPI; direct wallet fallback)
+  ✗ IKA relay signing active (compile-wired only; no real devnet approve_message tx submitted)
   ✗ MagicBlock Private Payments private transfer via intended ephemeral/router path (ephemeral submit blocked; base devnet fallback only)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)

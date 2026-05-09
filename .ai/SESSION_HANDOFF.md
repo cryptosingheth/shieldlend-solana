@@ -92,7 +92,9 @@ Devnet signatures:
 
 - `@ika.xyz/sdk@0.4.0` + WASM loaded.
 - SDK/capability probe confirmed; WASM `createClassGroupsKeypair(ED25519)` runs locally.
-- Solana relay signing blocked: B1/B2/B3.
+- Official IKA Solana pre-alpha source confirms `ika-dwallet-anchor`, program ID `87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY`, CPI authority seed `b"__ika_cpi_authority"`, and `approve_message(...)`.
+- Compile-level Anchor CPI wiring is present in `lending_pool::approve_ika_borrow_message` through a local source-equivalent `crates/ika-dwallet-anchor` crate adapted for Anchor 0.32.1.
+- No live devnet IKA approval tx submitted. Missing external state: coordinator PDA, dWallet account controlled by the LendingPool CPI authority PDA, writable MessageApproval PDA, and active loan with `future_sign_authorized=true`.
 - Direct wallet fallback: labelled "reduced privacy".
 
 ---
@@ -117,7 +119,7 @@ No redeploy performed.
 
 - Production ZK trusted setup (DEV/TEST pot14 only).
 - Production privacy.
-- IKA relay signing active.
+- IKA relay signing active (compile-wired only; no real devnet `approve_message` tx).
 - MagicBlock PER Rust macros wired in Anchor programs.
 - MagicBlock Private Payments private transfer via intended ephemeral/router path.
 - MagicBlock TDX attestation verified.
