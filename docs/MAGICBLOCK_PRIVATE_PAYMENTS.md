@@ -1,6 +1,6 @@
 # MagicBlock Private Payments Live SPL Flow
 
-Last checked: 2026-05-08
+Last checked: 2026-05-09
 
 ## Scope
 
@@ -26,16 +26,22 @@ Dry-run endpoint and unsigned-builder check:
 node scripts/magicblock-private-payments-live.mjs --dry-run
 ```
 
-Live devnet flow:
+Live devnet deposit/withdraw flow:
 
 ```bash
-node scripts/magicblock-private-payments-live.mjs --live
+node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw
 ```
 
 Minimal live smoke amount:
 
 ```bash
-node scripts/magicblock-private-payments-live.mjs --live --amount-base-units=1
+node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw --amount-base-units=1
+```
+
+Isolated private-transfer submit diagnostic:
+
+```bash
+node scripts/magicblock-private-payments-live.mjs --live-private-transfer --amount-base-units=1
 ```
 
 Environment overrides:
@@ -49,6 +55,7 @@ Environment overrides:
 | `MAGICBLOCK_PRIVATE_PAYMENTS_KEYPAIR` | `~/.config/solana/id.json` | Local devnet wallet |
 | `MAGICBLOCK_BASE_RPC_URL` | `https://api.devnet.solana.com` | Base-chain submit RPC |
 | `MAGICBLOCK_EPHEMERAL_RPC_URL` | `https://devnet-router.magicblock.app` | Ephemeral submit RPC override |
+| `MAGICBLOCK_TEE_RPC_URL` | `https://devnet-tee.magicblock.app` | TEE submit diagnostic RPC |
 | `MAGICBLOCK_AUTO_WRAP_WSOL` | `true` | Wrap local devnet SOL to wSOL before live deposit |
 
 ## Endpoints Hit
@@ -67,6 +74,40 @@ The script covers:
 - `POST /v1/spl/transfer` with `visibility=private`
 - `POST /v1/spl/withdraw`
 
+## 2026-05-09 Hardening Results
+
+The live runner now has separate modes:
+
+- `--dry-run`: requests health/endpoints/builders and records blockhash diagnostics without signing or sending.
+- `--live-deposit-withdraw`: signs and submits only the deposit/withdraw flow.
+- `--live-private-transfer`: signs and submits only the private-transfer diagnostic path.
+
+Blockhash diagnosis for `POST /v1/spl/transfer` with `visibility=private`:
+
+- The unsigned legacy transaction's decoded `recentBlockhash` matches the API `recentBlockhash`.
+- Base devnet RPC reports the API private-transfer blockhash invalid and its `lastValidBlockHeight` already expired relative to base devnet.
+- MagicBlock TEE RPC reports the API private-transfer blockhash invalid.
+- MagicBlock router RPC does not expose `getBlockHeight`, so the script cannot validate expiry there.
+- Refreshing the transaction blockhash from the router RPC before signing still fails on router submit with:
+
+```text
+Simulation failed.
+Message: solana rpc request error: RPC response error -32002: Transaction simulation failed: Blockhash not found; .
+```
+
+- Refreshing from TEE before signing fails with:
+
+```text
+Simulation failed.
+Message: transaction verification error: Transaction loads a writable account that cannot be written.
+```
+
+- Refreshing from base devnet before signing submitted the private-transfer transaction, but this is a base-RPC fallback and does not confirm the intended `sendTo=ephemeral` / router private-transfer path:
+
+```text
+2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s
+```
+
 ## 2026-05-08 Live Results
 
 Dry-run with wSOL:
@@ -80,7 +121,7 @@ Dry-run with wSOL:
 - Withdraw builder: `200`, unsigned legacy transaction returned, `sendTo=base`
 - `GET /v1/mcp`: `404 {"error":{"code":"NOT_FOUND","message":"Route not found"}}`
 
-Live minimized flow with `--amount-base-units=1`:
+Live minimized deposit/withdraw flow with `--amount-base-units=1`:
 
 | Step | Status | Signature |
 |---|---|---|
@@ -112,10 +153,11 @@ Allowed after this branch:
 - Challenge signing and `/v1/spl/login` work for the local devnet wallet.
 - The API returns unsigned transactions for public transfer, deposit, private transfer, and withdraw.
 - wSOL deposit and withdraw transactions returned by MagicBlock Private Payments were signed locally and submitted on devnet.
+- Local blockhash refresh can submit the private-transfer transaction through base devnet RPC.
 
 Not allowed yet:
 
-- Full MagicBlock Private Payments transfer flow is live end-to-end. The private transfer builder works, but submitting the ephemeral transaction is blocked by `Blockhash not found`.
+- Full MagicBlock Private Payments transfer flow is live end-to-end. The private transfer builder works, and base devnet accepts the refreshed transaction, but the intended ephemeral/router path is still blocked by `Blockhash not found`.
 - ShieldLend lending repayment is settled through MagicBlock Private Payments. The protocol still needs a signed/submitted transaction signature or receipt binding path.
 - MagicBlock PER Rust macros are wired into Anchor programs. They remain blocked by the Anchor 0.30.1 vs 0.32.1 gap.
 - TDX attestation is verified. The SDK still throws the known challenge decode mismatch.

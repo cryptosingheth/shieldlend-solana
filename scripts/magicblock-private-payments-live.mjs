@@ -5,8 +5,11 @@
  * Dry run:
  *   node scripts/magicblock-private-payments-live.mjs --dry-run
  *
- * Live:
- *   node scripts/magicblock-private-payments-live.mjs --live
+ * Live deposit/withdraw:
+ *   node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw
+ *
+ * Live private transfer submit diagnostic:
+ *   node scripts/magicblock-private-payments-live.mjs --live-private-transfer
  *
  * The live path signs locally with the Solana CLI devnet wallet and submits
  * only unsigned transactions returned by the public MagicBlock API.
@@ -36,20 +39,29 @@ const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const DEFAULT_AMOUNT_BASE_UNITS = "1000000";
 const DEFAULT_BASE_RPC = "https://api.devnet.solana.com";
 const DEFAULT_EPHEMERAL_RPC = "https://devnet-router.magicblock.app";
+const DEFAULT_TEE_RPC = "https://devnet-tee.magicblock.app";
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 const args = new Set(process.argv.slice(2));
-const mode = args.has("--live") ? "live" : "dry-run";
+const validModes = ["--dry-run", "--live", "--live-deposit-withdraw", "--live-private-transfer"];
+const selectedModes = validModes.filter((flag) => args.has(flag));
+const mode =
+  selectedModes[0] === "--live"
+    ? "live"
+    : selectedModes[0]?.replace(/^--/, "") || "dry-run";
 let activeReport = null;
-if (!args.has("--live") && !args.has("--dry-run")) {
-  console.error("Usage: node scripts/magicblock-private-payments-live.mjs --dry-run|--live");
+if (selectedModes.length !== 1) {
+  console.error(
+    "Usage: node scripts/magicblock-private-payments-live.mjs " +
+      "--dry-run|--live-deposit-withdraw|--live-private-transfer"
+  );
   process.exit(1);
 }
-if (args.has("--live") && args.has("--dry-run")) {
-  console.error("Choose exactly one mode: --dry-run or --live");
-  process.exit(1);
-}
+
+const isLiveMode = mode !== "dry-run";
+const runDepositWithdraw = mode === "live" || mode === "live-deposit-withdraw";
+const runPrivateTransfer = mode === "live" || mode === "live-private-transfer";
 
 function argValue(name, fallback = "") {
   const prefix = `${name}=`;
@@ -246,6 +258,72 @@ function summarizeBuild(payload) {
   };
 }
 
+function deserializeBuildTransaction(build) {
+  const raw = Buffer.from(build.transactionBase64, "base64");
+  if (build.version === "v0") return VersionedTransaction.deserialize(raw);
+  return Transaction.from(raw);
+}
+
+function transactionBlockhash(tx) {
+  return tx instanceof VersionedTransaction ? tx.message.recentBlockhash : tx.recentBlockhash;
+}
+
+function setTransactionBlockhash(tx, blockhash) {
+  if (tx instanceof VersionedTransaction) {
+    tx.message.recentBlockhash = blockhash;
+  } else {
+    tx.recentBlockhash = blockhash;
+  }
+}
+
+async function diagnoseBuildBlockhash(report, connectionByTarget, label, build) {
+  if (!build?.transactionBase64) return null;
+  const tx = deserializeBuildTransaction(build);
+  const txBlockhash = transactionBlockhash(tx);
+  const diag = {
+    label,
+    sendTo: build.sendTo,
+    apiRecentBlockhash: build.recentBlockhash || "",
+    transactionRecentBlockhash: txBlockhash || "",
+    apiMatchesTransaction:
+      Boolean(build.recentBlockhash && txBlockhash) && build.recentBlockhash === txBlockhash,
+    lastValidBlockHeight: build.lastValidBlockHeight ?? null,
+    rpcChecks: [],
+  };
+
+  for (const [target, connection] of Object.entries(connectionByTarget)) {
+    const check = { target, rpcEndpoint: connection.rpcEndpoint };
+    try {
+      const [latest, currentBlockHeight, validity] = await Promise.all([
+        connection.getLatestBlockhash("confirmed"),
+        connection.getBlockHeight("confirmed"),
+        txBlockhash
+          ? connection.isBlockhashValid(txBlockhash, "confirmed").catch((error) => ({
+              context: null,
+              value: false,
+              error: error instanceof Error ? error.message : String(error),
+            }))
+          : Promise.resolve({ context: null, value: false }),
+      ]);
+      check.latestBlockhash = latest.blockhash;
+      check.latestLastValidBlockHeight = latest.lastValidBlockHeight;
+      check.currentBlockHeight = currentBlockHeight;
+      check.transactionBlockhashValid = Boolean(validity.value);
+      if (validity.error) check.validityError = validity.error;
+      check.apiLastValidExpired =
+        typeof build.lastValidBlockHeight === "number"
+          ? currentBlockHeight > build.lastValidBlockHeight
+          : null;
+    } catch (error) {
+      check.error = error instanceof Error ? error.message : String(error);
+    }
+    diag.rpcChecks.push(check);
+  }
+
+  report.blockhashDiagnostics.push(diag);
+  return diag;
+}
+
 async function request(report, method, path, { body, bearerToken } = {}) {
   const url = `${normalizeBase(PRIVATE_PAYMENTS_API)}${path}`;
   const headers = {};
@@ -293,25 +371,35 @@ async function apiPost(report, path, body, opts = {}) {
   return request(report, "POST", path, { ...opts, body });
 }
 
-async function signAndSendBuild(report, connectionByTarget, wallet, label, build) {
+async function signAndSendBuild(report, connectionByTarget, wallet, label, build, options = {}) {
   if (!build?.transactionBase64 || !build?.sendTo) {
     throw new Error(`${label} did not return a usable unsigned transaction.`);
   }
 
-  const raw = Buffer.from(build.transactionBase64, "base64");
+  const target = options.target || build.sendTo;
+  const connection = connectionByTarget[target];
+  if (!connection) throw new Error(`${label} returned unsupported sendTo=${target}`);
+
+  const tx = deserializeBuildTransaction(build);
+  const originalBlockhash = transactionBlockhash(tx);
+  let confirmBlockhash = build.recentBlockhash || originalBlockhash;
+  let confirmLastValidBlockHeight = build.lastValidBlockHeight;
+
+  if (options.refreshBlockhash) {
+    const latest = await connection.getLatestBlockhash("confirmed");
+    setTransactionBlockhash(tx, latest.blockhash);
+    confirmBlockhash = latest.blockhash;
+    confirmLastValidBlockHeight = latest.lastValidBlockHeight;
+  }
+
   let serialized;
-  if (build.version === "v0") {
-    const tx = VersionedTransaction.deserialize(raw);
+  if (tx instanceof VersionedTransaction) {
     tx.sign([wallet]);
     serialized = tx.serialize();
   } else {
-    const tx = Transaction.from(raw);
     tx.sign(wallet);
     serialized = tx.serialize();
   }
-
-  const connection = connectionByTarget[build.sendTo];
-  if (!connection) throw new Error(`${label} returned unsupported sendTo=${build.sendTo}`);
 
   const signature = await connection.sendRawTransaction(serialized, {
     skipPreflight: false,
@@ -320,13 +408,51 @@ async function signAndSendBuild(report, connectionByTarget, wallet, label, build
   await connection.confirmTransaction(
     {
       signature,
-      blockhash: build.recentBlockhash,
-      lastValidBlockHeight: build.lastValidBlockHeight,
+      blockhash: confirmBlockhash,
+      lastValidBlockHeight: confirmLastValidBlockHeight,
     },
     "confirmed"
   );
-  report.txSignatures.push({ label, signature, sendTo: build.sendTo, explorer: explorer(signature) });
+  report.txSignatures.push({
+    label,
+    signature,
+    sendTo: target,
+    explorer: explorer(signature),
+    originalBlockhash,
+    submittedBlockhash: confirmBlockhash,
+    refreshedBlockhash: Boolean(options.refreshBlockhash),
+  });
   return signature;
+}
+
+async function tryPrivateTransferSubmit(report, connectionByTarget, wallet, build) {
+  const fallbackTargets =
+    build.sendTo === "ephemeral" ? ["tee", "base"] : ["ephemeral", "tee"];
+  const targets = [build.sendTo, ...fallbackTargets].filter(
+    (target, index, values) => target && values.indexOf(target) === index
+  );
+  const attempts = [];
+
+  for (const target of targets) {
+    try {
+      await signAndSendBuild(report, connectionByTarget, wallet, `private-transfer-${target}`, build, {
+        target,
+        refreshBlockhash: true,
+      });
+      attempts.push({ target, status: "submitted" });
+      report.privateTransferSubmitAttempts.push(...attempts);
+      return true;
+    } catch (error) {
+      attempts.push({
+        target,
+        status: "blocked",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  report.privateTransferSubmitAttempts.push(...attempts);
+  return false;
 }
 
 async function main() {
@@ -357,8 +483,18 @@ async function main() {
     "MAGICBLOCK_EPHEMERAL_RPC_URL",
     env("NEXT_PUBLIC_MAGICBLOCK_ROUTER_RPC_URL", DEFAULT_EPHEMERAL_RPC)
   );
+  const teeRpcUrl = env(
+    "MAGICBLOCK_TEE_RPC_URL",
+    env("NEXT_PUBLIC_MAGICBLOCK_TEE_RPC_URL", DEFAULT_TEE_RPC)
+  );
   const baseConnection = new Connection(baseRpcUrl, "confirmed");
   const ephemeralConnection = new Connection(ephemeralRpcUrl, "confirmed");
+  const teeConnection = new Connection(teeRpcUrl, "confirmed");
+  const connectionByTarget = {
+    base: baseConnection,
+    ephemeral: ephemeralConnection,
+    tee: teeConnection,
+  };
   const report = {
     script: "magicblock-private-payments-live",
     mode,
@@ -374,8 +510,11 @@ async function main() {
     recipient,
     baseRpcUrl,
     ephemeralRpcUrl,
+    teeRpcUrl,
     endpointsHit: [],
     txSignatures: [],
+    blockhashDiagnostics: [],
+    privateTransferSubmitAttempts: [],
     tokenPreparation: null,
     dryRunNotice:
       mode === "dry-run"
@@ -423,7 +562,7 @@ async function main() {
   const challenge = await apiGet(report, challengePath);
 
   let bearerToken = "";
-  if (mode === "live") {
+  if (isLiveMode) {
     if (!challenge.ok || typeof challenge.response?.challenge !== "string") {
       throw new Error("Challenge request failed; cannot perform bearer-token login.");
     }
@@ -537,6 +676,9 @@ async function main() {
   );
   const privateTransferBuild = privateTransfer.response;
   privateTransfer.response = summarizeBuild(privateTransfer.response);
+  if (privateTransfer.ok) {
+    await diagnoseBuildBlockhash(report, connectionByTarget, "private-transfer-builder", privateTransferBuild);
+  }
   report.liveStatus.privateTransfer = privateTransfer.ok
     ? "unsigned-builder-ok"
     : `blocked HTTP ${privateTransfer.status}`;
@@ -546,9 +688,9 @@ async function main() {
   withdraw.response = summarizeBuild(withdraw.response);
   report.liveStatus.withdraw = withdraw.ok ? "unsigned-builder-ok" : `blocked HTTP ${withdraw.status}`;
 
-  if (mode === "live") {
+  if (isLiveMode) {
     const mint = new PublicKey(mintAddress);
-    if (!mintInitialized) {
+    if (runDepositWithdraw && !mintInitialized) {
       const initMint = await apiPost(report, "/v1/spl/initialize-mint", {
         owner,
         mint: mintAddress,
@@ -559,14 +701,18 @@ async function main() {
       if (!initMint.ok) throw new Error(`initialize-mint blocked HTTP ${initMint.status}: ${initMint.responseText}`);
       await signAndSendBuild(
         report,
-        { base: baseConnection, ephemeral: ephemeralConnection },
+        connectionByTarget,
         wallet,
         "initialize-mint",
         initBuild
       );
     }
 
-    if (mintAddress === WSOL_MINT && env("MAGICBLOCK_AUTO_WRAP_WSOL", "true") !== "false") {
+    if (
+      runDepositWithdraw &&
+      mintAddress === WSOL_MINT &&
+      env("MAGICBLOCK_AUTO_WRAP_WSOL", "true") !== "false"
+    ) {
       report.tokenPreparation = await ensureWsol(baseConnection, wallet, mint, amountBaseUnits);
       for (const signature of report.tokenPreparation.signatures ?? []) {
         report.txSignatures.push({
@@ -578,57 +724,64 @@ async function main() {
       }
     }
 
-    const liveDeposit = await apiPost(report, "/v1/spl/deposit", depositBody);
-    const liveDepositBuild = liveDeposit.response;
-    liveDeposit.response = summarizeBuild(liveDeposit.response);
-    if (!liveDeposit.ok) throw new Error(`deposit blocked HTTP ${liveDeposit.status}: ${liveDeposit.responseText}`);
-    await signAndSendBuild(
-      report,
-      { base: baseConnection, ephemeral: ephemeralConnection },
-      wallet,
-      "deposit",
-      liveDepositBuild
-    );
-    report.liveStatus.deposit = "submitted";
-
-    const livePrivateTransfer = await apiPost(
-      report,
-      "/v1/spl/transfer",
-      privateTransferBody,
-      bearerToken ? { bearerToken } : {}
-    );
-    const livePrivateTransferBuild = livePrivateTransfer.response;
-    livePrivateTransfer.response = summarizeBuild(livePrivateTransfer.response);
-    if (livePrivateTransfer.ok) {
-      try {
-        await signAndSendBuild(
-          report,
-          { base: baseConnection, ephemeral: ephemeralConnection },
-          wallet,
-          "private-transfer",
-          livePrivateTransferBuild
-        );
-        report.liveStatus.privateTransfer = "submitted";
-      } catch (error) {
-        report.liveStatus.privateTransfer =
-          `submit-blocked: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    } else {
-      report.liveStatus.privateTransfer = `blocked HTTP ${livePrivateTransfer.status}`;
+    if (runDepositWithdraw) {
+      const liveDeposit = await apiPost(report, "/v1/spl/deposit", depositBody);
+      const liveDepositBuild = liveDeposit.response;
+      liveDeposit.response = summarizeBuild(liveDeposit.response);
+      if (!liveDeposit.ok) throw new Error(`deposit blocked HTTP ${liveDeposit.status}: ${liveDeposit.responseText}`);
+      await signAndSendBuild(
+        report,
+        connectionByTarget,
+        wallet,
+        "deposit",
+        liveDepositBuild
+      );
+      report.liveStatus.deposit = "submitted";
     }
 
-    const liveWithdraw = await apiPost(report, "/v1/spl/withdraw", withdrawBody);
-    const liveWithdrawBuild = liveWithdraw.response;
-    liveWithdraw.response = summarizeBuild(liveWithdraw.response);
-    if (!liveWithdraw.ok) throw new Error(`withdraw blocked HTTP ${liveWithdraw.status}: ${liveWithdraw.responseText}`);
-    await signAndSendBuild(
-      report,
-      { base: baseConnection, ephemeral: ephemeralConnection },
-      wallet,
-      "withdraw",
-      liveWithdrawBuild
-    );
-    report.liveStatus.withdraw = "submitted";
+    if (runPrivateTransfer) {
+      const livePrivateTransfer = await apiPost(
+        report,
+        "/v1/spl/transfer",
+        privateTransferBody,
+        bearerToken ? { bearerToken } : {}
+      );
+      const livePrivateTransferBuild = livePrivateTransfer.response;
+      livePrivateTransfer.response = summarizeBuild(livePrivateTransfer.response);
+      if (livePrivateTransfer.ok) {
+        await diagnoseBuildBlockhash(report, connectionByTarget, "private-transfer-live", livePrivateTransferBuild);
+        const submitted = await tryPrivateTransferSubmit(
+          report,
+          connectionByTarget,
+          wallet,
+          livePrivateTransferBuild
+        );
+        report.liveStatus.privateTransfer = submitted
+          ? "submitted"
+          : `submit-blocked: ${
+              report.privateTransferSubmitAttempts
+                .map((attempt) => `${attempt.target}: ${attempt.error || attempt.status}`)
+                .join(" | ")
+            }`;
+      } else {
+        report.liveStatus.privateTransfer = `blocked HTTP ${livePrivateTransfer.status}`;
+      }
+    }
+
+    if (runDepositWithdraw) {
+      const liveWithdraw = await apiPost(report, "/v1/spl/withdraw", withdrawBody);
+      const liveWithdrawBuild = liveWithdraw.response;
+      liveWithdraw.response = summarizeBuild(liveWithdraw.response);
+      if (!liveWithdraw.ok) throw new Error(`withdraw blocked HTTP ${liveWithdraw.status}: ${liveWithdraw.responseText}`);
+      await signAndSendBuild(
+        report,
+        connectionByTarget,
+        wallet,
+        "withdraw",
+        liveWithdrawBuild
+      );
+      report.liveStatus.withdraw = "submitted";
+    }
 
     await apiGet(
       report,
@@ -649,7 +802,7 @@ async function main() {
   }
 
   console.log(stringifyReport(report));
-  if (mode === "live" && report.txSignatures.length === 0) process.exitCode = 1;
+  if (isLiveMode && report.txSignatures.length === 0) process.exitCode = 1;
 }
 
 main().catch((error) => {

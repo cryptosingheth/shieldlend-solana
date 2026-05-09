@@ -882,3 +882,54 @@ Message: transaction verification error: Blockhash not found.
 ### Claim Boundary
 
 MagicBlock Private Payments is partially live: API, auth, builders, wSOL deposit, and wSOL withdraw are live on devnet. Do not claim private transfer or ShieldLend repay settlement is live end-to-end until the ephemeral submit blocker is resolved and a confirmed tx signature/receipt is bound into the protocol path.
+
+## 2026-05-09 — MagicBlock Private Payments Live Flow Hardening
+
+**Branch**: `live/magicblock-private-payments`
+
+**Objective**: Harden MagicBlock Private Payments before final integration, with a focused diagnosis of the private-transfer `Blockhash not found` failure.
+
+### Changes
+
+- Split `scripts/magicblock-private-payments-live.mjs` into explicit modes:
+  - `--dry-run`
+  - `--live-deposit-withdraw`
+  - `--live-private-transfer`
+- Added decoded/API blockhash comparison for MagicBlock private-transfer builders.
+- Added per-RPC blockhash diagnostics for base devnet, MagicBlock router, and MagicBlock TEE.
+- Added local latest-blockhash refresh before signing/sending private-transfer diagnostic attempts.
+- Updated MagicBlock docs, hackathon docs, submission checklist, demo script, current task, and session handoff.
+
+### Findings
+
+- The private-transfer unsigned legacy transaction's decoded `recentBlockhash` matches the API `recentBlockhash`.
+- Base devnet reports the API private-transfer blockhash invalid and its `lastValidBlockHeight` already expired relative to base devnet.
+- MagicBlock TEE reports the API private-transfer blockhash invalid.
+- MagicBlock router does not expose `getBlockHeight`, so expiry cannot be checked there through the same method.
+- Router submit after local blockhash refresh still fails with:
+
+```text
+Simulation failed.
+Message: solana rpc request error: RPC response error -32002: Transaction simulation failed: Blockhash not found; .
+```
+
+- TEE submit after local blockhash refresh fails with:
+
+```text
+Simulation failed.
+Message: transaction verification error: Transaction loads a writable account that cannot be written.
+```
+
+- Base devnet submit after local blockhash refresh succeeds:
+
+```text
+2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s
+```
+
+### Claim Boundary
+
+- Confirmed: MagicBlock Private Payments public API deposit/withdraw are live on devnet.
+- Confirmed: auth/login and unsigned tx request flow.
+- Confirmed: private-transfer tx can be submitted through base devnet after local blockhash refresh.
+- Not confirmed: private transfer through the intended ephemeral/router RPC path.
+- Not confirmed: MagicBlock PER Rust macros in Anchor programs.
