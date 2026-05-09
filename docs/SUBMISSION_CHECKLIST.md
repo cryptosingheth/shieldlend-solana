@@ -91,7 +91,7 @@ These are implementation gaps, not design gaps:
 
 2. **IKA relay signing not active** — `ika-dwallet-anchor` CPI crate is not published as of this submission. All on-chain transactions use direct wallet signing. The deposit screen labels this "reduced privacy." Three source-backed blockers are documented in `scripts/check-ika.mjs`.
 
-3. **MagicBlock PER Rust macros not in Anchor programs** — Anchor 0.30.1 is used to protect the confirmed Groth16 round-trip. PER requires `#[ephemeral]`, `#[delegate]`, `#[commit]` macros from Anchor 0.32.1. The TypeScript PER SDK builders are verified but no on-chain PER transaction is submitted.
+3. **MagicBlock PER Rust macros not in Anchor programs** — the workspace now uses Anchor 0.32.1, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not wired into ShieldLend programs. The TypeScript PER SDK builders are verified but no on-chain PER transaction is submitted.
 
 4. **MagicBlock Private Payments not configured** — The API URL is Discord-gated. The adapter is wired and fails closed when the URL is absent.
 
@@ -99,7 +99,7 @@ These are implementation gaps, not design gaps:
 
 6. **Umbra native SOL payout not routed** — C2H withdraw releases native SOL to `WithdrawArgs.stealth_address` directly. Umbra SDK requires SPL/Token-2022. The SOL → wSOL wrap leg inside ShieldedPool is not implemented.
 
-7. **Encrypt on-chain FHE not active** — `encrypt-anchor` requires Anchor 0.32.1. Program-side integration is fail-closed. Only the gRPC client probe is live.
+7. **Encrypt on-chain FHE not active** — Anchor 0.32.1 compatibility is present, but `encrypt-anchor` CPI is not wired. Program-side integration is fail-closed. Only the gRPC client probe is live.
 
 ---
 

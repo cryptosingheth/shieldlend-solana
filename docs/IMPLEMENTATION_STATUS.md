@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-08 (convergence/privacy-rails-integration: all four rails merged)
+Last reconciled: 2026-05-08 (upgrade/anchor-032-privacy-rails: Anchor 0.32.1 upgrade)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -10,11 +10,11 @@ fail-closed scaffolding, missing integrations, and deployment status.
 
 | Area | Current local status | Claim boundary |
 |---|---|---|
-| Anchor programs | Compile to SBF with `anchor build --no-idl`; all three deployed on devnet | Full IDL generation is blocked (Anchor/proc-macro2); use `--no-idl` path |
+| Anchor programs | Local workspace upgraded to Anchor `0.32.1`; compiles to SBF with `anchor build --no-idl`; all three program IDs preserved | Upgraded binaries were not redeployed in this task; `anchor build --no-idl` still emits SBF syscall warnings that must be runtime-validated before redeploy |
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; IKA SDK/capability probe confirmed | IKA relay signing, ShieldLend-native Umbra payout, PER macros (Anchor 0.32.1 blocked), Private Payments URL, and Encrypt/FHE on-chain health computation are not live |
+| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; IKA SDK/capability probe confirmed | Anchor 0.32.1 workspace compatibility is present, but IKA relay signing, ShieldLend-native Umbra payout, PER macros in programs, Private Payments URL, and Encrypt/FHE on-chain health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -23,14 +23,15 @@ fail-closed scaffolding, missing integrations, and deployment status.
 |---|---|---|
 | `pwd` | `/Users/opinderpreetsingh/projects/shieldlend-solana` | Canonical local checkout for this task |
 | `git log --oneline -5` | includes C2, status reconciliation, and C2A.5 commits | Convergence history is present |
-| `anchor keys list` | passed | IDs listed below |
+| `anchor --version` | passed | `anchor-cli 0.32.1` |
+| `anchor keys list` | previously passed | IDs listed below; not rerun as part of this upgrade |
 | `find target/deploy -name "*.so"` | passed | Three `.so` files exist |
 | `npm run circuits:compile` | known good | Re-run during C2B |
 | `node scripts/generate-zk-artifacts.mjs` | known good | Generated DEV/TEST zkeys and vkeys during C2B |
-| `npm run typecheck:frontend` | known good | TypeScript check passes |
-| `npm run build:frontend` | known good | Next build passes with existing dependency warning |
-| `cargo test --workspace` | known good | 47 Rust unit tests pass (38 prior + 9 C2F — proof account pattern tests) |
-| `anchor build --no-idl` | known good | SBF build passes; zero stack-frame error diagnostics after C2G-A Box<Account> fix |
+| `npm run typecheck:frontend` | passed | TypeScript check passes |
+| `npm run build:frontend` | passed | Next build passes with existing dependency warning |
+| `cargo test --workspace` | passed on Anchor 0.32.1 | 47 Rust unit tests pass, including Groth16 verifier smoke and mutation tests |
+| `anchor build --no-idl` | passed on Anchor 0.32.1 | SBF build passes; still emits existing macro cfg warnings plus SBF post-processing syscall warnings |
 | `anchor deploy` (nullifier_registry) | **deployed** | Devnet slot 460526750; program ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
 | `anchor deploy` (lending_pool) | **deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill |
@@ -59,10 +60,10 @@ Additional synced references:
 | Item | Current status | Evidence |
 |---|---|---|
 | Solana CLI | Installed | Environment verified before C1/C2 |
-| Anchor CLI | Installed, `0.30.1` | Environment verified before C1/C2 |
+| Anchor CLI | Installed, `0.32.1` | `Anchor.toml` pins `anchor_version = "0.32.1"` |
 | `anchor build --no-idl` | Passes | Builds SBF artifacts without IDL generation |
 | `.so` artifacts | Generated | `target/deploy/shielded_pool.so`, `lending_pool.so`, `nullifier_registry.so` |
-| Full `anchor build` with IDL | Blocked | Anchor/proc-macro2 compatibility issue, intentionally out of scope |
+| Full `anchor build` with IDL | Not revalidated in this task | Upgrade validation used the requested `anchor build --no-idl` path |
 | `nullifier_registry` devnet deploy | **Deployed** | Slot 460526750; ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `shielded_pool` devnet deploy | **Deployed + upgraded** | Initial slot 460526822; upgraded (Vec capacity fix); ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
 | `lending_pool` devnet deploy | **Deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill (C2G-B) |
@@ -137,7 +138,7 @@ Artifact details:
 |---|---|---|
 | IKA relay signer privacy | Not wired | No |
 | IKA FutureSign liquidation consent | Not wired; borrower-supplied flag exists | No |
-| MagicBlock PER batching | TypeScript adapter wired; TEE RPC live (HTTP 200); Rust macros blocked on Anchor 0.32.1 | No — Rust-side account delegation not wired |
+| MagicBlock PER batching | TypeScript adapter wired; TEE RPC live (HTTP 200); workspace now on Anchor 0.32.1 | No — Rust-side account delegation macros are still not wired |
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | TypeScript adapter wired (deposit, transfer, withdraw, balance, settleRepayment); URL env var absent by default | No — requires Private Payments API access |
 | Umbra SDK encrypted-balance token flow | Funded devnet wSOL deposit and withdrawal confirmed via `scripts/umbra-funded-smoke.mjs` | Yes — SDK-side wSOL encrypted-balance flow only |
@@ -162,7 +163,7 @@ Artifact details:
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
 | ~~No integration test past UnknownRoot~~ | **Resolved (C2H)** — full deposit → flush_epoch → store_proof → withdraw round-trip confirmed on devnet with on-chain Groth16 verification |
 | MagicBlock Private Payments URL missing | Private repayment rail unavailable. Request at discord.com/invite/MBkdC3gxcv. TypeScript adapter fails closed. |
-| MagicBlock Anchor version gap | Rust PER macros (#[ephemeral], #[delegate], #[commit]) require Anchor 0.32.1; workspace uses 0.30.1. Do not upgrade without isolating C2H round-trip. |
+| MagicBlock PER macros not wired | Anchor 0.32.1 compatibility is present, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet. Wire separately and re-run C2H. |
 | ShieldLend native SOL -> Umbra token settlement not wired | Existing C2H remains native SOL direct `stealth_address`; cannot claim ShieldLend withdraws are Umbra-routed |
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
 | IKA relay not wired | User wallet remains the signer for frontend transactions |
@@ -195,17 +196,17 @@ See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file
 | Blocker | Root cause | Unblock path |
 |---|---|---|
 | TDX attestation (`verifyTeeRpcIntegrity`) | Returns exception: `challenge must decode to 64 bytes` — minor API delta between SDK 0.8.8 and current devnet TEE | Update SDK to latest patch or contact MagicBlock re: challenge format |
-| Rust PER macros (`#[ephemeral]`, `#[delegate]`, `#[commit]`) | Require Anchor 0.32.1; workspace uses 0.30.1 | Isolated Anchor upgrade task; re-run C2H devnet round-trip before landing |
+| Rust PER macros (`#[ephemeral]`, `#[delegate]`, `#[commit]`) | Workspace now uses Anchor 0.32.1, but macros are not wired | Separate program-side integration task; re-run C2H devnet round-trip before redeploy/claim |
 | Private Payments API URL | Not publicly available; requires Discord access | Join `discord.com/invite/MBkdC3gxcv`, request devnet credentials |
-| Account delegation in `shielded_pool` | Rust macros blocked (above) | Blocked until Anchor upgrade |
+| Account delegation in `shielded_pool` | Rust macros not wired | Wire PER macros in a dedicated program-side integration task |
 | MagicBlock VRF | SDK has no VRF module in 0.8.x | Separate VRF integration task; may require different SDK or on-chain program CPI |
 
 ### Safe claim wording (MagicBlock)
 
 - "MagicBlock SDK 0.8.8 is integrated. TEE RPC endpoint is reachable on devnet."
-- "Permission and delegation instruction builders are wired (TypeScript). Account delegation requires Anchor 0.32.1."
+- "Permission and delegation instruction builders are wired (TypeScript). Account delegation macros are not wired into ShieldLend programs yet."
 - "Private Payments adapter is implemented and fails closed until API access is provisioned."
-- "Rust PER account delegation is blocked on Anchor 0.32.1 (current 0.30.1)."
+- "Anchor 0.32.1 workspace compatibility is present, but Rust PER account delegation is not live."
 
 ### Unsafe wording (do not use)
 

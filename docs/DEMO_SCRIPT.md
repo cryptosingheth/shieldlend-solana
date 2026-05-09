@@ -9,7 +9,7 @@
 
 ```bash
 node --version      # >= 18
-anchor --version    # 0.30.1
+anchor --version    # 0.32.1
 solana --version    # 1.18.x+
 ```
 
@@ -126,7 +126,7 @@ Expected output:
 - 13/13 SDK functions verified
 - Warn: TDX attestation challenge mismatch (expected — do not hide this)
 - Warn: Private Payments URL not set (expected — requires Discord access)
-- Warn: Anchor version gap 0.30.1 → 0.32.1 (expected — Rust macros blocked)
+- Warn: Rust PER macros not wired (expected — Anchor 0.32.1 compatibility exists, but program-side PER is not live)
 
 ### IKA
 
@@ -173,10 +173,10 @@ Read this list before going live:
 
 - Do NOT say the ZK trusted setup is production-grade. The ceremony used `pot14` (DEV/TEST). State: "DEV/TEST trusted setup — not production."
 - Do NOT say IKA relay signing is active. The deposit uses direct wallet fallback. State: "IKA SDK probed and blockers documented — Solana CPI crate not yet published."
-- Do NOT say MagicBlock PER is running inside a ShieldLend transaction. The Rust macros are blocked. State: "TEE RPC reachable — Rust PER macros blocked by Anchor version gap."
+- Do NOT say MagicBlock PER is running inside a ShieldLend transaction. The Rust macros are not wired. State: "TEE RPC reachable — Anchor 0.32.1 compatibility present — Rust PER macros not wired."
 - Do NOT say MagicBlock Private Payments is live. The URL is Discord-gated. State: "Adapter wired and fail-closed — Private Payments URL requires Discord access."
 - Do NOT say Umbra is handling the ShieldLend withdraw output. C2H native SOL exits directly. State: "Umbra funded wSOL deposit/withdraw confirmed — ShieldLend C2H payout bridge not yet implemented."
-- Do NOT say Encrypt FHE is computing health factors on-chain. The Anchor integration is blocked. State: "Encrypt gRPC probe confirmed — on-chain FHE blocked by Anchor version gap."
+- Do NOT say Encrypt FHE is computing health factors on-chain. The Anchor CPI integration is not wired. State: "Encrypt gRPC probe confirmed — Anchor 0.32.1 compatibility present — on-chain FHE not wired."
 
 ---
 

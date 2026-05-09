@@ -26,6 +26,7 @@
     "circuits:compile": "circom circuits/withdraw_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/collateral_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/repay_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits"
   },
   "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "typescript": "^5.7.2"
   },
   "dependencies": {

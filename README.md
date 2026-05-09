@@ -74,9 +74,9 @@ component addresses. These layers are not all live in the current local build:
 | DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
 | On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
-| Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; on-chain FHE fail-closed (Anchor 0.32 gap) |
+| Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; Anchor 0.32.1 compatibility present; on-chain FHE still fail-closed |
 | Umbra rail adapter | Funded devnet confirmed | wSOL deposit/withdraw: 7 devnet tx signatures; native SOL C2H payout bridge not yet wired |
-| MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Rust macros blocked (Anchor 0.32 gap); Private Payments URL Discord-gated |
+| MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Anchor 0.32.1 compatibility present; Rust macros not wired; Private Payments URL Discord-gated |
 | IKA rail adapter | SDK/WASM probe confirmed | Solana relay signing blocked: no `ika-dwallet-anchor` CPI; direct wallet fallback labelled reduced privacy |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
@@ -308,7 +308,7 @@ requires a multi-sig governance vote with time-lock to activate.
 ## Tech Stack
 
 **On-Chain / Current**
-- Anchor 0.30.1 (Rust smart contracts)
+- Anchor 0.32.1 (Rust smart contracts)
 - Three local Anchor programs: `shielded_pool`, `lending_pool`, `nullifier_registry`
 - Kamino-style 11-point interest model logic
 
@@ -499,7 +499,7 @@ Full competitive analysis, attribution table, and protocol comparisons: [`docs/R
 ```bash
 # Solana CLI + Anchor prerequisites
 solana-install init 1.18.x
-anchor --version  # expected: 0.30.1
+anchor --version  # expected: 0.32.1
 
 # Install dependencies from the workspace root
 npm install

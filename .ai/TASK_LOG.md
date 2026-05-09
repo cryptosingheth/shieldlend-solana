@@ -809,3 +809,37 @@ Create final hackathon demo/submission package based on `convergence/privacy-rai
 - `node scripts/demo-status.mjs` — exits 0; all checks green; correct claim boundary printed
 - `npm run typecheck:frontend` — PASS
 - `npm run build:frontend` — PASS
+
+---
+
+## 2026-05-08 — Anchor 0.32.1 Workspace Upgrade
+
+### Objective
+
+Upgrade the ShieldLend workspace from Anchor 0.30.1 to Anchor 0.32.1 for MagicBlock PER and Encrypt Anchor compatibility while preserving the C2H Groth16 withdraw proof path.
+
+### What changed
+
+- `Anchor.toml` now pins `anchor_version = "0.32.1"`.
+- Root `Cargo.toml` now uses `anchor-lang = "0.32.1"`.
+- Root `package.json` now includes `@coral-xyz/anchor = "^0.32.1"` for the checked-in Anchor TS tests.
+- `Cargo.lock` and `package-lock.json` refreshed.
+- `groth16-solana = "0.0.3"` remained pinned in `shielded_pool` and `lending_pool`.
+- No `anchor-spl` dependency was added because no program imports it.
+- Program IDs were preserved; no redeploy was performed.
+
+### Validation
+
+- `anchor --version` — PASS (`anchor-cli 0.32.1`)
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --workspace` — PASS (47 tests)
+- `anchor build --no-idl` — PASS
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `npm run demo:status` — PASS (warns current branch differs from convergence branch)
+
+### Notes
+
+- Anchor 0.32.1 brings Solana split crates such as `solana-account-info 2.3.0`; `groth16-solana 0.0.3` still pulls `solana-program 1.18.26`. This mixed graph compiles and tests because ShieldLend calls Groth16 through byte-array helpers.
+- `anchor build --no-idl` emits SBF post-processing warnings for undefined/not-known syscalls including `sol_alt_bn128_group_op`. Treat this as a redeploy/runtime validation item before upgraded binaries go live.
+- Anchor 0.32.1 compatibility is now present, but MagicBlock PER macros and Encrypt Anchor CPI are still not wired.

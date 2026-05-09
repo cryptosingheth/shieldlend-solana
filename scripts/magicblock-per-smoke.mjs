@@ -434,12 +434,12 @@ if (PRIVATE_PAYMENTS_URL) {
 section("11. Rust PER Macro Status");
 
 warn(
-  "Anchor version gap",
-  "Current: 0.30.1 — Required for #[ephemeral]/#[delegate]/#[commit]: 0.32.1"
+  "Rust PER macros not wired",
+  "Anchor 0.32.1 compatibility is present; #[ephemeral]/#[delegate]/#[commit] are not in ShieldLend programs"
 );
 info(
   "Blocked",
-  "shielded_pool + lending_pool Rust macros — Anchor upgrade is an isolated task"
+  "shielded_pool + lending_pool Rust macros — program-side PER wiring is a separate task"
 );
 info(
   "Unblocked",
