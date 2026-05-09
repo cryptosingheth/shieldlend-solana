@@ -1,6 +1,6 @@
 # ShieldLend — wSOL Umbra Payout Path
 
-Last updated: 2026-05-08 (branch: live/wsol-umbra-e2e)
+Last updated: 2026-05-09 (branch: live/wsol-umbra-e2e)
 
 ---
 
@@ -93,7 +93,13 @@ Both calls go through the Umbra relayer at
 ## Devnet Script
 
 ```bash
+# Full run (attempts C2H + wSOL Umbra):
 node scripts/devnet-wsol-umbra-roundtrip.mjs
+
+# Umbra-only run (skip C2H — use for clean demo runs):
+SKIP_C2H=1 node scripts/devnet-wsol-umbra-roundtrip.mjs
+# or:
+node scripts/devnet-wsol-umbra-roundtrip.mjs --skip-c2h
 
 # or via npm:
 npm run smoke:wsol-umbra-roundtrip
@@ -104,12 +110,26 @@ npm run smoke:wsol-umbra-roundtrip
 - `@umbra-privacy/sdk@4.0.0` installed (`npm install` at repo root)
 - Optional: `WSOL_UMBRA_DEMO_AMOUNT=<lamports>` (default: 1_000_000)
 
+**Live smoke result (2026-05-08):**
+
+| Step | Result |
+|---|---|
+| Phase 1 — C2H store_withdraw_proof / withdraw | FAILED (custom program error `0x0`) |
+| Phase 2 — SOL → wSOL wrap | CONFIRMED |
+| Phase 2 — Umbra wSOL deposit | CONFIRMED |
+| Phase 2 — Umbra wSOL withdraw | CONFIRMED |
+
+Phase 1 failed with `0x0` in the roundtrip script. This does **not** invalidate the wSOL Umbra
+adapter — Phase 2 is independent. For C2H confirmation, see `devnet-fullround.mjs` which
+completed the full round-trip (198,502 CU) in a prior devnet session.
+Use `SKIP_C2H=1` to run the demo without touching C2H state.
+
 **Output includes:**
-- Phase 1 result: C2H nullifier check + optional proof run
+- Phase 1 result: C2H nullifier check + attempt (or SKIPPED if flag set)
 - Phase 2 result: wSOL wrap tx signature
 - Umbra deposit queue signature + callback signature
 - Umbra withdraw queue signature + callback signature
-- Full JSON report with claim boundary embedded
+- Full JSON report with claim boundary embedded (c2hStatus field)
 
 ---
 
@@ -117,9 +137,9 @@ npm run smoke:wsol-umbra-roundtrip
 
 | Claim | Confirmed? | Notes |
 |---|---|---|
-| ShieldLend C2H Groth16 proof verified on-chain | **Yes** | 198,502 CU; devnet-fullround.mjs; DEV/TEST trusted setup only |
-| Nullifier consumed via NullifierRegistry CPI | **Yes** | After devnet-fullround.mjs or this script |
-| Exit queued in exit_queue | **Yes** | stealth_address = wallet pubkey in demo |
+| ShieldLend C2H Groth16 proof verified on-chain | **Yes (devnet-fullround.mjs)** | 198,502 CU; DEV/TEST trusted setup only; roundtrip script Phase 1 failed with `0x0` |
+| Nullifier consumed via NullifierRegistry CPI | **Yes (devnet-fullround.mjs)** | Confirmed from prior devnet session; not re-confirmed in roundtrip script |
+| Exit queued in exit_queue | **Yes (devnet-fullround.mjs)** | stealth_address = wallet pubkey in demo |
 | SOL transferred from pool to stealth_address | **No** | flush_exits fail-closed; PER adapter not wired |
 | wSOL Umbra encrypted-balance deposit confirmed | **Yes** | SDK 4.0.0; devnet relayer; real Umbra program |
 | wSOL Umbra encrypted-balance withdraw confirmed | **Yes** | SDK 4.0.0; same flow as umbra-funded-smoke.mjs |
@@ -135,9 +155,11 @@ npm run smoke:wsol-umbra-roundtrip
 **Safe to claim:**
 
 > "ShieldLend C2H withdraw ZK proof is verified on-chain (Groth16 BN254,
-> 198,502 CU, DEV/TEST). A post-withdraw wSOL settlement adapter routes
-> the payout through the Umbra encrypted-balance SDK on devnet (SDK 4.0.0,
-> deposit + withdraw confirmed)."
+> 198,502 CU, DEV/TEST) via `devnet-fullround.mjs`. A post-withdraw wSOL
+> settlement adapter routes the payout through the Umbra encrypted-balance
+> SDK on devnet (SDK 4.0.0, deposit + withdraw confirmed). The roundtrip
+> script Phase 1 (C2H) failed with custom error `0x0` — use `SKIP_C2H=1`
+> for clean Umbra-only demo runs."
 
 **Do NOT claim:**
 

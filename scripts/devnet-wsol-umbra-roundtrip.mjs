@@ -76,6 +76,11 @@ const DEVNET_RELAYER  = process.env.NEXT_PUBLIC_UMBRA_RELAYER_URL || "https://re
 // Keep small: this is a demo amount representing the "post-flush payout".
 const WRAP_AMOUNT_LAMPORTS = BigInt(process.env.WSOL_UMBRA_DEMO_AMOUNT || "1000000");
 
+// Set SKIP_C2H=1 or pass --skip-c2h to skip Phase 1 and run Umbra-only.
+// Use this for clean Umbra demo runs when the smoke nullifier is already consumed
+// or when you want to avoid the C2H failure affecting the exit code.
+const SKIP_C2H = process.env.SKIP_C2H === "1" || process.argv.includes("--skip-c2h");
+
 // ─── DEV/TEST C2H smoke nullifier hash (from devnet-fullround.mjs) ───────────
 // Used to check whether the smoke nullifier is already consumed on devnet.
 const SMOKE_NULLIFIER_HASH = Buffer.from([
@@ -113,6 +118,12 @@ function collectSigs(result) {
 
 function stringify(value) {
   return JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+}
+
+function extractErrorCode(result) {
+  const msg = result.err?.message ?? "";
+  const m = msg.match(/custom program error: (0x[0-9a-f]+)/i);
+  return m ? m[1] : msg.slice(0, 120) || "unknown";
 }
 
 function getAta(mint, owner) {
@@ -263,7 +274,7 @@ async function runC2HPhase(connection, wallet) {
     if (poolInfo) {
       console.log(`  exit_queue length: ${poolInfo.exitQueueLen}`);
     }
-    return { skipped: true, reason: "nullifier_already_consumed" };
+    return { skipped: true, reason: "nullifier_already_consumed", c2hStatus: "skipped_already_consumed" };
   }
 
   console.log("  Smoke nullifier not yet consumed — running store_withdraw_proof + withdraw...");
@@ -273,7 +284,7 @@ async function runC2HPhase(connection, wallet) {
   const poolInfo = await connection.getAccountInfo(poolState, "confirmed");
   if (!poolInfo) {
     console.log("  SKIP: pool state PDA not found. Run devnet-e2e.mjs to initialize, then devnet-fullround.mjs for deposit+flush.");
-    return { skipped: true, reason: "pool_not_initialized" };
+    return { skipped: true, reason: "pool_not_initialized", c2hStatus: "skipped_state_mismatch" };
   }
 
   const nextIndex = poolInfo.data.readBigUInt64LE(1033);
@@ -284,7 +295,7 @@ async function runC2HPhase(connection, wallet) {
   if (!alreadyFlushed) {
     console.log(`  SKIP: pool state unexpected (next_index=${nextIndex}, commitLen=${commitLen}, root not smoke_root).`);
     console.log("  Run devnet-fullround.mjs first to complete deposit+flush, then retry this script.");
-    return { skipped: true, reason: "pool_not_flushed_with_smoke_root" };
+    return { skipped: true, reason: "pool_not_flushed_with_smoke_root", c2hStatus: "skipped_state_mismatch" };
   }
 
   // store_withdraw_proof
@@ -312,7 +323,7 @@ async function runC2HPhase(connection, wallet) {
     ],
     "shielded_pool::store_withdraw_proof"
   );
-  if (!storeResult.ok) return { skipped: false, ok: false, step: "store_withdraw_proof" };
+  if (!storeResult.ok) return { skipped: false, ok: false, c2hStatus: "failed", step: "store_withdraw_proof", errorCode: extractErrorCode(storeResult), logs: storeResult.logs };
 
   // withdraw
   console.log("\n  withdraw (1,400,000 CU — Groth16 BN254 pairing)...");
@@ -350,13 +361,13 @@ async function runC2HPhase(connection, wallet) {
   );
 
   if (!withdrawResult.ok) {
-    return { skipped: false, ok: false, step: "withdraw" };
+    return { skipped: false, ok: false, c2hStatus: "failed", step: "withdraw", errorCode: extractErrorCode(withdrawResult), logs: withdrawResult.logs };
   }
 
   console.log("\n  C2H result: Groth16 proof verified on-chain. Nullifier consumed. Exit queued.");
   console.log("  NOTE: flush_exits is fail-closed (PER adapter not wired). SOL remains in pool PDA.");
   console.log("  Phase 2 wraps fresh wallet SOL to wSOL to simulate the post-flush payout amount.");
-  return { skipped: false, ok: true, storeSig: storeResult.sig, withdrawSig: withdrawResult.sig };
+  return { skipped: false, ok: true, c2hStatus: "confirmed", storeSig: storeResult.sig, withdrawSig: withdrawResult.sig };
 }
 
 // ─── Phase 2: wrap SOL → wSOL, route through Umbra ──────────────────────────
@@ -407,7 +418,11 @@ async function main() {
 
   console.log("=== ShieldLend wSOL Umbra Settlement Adapter — Devnet Roundtrip ===\n");
   console.log("CLAIM BOUNDARY:");
-  console.log("  Phase 1  — ShieldLend C2H ZK proof verified on-chain; nullifier consumed; exit queued.");
+  if (SKIP_C2H) {
+    console.log("  Phase 1  — SKIPPED (--skip-c2h / SKIP_C2H=1); see devnet-fullround.mjs for C2H confirmation.");
+  } else {
+    console.log("  Phase 1  — ShieldLend C2H ZK proof: will attempt below (may fail if state mismatch).");
+  }
   console.log("  Phase 2  — Post-withdraw settlement: wrap wallet SOL to wSOL; Umbra encrypted-balance flow.");
   console.log("  NOT live — flush_exits (PER adapter); native pool-to-Umbra SOL routing.");
   console.log("");
@@ -425,7 +440,7 @@ async function main() {
   const report = {
     adapter: "wsol-umbra-settlement",
     claimBoundary: {
-      c2hZkProofOnChain:   "shielded_pool::withdraw verified Groth16 BN254 on devnet; nullifier consumed; exit queued in exit_queue",
+      c2hZkProofOnChain:   null, // set after phase1 completes
       flushExitsStatus:    "FAIL-CLOSED — flush_exits requires PER adapter (Anchor 0.32.1 blocked); SOL stays in pool PDA",
       wrapStep:            `Wrapped ${WRAP_AMOUNT_LAMPORTS.toString()} lamports of fresh wallet SOL to wSOL to simulate post-flush payout`,
       umbraFlow:           "wSOL public-balance → Umbra encrypted-balance deposit → Umbra encrypted-balance withdraw",
@@ -437,6 +452,7 @@ async function main() {
     walletLamports:  walletLamports.toString(),
     wrapAmount:      WRAP_AMOUNT_LAMPORTS.toString(),
     phase1:          null,
+    c2hStatus:       null, // "confirmed" | "skipped_already_consumed" | "skipped_state_mismatch" | "skipped_by_flag" | "failed"
     wrapResult:      null,
     registrationSigs: [],
     depositResult:   null,
@@ -446,10 +462,26 @@ async function main() {
     txSignatures:    [],
     txExplorerUrls:  [],
     adapterLive:     false,
+    umbrawSolFlowLive: false,
   };
 
   // Phase 1 — C2H
-  report.phase1 = await runC2HPhase(connection, web3Keypair);
+  if (SKIP_C2H) {
+    console.log("\n── Phase 1: ShieldLend C2H ZK proof verification ──────────────────────────\n");
+    console.log("  SKIPPED: --skip-c2h / SKIP_C2H=1 flag set.");
+    console.log("  C2H devnet reference: see devnet-fullround.mjs (198,502 CU; nullifier consumed).");
+    report.phase1 = { skipped: true, reason: "skipped_by_flag", c2hStatus: "skipped_by_flag" };
+  } else {
+    report.phase1 = await runC2HPhase(connection, web3Keypair);
+  }
+  report.c2hStatus = report.phase1?.c2hStatus ?? null;
+  report.claimBoundary.c2hZkProofOnChain = report.c2hStatus === "confirmed"
+    ? "shielded_pool::withdraw verified Groth16 BN254 on devnet; nullifier consumed; exit queued"
+    : report.c2hStatus === "skipped_already_consumed"
+    ? "Nullifier already consumed from prior devnet run — C2H proof confirmed indirectly"
+    : report.c2hStatus === "skipped_by_flag"
+    ? "Skipped by flag — see devnet-fullround.mjs for C2H confirmation"
+    : `FAILED — step: ${report.phase1?.step ?? "?"}, error: ${report.phase1?.errorCode ?? "unknown"}`;
 
   // Phase 2 — wrap SOL → wSOL
   console.log("\n── Phase 2: wSOL wrap + Umbra settlement ───────────────────────────────────\n");
@@ -530,27 +562,47 @@ async function main() {
 
   report.txExplorerUrls = report.txSignatures.map(explorer);
   report.adapterLive = Boolean(report.depositResult?.queueSignature);
+  report.umbrawSolFlowLive = report.adapterLive && Boolean(report.withdrawResult?.queueSignature);
 
   // ─── Final report ─────────────────────────────────────────────────────────
 
   const balanceAfter = await connection.getBalance(owner, "confirmed");
   console.log("\n=== wSOL Umbra Settlement Adapter Result ===\n");
+
+  const phase1Line = report.phase1?.c2hStatus === "confirmed"
+    ? "OK — Groth16 proof verified; nullifier consumed; exit queued"
+    : report.phase1?.c2hStatus === "skipped_already_consumed"
+    ? "SKIPPED (nullifier_already_consumed) — C2H confirmed from prior devnet run"
+    : report.phase1?.c2hStatus === "skipped_by_flag"
+    ? "SKIPPED (--skip-c2h) — see devnet-fullround.mjs"
+    : report.phase1?.skipped
+    ? `SKIPPED (${report.phase1.reason})`
+    : `FAILED — step: ${report.phase1?.step ?? "?"}, error: ${report.phase1?.errorCode ?? "unknown"}`;
+
   if (report.adapterLive) {
     console.log("RESULT: wSOL UMBRA SETTLEMENT ADAPTER CONFIRMED");
-    console.log("  Phase 1 (C2H):         " + (report.phase1?.skipped
-      ? `SKIPPED (${report.phase1.reason}); C2H confirmed from prior devnet-fullround.mjs run`
-      : report.phase1?.ok ? "OK — Groth16 proof verified; nullifier consumed; exit queued" : "PARTIAL"));
+    console.log("  Phase 1 (C2H):         " + phase1Line);
     console.log("  Wrap SOL → wSOL:       OK");
     console.log("  Umbra wSOL deposit:    OK — queue sig: " + (report.depositResult?.queueSignature ?? "n/a"));
     console.log("  Umbra wSOL withdraw:   " + (report.withdrawResult?.queueSignature ? "OK" : "not attempted (balance state)"));
   } else {
-    console.log("RESULT: PARTIAL — Umbra deposit did not return a queue signature.");
+    console.log("RESULT: FAILED — Umbra deposit did not return a queue signature.");
+    console.log("  Phase 1 (C2H):         " + phase1Line);
     console.log("  Check the report below for details.");
   }
 
+  const c2hBoundaryLine = report.phase1?.c2hStatus === "confirmed"
+    ? "  CONFIRMED: ShieldLend C2H ZK proof verified on-chain; nullifier consumed; exit queued"
+    : report.phase1?.c2hStatus === "skipped_already_consumed"
+    ? "  CONFIRMED: ShieldLend C2H ZK proof (nullifier already consumed from prior devnet run)"
+    : report.phase1?.c2hStatus === "skipped_by_flag"
+    ? "  SKIPPED:   C2H phase (--skip-c2h flag); see devnet-fullround.mjs for prior confirmation"
+    : `  FAILED:    ShieldLend C2H ZK proof attempt — step: ${report.phase1?.step ?? "?"}, error: ${report.phase1?.errorCode ?? "unknown"}`;
+
   console.log("\nCLAIM BOUNDARY SUMMARY:");
   console.log("  CONFIRMED: wSOL Umbra encrypted-balance deposit/withdraw (SDK 4.0.0, devnet)");
-  console.log("  CONFIRMED: ShieldLend C2H ZK proof verified on-chain (if not already done)");
+  console.log("  CONFIRMED: SOL → wSOL wrap (ATA + SyncNative; devnet)");
+  console.log(c2hBoundaryLine);
   console.log("  NOT LIVE:  flush_exits SOL transfer (PER adapter fail-closed)");
   console.log("  NOT LIVE:  native pool SOL routed directly to Umbra (wSOL wrap is post-withdraw simulation)");
 

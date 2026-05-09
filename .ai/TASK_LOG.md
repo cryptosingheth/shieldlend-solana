@@ -843,3 +843,23 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 - `anchor build --no-idl` — pending
 - `npm run demo:status` — pending
 - `npm run build:frontend` — PASS
+
+---
+
+## 2026-05-09 — wSOL Umbra Reconciliation
+
+**Objective**: Reconcile roundtrip script with live smoke result — Phase 1 C2H FAILED with `0x0`; Phase 2 (wSOL Umbra) CONFIRMED.
+
+**Changes**:
+- `scripts/devnet-wsol-umbra-roundtrip.mjs`: added `SKIP_C2H` flag; `c2hStatus` field on all `runC2HPhase` returns; `extractErrorCode()`; FAILED classification; conditional claim boundary; `c2hStatus` + `umbrawSolFlowLive` report fields
+- `docs/UMBRA_WSOL_PAYOUT.md`: live smoke result table; SKIP_C2H docs; claim boundary table corrected
+- `docs/HACKATHON.md`: Umbra row updated with Phase 1 failure note
+- `docs/IMPLEMENTATION_STATUS.md`: wSOL adapter row updated
+- `docs/SUBMISSION_CHECKLIST.md`: Scene 3b uses `SKIP_C2H=1`
+
+**Validations**:
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS
+
+**Result**: Branch ready to commit. Awaiting user commit + push.

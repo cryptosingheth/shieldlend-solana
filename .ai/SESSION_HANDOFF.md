@@ -2,57 +2,81 @@
 
 ## Task Objective
 
-wSOL Umbra payout path — COMPLETE on `live/wsol-umbra-e2e`.
+wSOL Umbra payout path — reconciliation commit ready on `live/wsol-umbra-e2e`.
 
 ## Current Status
 
-wSOL Umbra settlement adapter implemented. Validations pending. Branch ready to commit and push.
+Script fixed, docs updated, validations passed. Awaiting commit + push (user must authorize).
 
 ---
 
-## wSOL Umbra Payout Path (2026-05-08, branch: live/wsol-umbra-e2e)
+## wSOL Umbra Reconciliation (2026-05-09, branch: live/wsol-umbra-e2e)
 
-### Files Added/Changed
+### Live Smoke Result (observed 2026-05-08)
 
-| File | Action |
+| Step | Result |
 |---|---|
-| `scripts/devnet-wsol-umbra-roundtrip.mjs` | New — two-step post-withdraw adapter: C2H phase + wSOL wrap + Umbra deposit/withdraw |
-| `frontend/src/lib/privacyRails/umbra.ts` | Updated — `wsol_umbra_adapter` mode, `WsolUmbraPayoutPath`, `getWsolUmbraPayoutPath()` |
-| `frontend/src/app/page.tsx` | Updated — Withdraw: "wSOL via Umbra" mode + `WsolUmbraAdapterPanel` |
-| `package.json` | Updated — added `smoke:wsol-umbra-roundtrip` |
-| `docs/UMBRA_WSOL_PAYOUT.md` | New — design doc, claim boundary, safe/unsafe wording |
-| `docs/HACKATHON.md` | Updated — Umbra row + blocker table |
-| `docs/SUBMISSION_CHECKLIST.md` | Updated — Scene 3b + Scene 8 |
-| `docs/IMPLEMENTATION_STATUS.md` | Updated — Umbra payout rows + Known Blockers |
-| `README.md` | Updated — Umbra row in status table |
-| `.ai/` files | Updated — CURRENT_TASK, TASK_LOG, SESSION_HANDOFF |
+| Phase 1 — C2H store_withdraw_proof / withdraw | **FAILED** (custom program error `0x0`) |
+| Phase 2 — SOL → wSOL wrap | **CONFIRMED** |
+| Phase 2 — Umbra wSOL deposit | **CONFIRMED** |
+| Phase 2 — Umbra wSOL withdraw | **CONFIRMED** |
 
-### Commit
+### Files Changed in This Session
 
-`feat: add wsol umbra payout path`
+| File | Change |
+|---|---|
+| `scripts/devnet-wsol-umbra-roundtrip.mjs` | Added `SKIP_C2H` flag; `c2hStatus` on all returns; `extractErrorCode()`; `FAILED` instead of `PARTIAL`; conditional claim boundary |
+| `docs/UMBRA_WSOL_PAYOUT.md` | Live smoke result table; SKIP_C2H docs; updated claim boundary table |
+| `docs/HACKATHON.md` | Umbra row: Phase 1 failure noted; SKIP_C2H referenced |
+| `docs/IMPLEMENTATION_STATUS.md` | wSOL adapter row: Phase 1 failure noted |
+| `docs/SUBMISSION_CHECKLIST.md` | Scene 3b: uses `SKIP_C2H=1` flag |
+
+### Validations
+
+- TypeScript typecheck: PASSED
+- Next.js build: PASSED
+- Cargo test: PASSED
+
+### Suggested Commit
+
+```
+fix: reconcile roundtrip script — SKIP_C2H mode, FAILED classification, honest claim boundary
+```
+
+Files to stage:
+- `scripts/devnet-wsol-umbra-roundtrip.mjs`
+- `docs/UMBRA_WSOL_PAYOUT.md`
+- `docs/HACKATHON.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+- `docs/SUBMISSION_CHECKLIST.md`
+- `.ai/CURRENT_TASK.md`
+- `.ai/SESSION_HANDOFF.md`
+- `.ai/TASK_LOG.md`
 
 ---
 
-## Confirmed Integration State (unchanged from previous session)
+## Confirmed Integration State
 
 ### C2H / Groth16
 
-- Full devnet round-trip: deposit → flush_epoch → store_withdraw_proof → withdraw
+- Full devnet round-trip via `devnet-fullround.mjs`: deposit → flush_epoch → store_withdraw_proof → withdraw
 - On-chain Groth16 BN254: PASSED — 198,502 CU; nullifier consumed; nullifier registry CPI succeeded
 - Trusted setup: DEV/TEST pot14 only — NOT production
-
-### Encrypt Rail
-
-- gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet
-- Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`
-- Ciphertext handle: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
-- Program-side FHE: fail-closed. Anchor 0.32.1 sidecar blocked.
+- Roundtrip script Phase 1: FAILED with custom program error `0x0` (separate from fullround run)
 
 ### Umbra Rail
 
 - `@umbra-privacy/sdk@4.0.0`. Devnet program: `DSuKkyqGVGgo4QtPABfxKJKygUDACbUhirnuv63mEpAJ`
 - Funded devnet wSOL deposit/withdraw: 7 confirmed tx signatures on record
+- wSOL Umbra settlement adapter: Phase 2 confirmed live; Phase 1 in roundtrip script FAILED
 - ShieldLend C2H payout: still native SOL direct `stealth_address`; wSOL/SPL bridge not wired
+- SKIP_C2H=1 mode available for clean Umbra-only demo runs
+
+### Encrypt Rail
+
+- gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet
+- Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`
+- Program-side FHE: fail-closed.
 
 ### MagicBlock Rail
 
@@ -60,15 +84,13 @@ wSOL Umbra settlement adapter implemented. Validations pending. Branch ready to 
 - TEE RPC HTTP 200; Router RPC HTTP 200
 - PER sidecar: 4 ShieldLend use-case bundles; 17/17 smoke pass; 13/13 SDK functions verified
 - Rust PER macros blocked: Anchor 0.32.1 required, workspace 0.30.1
-- TDX attestation warn: challenge mismatch SDK 0.8.8 vs devnet TEE
-- Private Payments URL: not configured; adapter fails closed
+- Private Payments URL: not configured
 
 ### IKA Rail
 
 - `@ika.xyz/sdk@0.4.0` + `@ika.xyz/ika-wasm@0.2.1`
 - SDK/capability probe: all four functions present
-- WASM `createClassGroupsKeypair(ED25519)` runs locally
-- Real Solana relay signing blocked: B1 (no Solana code in SDK), B2 (no CPI crate), B3 (Sui dependency)
+- Real Solana relay signing blocked: B1/B2/B3
 - Direct wallet fallback: labelled "reduced privacy" in UI
 
 ---
@@ -87,16 +109,6 @@ wSOL Umbra settlement adapter implemented. Validations pending. Branch ready to 
 
 ---
 
-## Missing User Assets for Final Submission
-
-- C2H devnet transaction signatures from `devnet-fullround.mjs` run (fill into `SUBMISSION_CHECKLIST.md`)
-- Demo video (9 scenes described in `SUBMISSION_CHECKLIST.md`)
-- Screenshots (5 listed in `SUBMISSION_CHECKLIST.md`)
-- `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` — requires Discord access
-- GitHub remote push + PR creation
-
----
-
 ## Do Not Claim
 
 - Production ZK trusted setup (DEV/TEST pot14 only)
@@ -107,16 +119,16 @@ wSOL Umbra settlement adapter implemented. Validations pending. Branch ready to 
 - MagicBlock TDX attestation verified
 - Native protocol-level Umbra payout (flush_exits fail-closed; wSOL adapter is post-withdraw simulation)
 - Encrypt on-chain FHE active
+- C2H confirmed by roundtrip script (Phase 1 FAILED with 0x0; C2H confirmed only via devnet-fullround.mjs)
 
 ---
 
 ## Next Actions
 
-1. Run `npm run smoke:wsol-umbra-roundtrip` on devnet to get live tx signatures
-2. Commit: `git add . && git commit -m "feat: add wsol umbra payout path"`
-3. `git push origin live/wsol-umbra-e2e` (user must authorize)
-4. Create PR against `main` with description linking to `docs/UMBRA_WSOL_PAYOUT.md`
-5. Fill in wSOL roundtrip tx signatures in `docs/SUBMISSION_CHECKLIST.md`
-6. Record Scene 3b (roundtrip output) and updated Scene 8 (wSOL via Umbra UI mode)
+1. Commit: `fix: reconcile roundtrip script — SKIP_C2H mode, FAILED classification, honest claim boundary`
+2. Push: `git push origin live/wsol-umbra-e2e` (user must authorize)
+3. Create PR against `main`
+4. Record Scene 3b using `SKIP_C2H=1 node scripts/devnet-wsol-umbra-roundtrip.mjs`
+5. Fill C2H devnet tx signatures into `docs/SUBMISSION_CHECKLIST.md`
 
 Safe to `/clear` after this handoff.
