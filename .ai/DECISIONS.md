@@ -393,3 +393,11 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: Use a local source-equivalent `ika-dwallet-anchor` crate for Anchor 0.32.1 and wire `lending_pool::approve_ika_borrow_message` as compile-level scaffolding only.
 **Why**: Official IKA pre-alpha source provides the Anchor CPI ABI and seed pattern, but the official crate currently targets `anchor-lang = "1"`. Pulling it directly into the Anchor 0.32.1 workspace would introduce an incompatible Anchor account type boundary. A local crate preserves the official `approve_message` instruction ABI while keeping one Anchor family in ShieldLend.
 **How to apply**: Keep the local crate limited to the official IKA CPI instruction builders. Do not claim live relay signing until a real devnet transaction calls `approve_ika_borrow_message` with an IKA coordinator PDA, dWallet account whose authority is the LendingPool CPI authority PDA, MessageApproval PDA, and active ShieldLend loan. Preserve the pre-alpha disclaimer: IKA uses a single mock signer and is not production MPC.
+
+---
+
+## IKA Devnet Smoke Boundary (live/ika-anchor-cpi)
+
+**Decision**: Treat IKA live-state creation and `lending_pool` deployment readiness as separate boundaries.
+**Why**: `scripts/ika-anchor-approval-smoke.mjs` proved that public IKA pre-alpha TLS gRPC + Solana devnet are usable enough to create a real dWallet and transfer its authority to the LendingPool CPI PDA. The remaining blocker is our deployment gap: the devnet `lending_pool` program predates `approve_ika_borrow_message` and fails with Anchor `InstructionFallbackNotFound` (`0x65`).
+**How to apply**: It is accurate to claim source-backed IKA CPI capability plus real devnet dWallet setup/authority transfer. It is not accurate to claim live IKA approval or relay signing until `lending_pool` is rebuilt and redeployed, then `node scripts/ika-anchor-approval-smoke.mjs` succeeds past the CPI approval step.

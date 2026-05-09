@@ -1,7 +1,7 @@
 // IKA dWallet pre-alpha rail adapter.
 // Source: https://solana-pre-alpha.ika.xyz/
 //
-// Pre-alpha status (verified 2026-05-08):
+// Pre-alpha status (verified 2026-05-09):
 //   @ika.xyz/sdk exports IkaClient + coordinatorTransactions (DKG, sign, FutureSign) for 4 curves.
 //   ika-dwallet-anchor source provides approve_message CPI ABI for Solana programs.
 //   Endpoint: https://pre-alpha-dev-1.ika.ika-network.net:443
@@ -9,8 +9,10 @@
 // Current ShieldLend status:
 //   1. Single mock signer — pre-alpha does NOT use real distributed MPC.
 //   2. lending_pool has compile-level approve_message CPI scaffolding.
-//   3. No real devnet approve_message tx is confirmed because required IKA dWallet,
-//      coordinator, message approval, and authority-transfer state are not supplied.
+//   3. Real devnet IKA DKG + on-chain dWallet creation + authority transfer to the
+//      LendingPool CPI PDA are confirmed by scripts/ika-anchor-approval-smoke.mjs.
+//   4. The live approval still fails before CPI because the deployed devnet
+//      lending_pool binary predates approve_ika_borrow_message.
 
 export type SignerMode = "direct_wallet" | "ika_dwallet_mock";
 
@@ -46,7 +48,7 @@ export const MOCK_SIGNER_DISCLOSURE =
 
 export const IKA_CPI_DISCLOSURE =
   "ShieldLend lending_pool is compile-wired to IKA approve_message via the official CPI authority seed. " +
-  "No live devnet IKA approval transaction is confirmed yet because real dWallet/coordinator/message approval accounts are required.";
+  "Real IKA devnet dWallet setup and CPI-authority transfer are confirmed, but the deployed devnet lending_pool binary does not yet include approve_ika_borrow_message.";
 
 export const DIRECT_WALLET_DISCLOSURE =
   "Direct wallet mode: user Phantom wallet is the on-chain signer. " +
@@ -66,9 +68,9 @@ export async function probeIkaCapabilities(): Promise<IkaCapabilityReport> {
   const endpointConfigured = Boolean(IKA_GRPC_URL && IKA_PROGRAM_ID);
 
   const blockers: string[] = [
-    "No real devnet IKA approve_message transaction has been submitted from ShieldLend. " +
-      "Required external state: IKA coordinator PDA, dWallet account controlled by the lending_pool CPI authority PDA, " +
-      "MessageApproval PDA, and an active ShieldLend loan with future_sign_authorized=true.",
+    "No real devnet IKA approve_message CPI transaction has landed from ShieldLend. " +
+      "Real pre-alpha DKG, on-chain dWallet creation, and authority transfer to the lending_pool CPI authority PDA succeeded, " +
+      "but the deployed devnet lending_pool program rejected approve_ika_borrow_message with Anchor InstructionFallbackNotFound. Redeploy is required.",
     MOCK_SIGNER_DISCLOSURE,
   ];
   if (!sdkAvailable) {

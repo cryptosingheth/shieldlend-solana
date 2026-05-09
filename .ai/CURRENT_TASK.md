@@ -1,6 +1,6 @@
 # Current Task
 
-## Status: IKA Anchor CPI compile wiring on `live/ika-anchor-cpi`.
+## Status: IKA devnet approval smoke attempted on `live/ika-anchor-cpi`.
 
 ### IKA Anchor CPI Update (2026-05-09)
 
@@ -10,7 +10,8 @@
 - Source confirms `ika-dwallet-anchor`, program ID `87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY`, CPI authority seed `b"__ika_cpi_authority"`, and `DWalletContext::approve_message(...)`.
 - Official crate currently targets `anchor-lang = "1"`; ShieldLend uses a local source-equivalent compatibility crate at `crates/ika-dwallet-anchor` for Anchor 0.32.1.
 - `lending_pool::approve_ika_borrow_message` compile-wires IKA `approve_message` behind active-loan and `future_sign_authorized` guards.
-- No live devnet IKA approval tx was submitted because required external IKA dWallet/coordinator/MessageApproval state was not available.
+- `scripts/ika-anchor-approval-smoke.mjs` confirmed fresh devnet collateral proof generation, nullifier registration, `lending_pool::borrow`, IKA DKG, on-chain dWallet creation, and dWallet authority transfer to the LendingPool CPI authority PDA.
+- No live devnet IKA approval tx landed because the deployed devnet `lending_pool` binary predates `approve_ika_borrow_message` and returns Anchor `InstructionFallbackNotFound` (`0x65`).
 
 ## Previous Status: Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening — all merged to `convergence/privacy-rails-integration`.
 
@@ -71,7 +72,7 @@
 ## Hard Constraints
 
 - Do not claim production ZK trusted setup (DEV/TEST pot14 only).
-- Do not claim IKA relay signing active. Current status is compile-wired only; no real devnet `approve_message` tx is confirmed.
+- Do not claim IKA relay signing active. Current status is: IKA-side devnet setup confirmed, but live approval CPI is blocked by a stale `lending_pool` deployment.
 - Do not claim MagicBlock PER Rust macros wired in Anchor programs.
 - Do not claim MagicBlock Private Payments private transfer via intended ephemeral/router path confirmed.
 - Do not claim native protocol-level Umbra payout (wSOL adapter is post-withdraw simulation; flush_exits fail-closed).

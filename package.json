@@ -22,6 +22,7 @@
     "check:ika": "node scripts/check-ika.mjs",
     "check:ika-cpi": "node scripts/ika-anchor-cpi-diagnostic.mjs",
     "smoke:ika": "node scripts/ika-live-sign-smoke.mjs",
+    "smoke:ika-approval": "node scripts/ika-anchor-approval-smoke.mjs",
     "demo:status": "node scripts/demo-status.mjs",
     "test:programs": "cargo test --workspace",
     "test:anchor": "anchor test",

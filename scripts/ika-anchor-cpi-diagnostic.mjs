@@ -2,8 +2,9 @@
 // Source-backed diagnostic for the IKA Solana Anchor CPI path.
 //
 // This script does not submit a transaction. It verifies local compile-level
-// wiring and reports the external IKA state required before a real
-// approve_message CPI can be attempted.
+// wiring and reports the minimum account/state shape for a real
+// approve_message CPI attempt. For the real devnet attempt, use
+// `node scripts/ika-anchor-approval-smoke.mjs`.
 
 import { createRequire } from "module";
 import { existsSync, readFileSync } from "fs";
@@ -96,7 +97,7 @@ if (cpiAuthority.error) {
   ok(`lending_pool IKA CPI authority PDA: ${cpiAuthority.pda} (bump ${cpiAuthority.bump})`);
 }
 
-console.log("\n3. External state needed for a real devnet CPI tx");
+console.log("\n3. State shape for a real devnet CPI tx");
 let missing = 0;
 for (const [key, description] of requiredExternalState) {
   if (process.env[key]) {
@@ -117,9 +118,10 @@ if (cratePresent && dependencyPresent && instructionPresent && programIdPresent 
 
 if (missing > 0) {
   warn("No live IKA approve_message transaction was submitted.");
-  info("Reason: required IKA dWallet/coordinator/message approval/loan state was not supplied.");
-  info("This is blocked external state, not a local relay-signing success.");
+  info("This diagnostic only checks local wiring and optional env hints.");
+  info("The real smoke script can now create the IKA-side devnet state and a fresh ShieldLend loan automatically.");
+  info("Current observed live blocker after that path: deployed devnet lending_pool returns Anchor InstructionFallbackNotFound for approve_ika_borrow_message.");
 } else {
   warn("All external-state env vars are present, but this diagnostic is non-submitting by design.");
-  info("Use a dedicated transaction submitter only after confirming the dWallet authority has been transferred to the CPI authority PDA.");
+  info("Use `node scripts/ika-anchor-approval-smoke.mjs` to attempt the real devnet flow.");
 }

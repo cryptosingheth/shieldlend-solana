@@ -923,3 +923,24 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 - `node scripts/ika-live-sign-smoke.mjs` — PASS; local-only, reports SDK/Sui limits and compile-level CPI status
 
 **Claim boundary**: IKA Anchor CPI is compile-wired in `lending_pool`. IKA relay signing is not live, no IKA devnet approval tx signature exists, and direct wallet remains reduced privacy.
+
+---
+
+## 2026-05-09 — IKA devnet approval smoke reached deployment blocker
+
+**Branch**: `live/ika-anchor-cpi`
+
+**What the new smoke proved**:
+- `scripts/ika-anchor-approval-smoke.mjs` generated a fresh collateral proof from the checked-in DEV/TEST artifacts.
+- The script temporarily authorized the local wallet in `nullifier_registry`, registered a fresh nullifier, then restored the original authorized-program list.
+- `lending_pool::borrow` succeeded on devnet with a fresh loan PDA and `future_sign_authorized=true`.
+- IKA TLS gRPC DKG succeeded against `pre-alpha-dev-1.ika.ika-network.net:443`.
+- The resulting IKA dWallet PDA was committed on Solana devnet and its authority was transferred to the LendingPool CPI authority PDA.
+
+**What is still blocked**:
+- The approval CPI did not land because deployed devnet `lending_pool` program `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` returned Anchor `InstructionFallbackNotFound` (`0x65`) for `approve_ika_borrow_message`.
+- This is now a deployment blocker on our side, not a missing-IKA-state blocker.
+
+**Claim boundary**:
+- Accurate: real IKA pre-alpha devnet DKG, on-chain dWallet creation, and authority transfer to ShieldLend CPI authority.
+- Not accurate: live IKA approval / relay signing from ShieldLend until `lending_pool` is redeployed and the CPI step succeeds.

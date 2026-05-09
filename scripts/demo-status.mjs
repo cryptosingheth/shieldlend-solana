@@ -173,7 +173,7 @@ ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
-ok('IKA Anchor CPI: compile-wired approve_message path present in lending_pool; no live tx submitted');
+ok('IKA Anchor CPI: local approve_message path present; devnet DKG + dWallet authority transfer confirmed; approval blocked by stale lending_pool deployment');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
 
@@ -197,7 +197,7 @@ console.log(`
   NOT ALLOWED (do not claim):
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
-  ✗ IKA relay signing active (compile-wired only; no real devnet approve_message tx submitted)
+  ✗ IKA relay signing active (devnet dWallet setup works, but deployed lending_pool lacks approve_ika_borrow_message)
   ✗ MagicBlock Private Payments private transfer via intended ephemeral/router path (ephemeral submit blocked; base devnet fallback only)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)

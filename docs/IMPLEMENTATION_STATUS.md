@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-09 (live/ika-anchor-cpi: IKA Anchor CPI compile wiring)
+Last reconciled: 2026-05-09 (live/ika-anchor-cpi: IKA devnet approval smoke attempt)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -12,9 +12,9 @@ fail-closed scaffolding, missing integrations, and deployment status.
 |---|---|---|
 | Anchor programs | Local workspace upgraded to Anchor `0.32.1`; compiles to SBF with `anchor build --no-idl`; all three program IDs preserved | Upgraded binaries were not redeployed in this task; `anchor build --no-idl` still emits SBF syscall warnings that must be runtime-validated before redeploy |
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
-| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
+| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST); borrow proof path now confirmed on devnet | Production trusted setup is missing; repay on-chain flow and full private borrow/disbursement remain unverified end to end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; wSOL Umbra settlement adapter (Phase 2) confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed; IKA Anchor CPI `approve_message` path compile-wired in `lending_pool` from official pre-alpha source | Anchor 0.32.1 workspace compatibility is present; IKA relay signing has no live devnet approval tx, ShieldLend-native Umbra payout, PER macros in programs, Private Payments private transfer via intended ephemeral/router RPC, and Encrypt/FHE on-chain health computation are not live |
+| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; wSOL Umbra settlement adapter (Phase 2) confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed; IKA pre-alpha devnet DKG, on-chain dWallet creation, and dWallet authority transfer to the LendingPool CPI PDA confirmed; IKA Anchor CPI `approve_message` path compile-wired locally | Anchor 0.32.1 workspace compatibility is present; IKA relay signing still has no live devnet approval tx because deployed `lending_pool` is stale, ShieldLend-native Umbra payout, PER macros in programs, Private Payments private transfer via intended ephemeral/router RPC, and Encrypt/FHE on-chain health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -39,7 +39,8 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `npm run check:umbra` | **confirmed** | SDK/package/program check passed; devnet indexer and relayer health returned 200 |
 | `npm run smoke:umbra` | **confirmed** | SDK client init + devnet user query passed; no token action submitted |
 | `npm run smoke:umbra-funded` | **confirmed** | wSOL wrap + Umbra encrypted-balance deposit + Umbra withdrawal passed on devnet |
-| `npm run check:ika-cpi` | **confirmed local diagnostic** | Reports official IKA CPI constants, compile-level `lending_pool` wiring, derived CPI authority PDA, and missing external dWallet/message approval state |
+| `npm run check:ika-cpi` | **confirmed local diagnostic** | Reports official IKA CPI constants, compile-level `lending_pool` wiring, derived CPI authority PDA, and the account/state shape for a real approval attempt |
+| `node scripts/ika-anchor-approval-smoke.mjs` | **partial devnet confirmation** | Fresh collateral proof + nullifier register + `lending_pool::borrow` confirmed; IKA DKG + on-chain dWallet + authority transfer confirmed; approval CPI blocked by deployed `lending_pool` fallback error `0x65` |
 
 ## Program IDs
 
@@ -137,8 +138,8 @@ Artifact details:
 
 | Privacy property or rail | Current status | Live claim allowed? |
 |---|---|---|
-| IKA relay signer privacy | Compile-wired only: `lending_pool::approve_ika_borrow_message` invokes IKA `approve_message` via the official CPI authority seed, using a local Anchor 0.32.1-compatible crate adapted from official source | No — no real devnet `approve_message` tx submitted; IKA pre-alpha mock signer is not production MPC |
-| IKA FutureSign liquidation consent | Compile-wired approval path exists; borrower-supplied `future_sign_authorized` flag gates the CPI instruction | No — missing real IKA dWallet/coordinator/MessageApproval accounts and live tx signature |
+| IKA relay signer privacy | Local `lending_pool::approve_ika_borrow_message` invokes IKA `approve_message` via the official CPI authority seed, using a local Anchor 0.32.1-compatible crate adapted from official source. Real devnet DKG, on-chain dWallet creation, and dWallet authority transfer to the LendingPool CPI PDA are confirmed. | No — deployed devnet `lending_pool` binary predates `approve_ika_borrow_message`, so no live approval tx landed; IKA pre-alpha mock signer is not production MPC |
+| IKA FutureSign liquidation consent | Fresh devnet loan creation confirmed with `future_sign_authorized=true`; local approval path exists and the IKA-side state can be created | No — live approval CPI still requires a redeployed `lending_pool` |
 | MagicBlock PER batching | TypeScript adapter wired; TEE RPC live (HTTP 200); workspace now on Anchor 0.32.1 | No — Rust-side account delegation macros are still not wired |
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | Public API wired; health/challenge/login/mint/balance/builders verified; wSOL deposit and withdraw submitted on devnet; private-transfer tx submits only through base devnet after local blockhash refresh | Partial — deposit/withdraw live, intended ephemeral/router private-transfer submit still blocked; ShieldLend repayment binding not wired |
@@ -168,7 +169,7 @@ Artifact details:
 | MagicBlock PER macros not wired | Anchor 0.32.1 compatibility is present in the workspace, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet. Wire separately and re-run C2H after any program-side change. |
 | ShieldLend native SOL -> Umbra token settlement (protocol-level) | flush_exits fail-closed (PER not wired); wSOL adapter (`devnet-wsol-umbra-roundtrip.mjs`) is a post-withdraw simulation, not on-chain program routing |
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
-| IKA live approval tx missing | Compile-level CPI is present, but required external IKA coordinator/dWallet/MessageApproval state was not supplied; user wallet remains the signer for frontend transactions |
+| IKA live approval tx missing | This is now a deployment blocker, not an IKA-state blocker. Real IKA devnet DKG, on-chain dWallet creation, fresh devnet loan creation, and authority transfer to the LendingPool CPI PDA are confirmed. The live approval still fails because the deployed `lending_pool` program returns Anchor `InstructionFallbackNotFound` (`0x65`) for `approve_ika_borrow_message`. |
 | PER not wired | No private batching or unified exit batching |
 
 See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file/line evidence.
