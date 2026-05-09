@@ -124,9 +124,10 @@ Expected output:
 - TEE RPC: HTTP 200
 - Router RPC: HTTP 200
 - 13/13 SDK functions verified
+- Private Payments API health/challenge/wSOL mint/builder checks return 200
 - Warn: TDX attestation challenge mismatch (expected — do not hide this)
-- Warn: Private Payments URL not set (expected — requires Discord access)
-- Warn: Rust PER macros not wired (expected — Anchor 0.32.1 compatibility exists, but program-side PER is not live)
+- Warn: `/v1/mcp` returns 404 on the public API (expected — MCP endpoint not available)
+- Warn: Rust PER macros not wired (expected — Anchor 0.32.1 compatibility present; program-side delegation not live)
 
 ### IKA
 
@@ -153,7 +154,7 @@ Navigate to the Privacy Status panel (slide-over or status page). It shows the l
 | C2H / Groth16 | Green — devnet round-trip confirmed |
 | Umbra | Yellow — funded devnet wSOL confirmed; native SOL payout bridge needed |
 | Encrypt | Yellow — gRPC probe confirmed; on-chain FHE fail-closed |
-| MagicBlock | Yellow — TEE + Router HTTP 200; Rust macros and Private Payments blocked |
+| MagicBlock | Yellow — TEE + Router HTTP 200; Private Payments deposit/withdraw live; private-transfer base-RPC fallback submitted after blockhash refresh; ephemeral/router private transfer and Rust macros blocked |
 | IKA | Yellow — SDK/WASM probe confirmed; Solana relay signing blocked |
 
 Yellow statuses are expected and honest. Do not attempt to make them green by hiding blockers.
@@ -174,7 +175,7 @@ Read this list before going live:
 - Do NOT say the ZK trusted setup is production-grade. The ceremony used `pot14` (DEV/TEST). State: "DEV/TEST trusted setup — not production."
 - Do NOT say IKA relay signing is active. The deposit uses direct wallet fallback. State: "IKA SDK probed and blockers documented — Solana CPI crate not yet published."
 - Do NOT say MagicBlock PER is running inside a ShieldLend transaction. The Rust macros are not wired. State: "TEE RPC reachable — Anchor 0.32.1 compatibility present — Rust PER macros not wired."
-- Do NOT say MagicBlock Private Payments is live. The URL is Discord-gated. State: "Adapter wired and fail-closed — Private Payments URL requires Discord access."
+- Do NOT say MagicBlock Private Payments private transfer is live end-to-end. State: "Public API auth/builders and wSOL deposit/withdraw are live on devnet; a refreshed private-transfer tx submits through base devnet only — the intended ephemeral/router path is still blocked."
 - Do NOT say Umbra is handling the ShieldLend withdraw output. C2H native SOL exits directly. State: "Umbra funded wSOL deposit/withdraw confirmed — ShieldLend C2H payout bridge not yet implemented."
 - Do NOT say Encrypt FHE is computing health factors on-chain. The Anchor CPI integration is not wired. State: "Encrypt gRPC probe confirmed — Anchor 0.32.1 compatibility present — on-chain FHE not wired."
 
@@ -182,7 +183,7 @@ Read this list before going live:
 
 ## Honest Framing Script (for judges)
 
-> "ShieldLend wires four privacy protocols into a Solana lending protocol. On-chain Groth16 BN254 withdrawal verification is confirmed on devnet — deposit, epoch flush, withdraw proof storage, and withdrawal all complete in sequence with 198,502 CU consumed. Umbra encrypted-balance deposit and withdrawal are confirmed on devnet for wSOL. Encrypt pre-alpha gRPC is live and returned a ciphertext handle for a health-ratio input. MagicBlock TEE and Router RPCs respond on devnet with HTTP 200, and the PER SDK builders are verified across 13 functions. IKA SDK and WASM load and the capability probe passes — Solana relay signing is blocked by a missing CPI crate, which is an IKA pre-alpha limitation we documented with source evidence. Every blocker is an engineering gap, not a design gap."
+> "ShieldLend wires four privacy protocols into a Solana lending protocol. On-chain Groth16 BN254 withdrawal verification is confirmed on devnet — deposit, epoch flush, withdraw proof storage, and withdrawal all complete in sequence with 198,502 CU consumed. Umbra encrypted-balance deposit and withdrawal are confirmed on devnet for wSOL. Encrypt pre-alpha gRPC is live and returned a ciphertext handle for a health-ratio input. MagicBlock TEE and Router RPCs respond on devnet with HTTP 200, PER SDK builders are verified, and MagicBlock Private Payments wSOL deposit/withdraw are submitted on devnet through the public API. The private-transfer builder also works, and a local blockhash refresh lets the transaction submit through base devnet, but the intended ephemeral/router private-transfer path is still blocked by blockhash/RPC behavior. IKA SDK and WASM load and the capability probe passes — Solana relay signing is blocked by a missing CPI crate, which is an IKA pre-alpha limitation we documented with source evidence. Every blocker is an engineering gap, not a design gap."
 
 ---
 

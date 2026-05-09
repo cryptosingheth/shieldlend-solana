@@ -862,6 +862,24 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 
 **Objective**: Reconcile roundtrip script with live smoke result — Phase 1 C2H FAILED with `0x0`; Phase 2 (wSOL Umbra) CONFIRMED.
 
-**Changes**: `scripts/devnet-wsol-umbra-roundtrip.mjs` — `SKIP_C2H` flag; `c2hStatus` on all returns; `extractErrorCode()`; `FAILED` classification; conditional claim boundary; `c2hStatus` + `umbrawSolFlowLive` report fields. `docs/UMBRA_WSOL_PAYOUT.md` — live smoke result; SKIP_C2H docs; claim boundary corrected. `docs/HACKATHON.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/SUBMISSION_CHECKLIST.md` updated accordingly.
+**Changes**: `scripts/devnet-wsol-umbra-roundtrip.mjs` — `SKIP_C2H` flag; `c2hStatus` on all returns; `extractErrorCode()`; `FAILED` classification; conditional claim boundary. `docs/UMBRA_WSOL_PAYOUT.md` — live smoke result; SKIP_C2H docs; claim boundary corrected.
 
-**Validations**: `npm run typecheck:frontend` PASS; `npm run build:frontend` PASS; `cargo test --workspace` PASS.
+**Validations**: typecheck PASS; build PASS; `cargo test` PASS.
+
+---
+
+## 2026-05-09 — MagicBlock Private Payments Live SPL API
+
+**Objective**: Move MagicBlock Private Payments from placeholder routes to the public SPL API on devnet. Harden with blockhash diagnosis for private-transfer ephemeral submit failure.
+
+**Files added**: `scripts/magicblock-private-payments-live.mjs`, `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`.
+
+**Files updated**: `frontend/src/lib/privacyRails/magicblock.ts` (typed `/v1/spl` client), `scripts/check-magicblock.mjs` (public API probes), `docs/HACKATHON.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/SUBMISSION_CHECKLIST.md`, `package.json` (added `tweetnacl`).
+
+**Live results**: Health / challenge / login / mint-check / balance / builders all 200. wSOL deposit CONFIRMED. wSOL withdraw CONFIRMED. Private-transfer `sendTo=ephemeral` builder 200; router `Blockhash not found`; TEE rejects writable accounts; base devnet accepts refreshed tx only. `/v1/mcp` 404.
+
+**Devnet signatures**: wSOL wrap `2q5FC6r6...`, MagicBlock deposit `UtqpXCER...`, MagicBlock withdraw `4FXm5NYm...`, private-transfer base-RPC fallback `2BA9bAEk...`.
+
+**Validations**: typecheck PASS; build PASS; `cargo test` PASS; `check-magicblock.mjs` PASS; `magicblock-private-payments-live.mjs --dry-run` PASS.
+
+**Claim boundary**: Private Payments public API deposit/withdraw are live on devnet. Private transfer via intended ephemeral/router RPC is NOT confirmed.

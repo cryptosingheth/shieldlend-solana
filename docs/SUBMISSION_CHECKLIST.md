@@ -79,7 +79,8 @@ Record in this order:
 | `SOLANA_WALLET_PATH` | Yes | Umbra smoke, devnet balance check |
 | `NEXT_PUBLIC_SOLANA_CLUSTER=devnet` | Yes | Frontend RPC |
 | `ENCRYPT_GRPC_ENDPOINT` | Optional | Defaults to `pre-alpha-dev-1.encrypt.ika-network.net:443` in check script |
-| `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` | Optional | Private Payments check — Discord-gated; adapter fails closed without it |
+| `NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL` | Optional | Defaults to `https://payments.magicblock.app`; override only if MagicBlock provides another API base |
+| `MAGICBLOCK_PRIVATE_PAYMENTS_AMOUNT_BASE_UNITS` | Optional | Live script amount; minimized smoke used `1` base unit |
 | `NEXT_PUBLIC_UMBRA_NETWORK=devnet` | Optional | Frontend Umbra network override |
 
 ---
@@ -94,7 +95,7 @@ These are implementation gaps, not design gaps:
 
 3. **MagicBlock PER Rust macros not in Anchor programs** — the workspace now uses Anchor 0.32.1, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not wired into ShieldLend programs. The TypeScript PER SDK builders are verified but no on-chain PER transaction is submitted.
 
-4. **MagicBlock Private Payments not configured** — The API URL is Discord-gated. The adapter is wired and fails closed when the URL is absent.
+4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. Private transfer builder returns 200. Local blockhash refresh lets the tx submit through base devnet, but the intended ephemeral/router path still fails with `Blockhash not found`; TEE rejects writable accounts.
 
 5. **MagicBlock TDX attestation challenge mismatch** — SDK 0.8.8 challenge format does not match current devnet TEE expected format. TEE RPC itself responds HTTP 200. Attestation verification is not claimed.
 
@@ -117,6 +118,8 @@ Allowed claims (confirmed by devnet evidence):
 | Encrypt pre-alpha gRPC probe live | Ciphertext handle `5VZ8BhpS...CA6y` returned |
 | MagicBlock TEE + Router RPC HTTP 200 | `check-magicblock.mjs` output |
 | MagicBlock PER SDK builders verified | 13/13 SDK functions, 17/17 sidecar tests |
+| MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |
+| MagicBlock Private Payments private-transfer base-RPC fallback | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; not a claim that ephemeral/router private transfer is live |
 | IKA SDK/WASM confirmed with source-backed blockers | `check-ika.mjs` output |
 
 Not allowed (must not claim):
@@ -124,9 +127,17 @@ Not allowed (must not claim):
 - Production ZK trusted setup
 - Production privacy
 - IKA relay signing active
-- MagicBlock Private Payments live
+- MagicBlock Private Payments private transfer through the intended ephemeral/router path
 - MagicBlock PER macros in Anchor programs
 - MagicBlock TDX attestation verified
+
+### MagicBlock Private Payments Devnet Signatures
+
+- [x] wSOL wrap: `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP`
+- [x] MagicBlock deposit: `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct`
+- [x] MagicBlock withdraw: `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP`
+- [x] MagicBlock private-transfer base-RPC fallback after blockhash refresh: `2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s`
+- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by router `Blockhash not found`; TEE rejects writable accounts
 - Umbra native SOL ShieldLend payout
 - Encrypt on-chain FHE active
 
@@ -134,12 +145,13 @@ Not allowed (must not claim):
 
 ## Final Pre-Submission Checklist
 
-- [ ] `npm run typecheck:frontend` exits 0
-- [ ] `npm run build:frontend` exits 0
+- [x] `npm run typecheck:frontend` exits 0
+- [x] `npm run build:frontend` exits 0
 - [ ] `node scripts/demo-status.mjs` exits 0 and prints expected claim boundary
 - [ ] `node scripts/check-encrypt.mjs` exits 0
 - [ ] `node scripts/check-umbra.mjs` exits 0
-- [ ] `node scripts/check-magicblock.mjs` exits 0
+- [x] `node scripts/check-magicblock.mjs` exits 0
+- [x] `node scripts/magicblock-private-payments-live.mjs --dry-run` exits 0
 - [ ] `node scripts/check-ika.mjs` exits 0
 - [ ] All six demo video scenes recorded
 - [ ] All five screenshots captured
