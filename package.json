@@ -11,6 +11,7 @@
     "typecheck:frontend": "npm --workspace frontend run typecheck",
     "check:env": "node scripts/check-env.mjs",
     "check:encrypt": "node scripts/check-encrypt.mjs",
+    "check:encrypt-anchor": "node scripts/encrypt-anchor-smoke.mjs",
     "smoke:encrypt-health": "node scripts/encrypt-health-smoke.mjs",
     "check:umbra": "node scripts/check-umbra.mjs",
     "smoke:umbra": "node scripts/umbra-smoke.mjs",

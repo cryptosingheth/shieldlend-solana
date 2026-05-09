@@ -101,7 +101,7 @@ These are implementation gaps, not design gaps:
 
 6. **Umbra native SOL payout not routed** — C2H withdraw releases native SOL to `WithdrawArgs.stealth_address` directly. Umbra SDK requires SPL/Token-2022. The SOL → wSOL wrap leg inside ShieldedPool is not implemented.
 
-7. **Encrypt on-chain FHE not active** — Anchor 0.32.1 compatibility is present, but `encrypt-anchor` CPI is not wired. Program-side integration is fail-closed. Only the gRPC client probe is live.
+7. **Encrypt on-chain FHE not active** — Official upstream `encrypt-anchor` is still incompatible with Anchor 0.32.1 because of the `solana_account_info` crate-family split. ShieldLend vendors a minimal Anchor 0.32 compatibility fork and compile-wires a separate LendingPool request/reveal path, but no live Encrypt ciphertext/decryption-request round-trip is proven. gRPC `CreateInput` is still the only live Encrypt path.
 
 ---
 
@@ -115,7 +115,7 @@ Allowed claims (confirmed by devnet evidence):
 | Full Groth16 BN254 withdraw round-trip on devnet | Devnet tx signatures; 198,502 CU; pairing passed |
 | Nullifier registry CPI and proof consumed | Devnet tx signatures |
 | Umbra funded wSOL deposit/withdraw on devnet | Seven confirmed tx signatures above |
-| Encrypt pre-alpha gRPC probe live | Ciphertext handle `5VZ8BhpS...CA6y` returned |
+| Encrypt pre-alpha gRPC probe live | Ciphertext handle `DX9ipt7W...QwEZ` returned |
 | MagicBlock TEE + Router RPC HTTP 200 | `check-magicblock.mjs` output |
 | MagicBlock PER SDK builders verified | 13/13 SDK functions, 17/17 sidecar tests |
 | MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |

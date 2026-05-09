@@ -4,29 +4,39 @@
 
 Encrypt remains a pre-alpha client/gRPC integration in this branch. The live path can discover active Encrypt devnet network keys and submit non-sensitive modeled ShieldLend health inputs through `encrypt.v1.EncryptService/CreateInput`.
 
+The workspace is now on Anchor `0.32.1`, and ShieldLend can compile a minimal on-chain Encrypt request/reveal path only by vendoring a local Anchor 0.32 compatibility fork of `encrypt-anchor`. The official upstream `encrypt-anchor` CPI path is still blocked: a fresh CPI-boundary probe against current `dwallet-labs/encrypt-pre-alpha` fetched and compiled the crate, then failed when Anchor `0.32.1` `AccountInfo` values were passed into `EncryptContext`.
+
 This does not mean production FHE is live. The official Encrypt docs still carry a pre-alpha disclaimer: data may be public/plaintext, key material and trust assumptions are not final, APIs may change, and devnet state may be wiped. Do not submit sensitive or real user data.
 
 ## Official docs and package check
 
-- Official docs page checked: `https://docs.encrypt.xyz/getting-started/installation`.
+- Official docs page checked: `https://docs.encrypt.xyz/frameworks/anchor.html`.
 - Docs dependency snippet for Anchor programs lists `encrypt-anchor` plus `anchor-lang = "0.32"`.
 - Current public source repo checked: `https://github.com/dwallet-labs/encrypt-pre-alpha`.
-- Current upstream examples use `encrypt_anchor::EncryptContext`, and the upstream workspace now resolves `encrypt-anchor` against Anchor `1`.
+- Current upstream examples use `encrypt_anchor::EncryptContext`, and the upstream workspace now resolves `encrypt-anchor` against newer Solana account crates than Anchor `0.32.1`.
 - Installed JS package checked locally: `@encrypt.xyz/pre-alpha-solana-client@0.1.0`.
 - The package `./grpc` export points at `./src/grpc.ts`, so plain Node still cannot import it directly from this repo's smoke scripts. The scripts use the documented gRPC service path directly through `@grpc/grpc-js`.
 
-## Sidecar feasibility result
+## Anchor CPI feasibility result
 
-No Anchor 0.32 sidecar was added.
+ShieldLend now vendors `vendor/encrypt-anchor-anchor032`, a minimal copy of the official `chains/solana/program-sdk/anchor` crate rebased onto `anchor-lang = "0.32.1"`. `programs/lending_pool` uses that local fork to compile a separate Encrypt CPI request/reveal path:
 
-The isolated feasibility test was:
+- `request_liquidation_reveal_via_encrypt`
+- `verify_liquidation_reveal_via_encrypt`
+
+The legacy generic reveal verifier remains fail-closed at `EncryptVerifierNotWired`, and no on-chain FHE claim is unlocked by this compile-only wiring.
+
+The reproducible probe is:
 
 ```bash
-cd /private/tmp/encrypt-anchor-feasibility
-cargo check
+npm run check:encrypt-anchor
+npm run check:encrypt-anchor -- --live
 ```
 
-Graph-only code compiled, but the actual program-side `EncryptContext` path failed when an Anchor 0.32 sidecar attempted to call `encrypt_ctx.health_breach_graph(...)`.
+`--live` first runs the live gRPC CreateInput probe, then checks two Rust CPI boundaries in temporary Cargo projects:
+
+1. official upstream `encrypt-anchor` from `dwallet-labs/encrypt-pre-alpha`
+2. ShieldLend's local Anchor 0.32 compatibility fork
 
 Exact blocker:
 
@@ -35,7 +45,19 @@ expected `solana_account_info::AccountInfo<'_>`, found `__AccountInfo<'_>`
 note: there are multiple different versions of crate `solana_account_info` in the dependency graph
 ```
 
-The same compile also showed two `anchor_lang::Error` types in the graph, so `?` could not convert errors across the Anchor versions. This happens because the sidecar pulls Anchor 0.32, while current upstream `encrypt-anchor` pulls Anchor 1 / Solana account crates in the 3.x line.
+Current observed versions at the boundary:
+
+- `encrypt-anchor` side: `solana-account-info 3.1.1`
+- ShieldLend Anchor `0.32.1` side: `solana-account-info 2.3.0`
+
+This means the official upstream program cannot construct `EncryptContext` from ShieldLend Anchor accounts without a compatible Encrypt revision or fork. The blocker is a real type-family mismatch, not an application-code import typo.
+
+Current local compatibility result:
+
+- Local fork compiles against Anchor `0.32.1`
+- `lending_pool` now builds with the forked crate
+- the new CPI-based request/reveal path verifies request ciphertext and digest before reading `Bool`
+- no live devnet Encrypt ciphertext/decryption account round-trip has been proven
 
 ## Live smoke script
 
@@ -44,6 +66,7 @@ Run:
 ```bash
 npm run check:encrypt -- --live
 node scripts/encrypt-health-smoke.mjs --live
+npm run check:encrypt-anchor -- --live
 ```
 
 The new smoke script submits three modeled non-sensitive inputs:
@@ -56,20 +79,20 @@ Each input is bound to a test loan PDA and authorized to the ShieldLend lending 
 
 Latest live-hardening IDs:
 
-- `health_ratio_bps`: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`
-- `collateral_value_lamports`: `8CtojVRaXkWnCB6pN6wq5jxEvkdmAe5BhfTsm5pBLZsc`
-- `debt_value_lamports`: `25EK8vDYPXB6kaT6EZEmz6gwjpu1SNKt57zn1cnYR1xw`
-- `liquidation_threshold_bps`: `2iA8vWgBaA8cKo6eGsQQMdZUgHyNNB3spSc93Sj6Fhos`
+- `health_ratio_bps`: `DX9ipt7WY1tCXFSv14oWwmZ3a19Ls9aUnSTPfiUUQwEZ`
+- `collateral_value_lamports`: `7U88Hf8T4u1NxdH6yZjFbkQLzfzZi2eT8hLJSW6nYH9L`
+- `debt_value_lamports`: `DM6GWnbeyGoWxcYFXRukAt3yciZCcjpbmWUC8d5aJxJV`
+- `liquidation_threshold_bps`: `9RUszRssYbJn3BpWbSS2b2864HFcS2TpjfsaTdg9Ccd2`
 
 ## Anchor 0.32 program-side migration path
 
-The root workspace now uses Anchor 0.32.1, but Encrypt Anchor CPI is still not wired. Keep the remaining program-side migration separate from this client/gRPC hardening path.
+The root workspace now uses Anchor 0.32.1, and ShieldLend has a local compile-wired CPI path. Keep any claim of real on-chain Encrypt/FHE separate from that compile step.
 
 1. Keep using Anchor CLI 0.32.1 unless a specific Encrypt revision requires otherwise.
-2. Pin an `encrypt-pre-alpha` revision whose `encrypt-anchor` crate resolves to the same Anchor/Solana account crate family, or vendor/fork `encrypt-anchor` and align its workspace `anchor-lang` and Solana account crates.
-3. Confirm `cargo tree -i solana-account-info` and `cargo tree -i anchor-lang` do not show incompatible duplicate versions across the ShieldLend Anchor and Encrypt CPI boundary.
+2. Keep `scripts/encrypt-anchor-smoke.mjs` proving both sides: upstream blocker and local fork compile success.
+3. Confirm `cargo tree -i solana-account-info` and `cargo tree -i anchor-lang` do not show incompatible duplicate versions across the ShieldLend Anchor and local Encrypt CPI boundary.
 4. Build/test the CPI path first with `cargo test`, then with the matching Anchor CLI/SBF toolchain.
-5. Only after CPI compiles, consider wiring `lending_pool::verify_encrypt_reveal`.
-6. Rerun the C2H devnet Groth16 withdraw round-trip before merging any program-side migration.
+5. Only after a real Encrypt devnet ciphertext + decryption-request account round-trip succeeds should `verify_liquidation_reveal_via_encrypt` be treated as more than compile wiring.
+6. Rerun the C2H devnet Groth16 withdraw round-trip before merging any further program-side migration.
 
-Until those steps pass, `lending_pool` must keep returning `EncryptVerifierNotWired`.
+Until step 5 passes, on-chain Encrypt/FHE must remain not live in docs, frontend, and demo status.

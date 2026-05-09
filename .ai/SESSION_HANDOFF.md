@@ -2,6 +2,27 @@
 
 ## Task Objective
 
+Implement the Encrypt Anchor/on-chain path as far as genuinely possible on `live/encrypt-anchor` without faking FHE or on-chain decryption.
+
+## Current Session Update — 2026-05-09
+
+### Encrypt Anchor/on-chain feasibility
+
+| Item | Outcome |
+|---|---|
+| Official docs/source inspected | Docs Anchor page, repo README, current Anchor SDK source, and `chains/solana/examples/voting/anchor` |
+| gRPC CreateInput path | Preserved; `scripts/check-encrypt.mjs --live` and `scripts/encrypt-health-smoke.mjs --live` remain the live probes |
+| New compile probe | `scripts/encrypt-anchor-smoke.mjs`; package script `npm run check:encrypt-anchor` |
+| `encrypt-anchor` crate | Official upstream still fetches/compiles |
+| Anchor 0.32.1 CPI boundary | BLOCKED upstream: `EncryptContext` expects `solana_account_info` 3.1.x but Anchor 0.32.1 accounts are 2.3.x |
+| Local compatibility path | `vendor/encrypt-anchor-anchor032` compiles; `lending_pool` now has `request_liquidation_reveal_via_encrypt` + `verify_liquidation_reveal_via_encrypt` |
+| LendingPool behavior | Legacy generic verifier still fail-closed at `EncryptVerifierNotWired`; borrow/repay paths unchanged |
+| Frontend/docs | Updated to distinguish gRPC live input creation, upstream CPI blocker, local compile wiring, and not-live on-chain FHE |
+
+Do not claim on-chain Encrypt/FHE health verification. The current state is client/gRPC live plus a reproducible upstream Anchor CPI blocker and a local compile-wired compatibility fork. No live Encrypt decryption round-trip through LendingPool is proven.
+
+## Previous Task Objective
+
 Merge Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening into `convergence/privacy-rails-integration` — merge commit pending after conflict resolution.
 
 ---
@@ -76,7 +97,7 @@ Devnet signatures:
 
 - gRPC `encrypt.v1.EncryptService/CreateInput` live on pre-alpha devnet.
 - Endpoint: `pre-alpha-dev-1.encrypt.ika-network.net:443`.
-- Ciphertext handle: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`.
+- Ciphertext handle: `DX9ipt7WY1tCXFSv14oWwmZ3a19Ls9aUnSTPfiUUQwEZ`.
 - Anchor 0.32.1 present; `encrypt-anchor` CPI not yet wired; fail-closed.
 
 ### MagicBlock Rail

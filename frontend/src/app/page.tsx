@@ -63,6 +63,12 @@ type EncryptStatus = {
   sdkImportNote: string;
   networkKeys: Array<{ account: string; discriminator: number; publicKeyHex: string; active: boolean }>;
   selectedNetworkKeyHex?: string;
+  anchorIntegration?: {
+    dependencyPattern: string;
+    compileStatus: "compile-wired-local-fork" | "blocked";
+    blocker: string;
+    onChainFheLive: false;
+  };
   claimBoundary: string;
 };
 
@@ -520,6 +526,11 @@ function EncryptStatusPanel({ status }: { status: EncryptStatus | null }) {
           <StatusLine label="gRPC client" value={status ? status.grpcApi : "loading"} healthy={clientOk} />
           <StatusLine label="Active network keys" value={status ? `${keyCount}` : "loading"} healthy={keyCount > 0} />
           <StatusLine label="SDK package" value={status ? `${status.sdkPackage}@${status.sdkVersion}` : "loading"} healthy={Boolean(status)} />
+          <StatusLine
+            label="Anchor CPI probe"
+            value={status?.anchorIntegration?.compileStatus ?? "loading"}
+            healthy={false}
+          />
         </div>
         <div className="responsibility" style={{ margin: 0 }}>
           <Radio size={16} />
@@ -539,7 +550,14 @@ function EncryptStatusPanel({ status }: { status: EncryptStatus | null }) {
           <dd>{status.sdkImportStatus === "blocked" ? "Blocked by package export" : "Not checked"}</dd>
           <dt>Selected key</dt>
           <dd>{status.selectedNetworkKeyHex ? shortHash(status.selectedNetworkKeyHex, 10, 8) : "--"}</dd>
+          <dt>On-chain FHE</dt>
+          <dd>{status.anchorIntegration?.onChainFheLive ? "Live" : "Not live"}</dd>
         </dl>
+      )}
+      {status?.anchorIntegration?.blocker && (
+        <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+          {status.anchorIntegration.blocker}
+        </p>
       )}
       {status?.sdkImportNote && (
         <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
@@ -571,7 +589,7 @@ function WhatWorksTodayPanel() {
           <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--amber)" }}>Partial / fail-closed</p>
           <ul className="plain-list" style={{ fontSize: "13px" }}>
             <li>Umbra SDK adapter — fail-closed for native SOL exits; wSOL/SPL bridge needed for ShieldLend payout routing</li>
-            <li>Encrypt gRPC — client/probe only; program-side FHE fail-closed (Anchor 0.32 not upgraded)</li>
+            <li>Encrypt gRPC — live client/probe path; LendingPool now compile-wires a separate Encrypt CPI request/reveal path through a local Anchor 0.32 fork, but official upstream encrypt-anchor is still blocked by the AccountInfo crate-family mismatch</li>
             <li>MagicBlock PER sidecar — TypeScript only; Rust macros blocked on Anchor 0.32.1; on-chain PER tx not submitted</li>
             <li>IKA adapter — SDK probe + signer context builder; direct wallet fallback labelled reduced privacy</li>
             <li>Withdraw / Borrow / Repay UI — intentionally blocked until full rail dependencies are live</li>
@@ -581,7 +599,7 @@ function WhatWorksTodayPanel() {
             <li>Production trusted setup — DEV/TEST ptau only; no production ceremony</li>
             <li>IKA relay signing — mock signer (pre-alpha); ika-dwallet-anchor CPI not wired in Anchor programs</li>
             <li>MagicBlock Private Payments — URL not configured; TDX attestation challenge mismatch (SDK 0.8.8 delta)</li>
-            <li>Encrypt on-chain FHE health computation — verifier fail-closed; no encrypted oracle</li>
+            <li>Encrypt on-chain FHE health computation — local CPI wiring compiles, but no live encrypted oracle or on-chain decryption path is proven</li>
             <li>Umbra ShieldLend payout routing — native SOL C2H path remains direct stealth_address</li>
             <li>NullifierRegistry CPIs in withdraw/borrow/repay — scaffolded, not executed end-to-end</li>
           </ul>

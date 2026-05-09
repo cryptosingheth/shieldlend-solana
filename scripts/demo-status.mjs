@@ -111,6 +111,7 @@ section('Privacy Rail Scripts');
 
 const RAIL_SCRIPTS = [
   { name: 'check-encrypt.mjs',    rail: 'Encrypt',    runCmd: 'npm run check:encrypt' },
+  { name: 'encrypt-anchor-smoke.mjs', rail: 'Encrypt Anchor', runCmd: 'npm run check:encrypt-anchor' },
   { name: 'check-umbra.mjs',      rail: 'Umbra',      runCmd: 'npm run check:umbra' },
   { name: 'check-magicblock.mjs', rail: 'MagicBlock', runCmd: 'npm run check:magicblock' },
   { name: 'check-ika.mjs',        rail: 'IKA',        runCmd: 'npm run check:ika' },
@@ -166,7 +167,9 @@ ok('C2H Groth16 BN254 withdraw round-trip: PASSED on devnet');
 ok('  deposit → flush_epoch → store_withdraw_proof → withdraw');
 ok('  198,502 CU consumed; nullifier consumed; nullifier registry CPI succeeded');
 ok('Umbra funded wSOL deposit/withdraw: CONFIRMED — 7 devnet tx signatures on record');
-ok('Encrypt gRPC CreateInput probe: CONFIRMED — ciphertext 5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y');
+ok('Encrypt gRPC CreateInput probe: CONFIRMED — ciphertext DX9ipt7WY1tCXFSv14oWwmZ3a19Ls9aUnSTPfiUUQwEZ');
+warn('Encrypt Anchor CPI upstream: BLOCKED — official encrypt-anchor expects solana_account_info 3.1.x, while Anchor 0.32.1 supplies 2.3.x');
+ok('Encrypt Anchor CPI local fork: COMPILE-WIRED — vendored Anchor 0.32 compatibility fork builds and lending_pool exposes a separate request/reveal path');
 ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
@@ -183,6 +186,8 @@ console.log(`
   ✓ On-chain Groth16 BN254 pairing passed; 198,502 CU; nullifier consumed
   ✓ Umbra funded devnet wSOL encrypted-balance deposit and withdrawal confirmed
   ✓ Encrypt pre-alpha gRPC CreateInput probe live; ciphertext handle returned
+  ✓ Encrypt Anchor upstream blocker is reproducible and documented
+  ✓ Encrypt Anchor local compatibility fork compiles; lending_pool request/reveal path is compile-wired
   ✓ MagicBlock TEE RPC + Router RPC HTTP 200 on devnet
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
@@ -198,7 +203,7 @@ console.log(`
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)
   ✗ Umbra native SOL ShieldLend payout (C2H exits direct stealth_address; no wSOL bridge)
-  ✗ Encrypt on-chain FHE active (Anchor 0.32.1 compatibility present; Encrypt Anchor CPI not wired)
+  ✗ Encrypt on-chain FHE active (local CPI wiring compiles, but upstream remains incompatible and no live on-chain Encrypt/FHE path is proven)
 `);
 
 // ── Summary ──────────────────────────────────────────────────────────────────

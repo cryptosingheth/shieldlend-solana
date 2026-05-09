@@ -1,6 +1,30 @@
 # Current Task
 
-## Status: Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening — all merged to `convergence/privacy-rails-integration`.
+## Status: Encrypt Anchor compatibility boundary on `live/encrypt-anchor` — gRPC live, upstream Anchor CPI blocked, local Anchor 0.32 fork compile-wired.
+
+### Encrypt Anchor Feasibility (2026-05-09)
+
+- Current branch: `live/encrypt-anchor` from `origin/convergence/privacy-rails-integration`.
+- Official docs/source rechecked:
+  - `https://docs.encrypt.xyz/frameworks/anchor.html`
+  - `https://github.com/dwallet-labs/encrypt-pre-alpha`
+  - `chains/solana/examples/voting/anchor`
+  - `chains/solana/program-sdk/anchor`
+- Added `scripts/encrypt-anchor-smoke.mjs` and `npm run check:encrypt-anchor`.
+- Probe result: official `encrypt-anchor` fetched/compiled, but the CPI-boundary probe fails when constructing `EncryptContext` from Anchor 0.32.1 `AccountInfo`.
+- Exact blocker: current `encrypt-anchor` expects `solana_account_info` 3.1.x, while Anchor 0.32.1 supplies 2.3.x `AccountInfo`.
+- Added `vendor/encrypt-anchor-anchor032`, a minimal local compatibility fork rebased onto `anchor-lang = "0.32.1"`.
+- `programs/lending_pool` now compile-wires:
+  - `request_liquidation_reveal_via_encrypt`
+  - `verify_liquidation_reveal_via_encrypt`
+- Legacy generic verifier remains fail-closed at `EncryptVerifierNotWired`; no on-chain FHE or on-chain decryption is live.
+- Frontend/docs now distinguish:
+  - gRPC CreateInput live,
+  - upstream Anchor CPI probe blocked,
+  - local compatibility fork compile-wired,
+  - on-chain Encrypt/FHE not live.
+
+## Previous Status: Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening — all merged to `convergence/privacy-rails-integration`.
 
 ## Combined Completed Work
 
@@ -63,7 +87,7 @@
 - Do not claim MagicBlock PER Rust macros wired in Anchor programs.
 - Do not claim MagicBlock Private Payments private transfer via intended ephemeral/router path confirmed.
 - Do not claim native protocol-level Umbra payout (wSOL adapter is post-withdraw simulation; flush_exits fail-closed).
-- Do not claim Encrypt on-chain FHE active (Anchor 0.32.1 present; CPI not wired).
+- Do not claim Encrypt on-chain FHE active (Anchor 0.32.1 present; current official CPI blocked by AccountInfo crate-family mismatch).
 - Do not claim upgraded Anchor 0.32.1 binaries are deployed (no redeploy).
 - Do NOT claim C2H confirmed by roundtrip script (Phase 1 FAILED with `0x0`; C2H confirmed only via `devnet-fullround.mjs`).
 - Do not claim production privacy.

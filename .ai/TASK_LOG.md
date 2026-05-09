@@ -883,3 +883,39 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 **Validations**: typecheck PASS; build PASS; `cargo test` PASS; `check-magicblock.mjs` PASS; `magicblock-private-payments-live.mjs --dry-run` PASS.
 
 **Claim boundary**: Private Payments public API deposit/withdraw are live on devnet. Private transfer via intended ephemeral/router RPC is NOT confirmed.
+# 2026-05-09 — Encrypt Anchor CPI feasibility on live/encrypt-anchor
+
+- Rechecked official Encrypt docs/source and current Anchor example/API: `EncryptContext`, `request_decryption`, and `read_decrypted_verified`.
+- Added `scripts/encrypt-anchor-smoke.mjs` plus `npm run check:encrypt-anchor`.
+- Probe confirms current official `encrypt-anchor` can be fetched/compiled but cannot be wired across ShieldLend Anchor 0.32.1 CPI boundary:
+  - expected `solana_account_info::AccountInfo` from 3.1.x,
+  - found Anchor 0.32.1 `__AccountInfo` from 2.3.x.
+- Preserved LendingPool fail-closed behavior (`EncryptVerifierNotWired`) and did not touch borrow/repay paths.
+- Updated frontend status panel and docs to separate:
+  - live gRPC `CreateInput`,
+  - blocked Anchor CPI compile probe,
+  - no on-chain Encrypt/FHE/decryption live claim.
+
+---
+
+## 2026-05-09 — Encrypt Anchor compatibility fork + compile-wired LendingPool path
+
+- Vendored `vendor/encrypt-anchor-anchor032`, a minimal local copy of the official `encrypt-anchor` crate rebased onto `anchor-lang = "0.32.1"`.
+- Added the local fork to `programs/lending_pool/Cargo.toml` with `encrypt-solana-types` and `encrypt-types`.
+- Wired a separate compile-only program path in `programs/lending_pool/src/lib.rs`:
+  - `request_liquidation_reveal_via_encrypt`
+  - `verify_liquidation_reveal_via_encrypt`
+- Kept the legacy generic verifier fail-closed at `EncryptVerifierNotWired`; borrow/repay flows unchanged.
+- Added request-data verification helpers and unit tests for:
+  - verified true/false bool reveal,
+  - digest mismatch,
+  - pending request,
+  - ciphertext mismatch.
+- Updated `scripts/encrypt-anchor-smoke.mjs` to prove both:
+  - upstream official `encrypt-anchor` still blocks on `solana_account_info` 3.1.x vs 2.3.x,
+  - the local Anchor 0.32 compatibility fork compiles.
+- Updated README, Encrypt hardening docs, hackathon/submission docs, frontend status copy, and `.ai` memory to distinguish:
+  - gRPC CreateInput live,
+  - upstream Anchor CPI incompatibility,
+  - local compile-wired CPI path,
+  - no live on-chain Encrypt/FHE claim.

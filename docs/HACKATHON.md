@@ -54,7 +54,7 @@ Trusted setup: DEV/TEST `pot14` ceremony only. Not production.
 |---|---|---|
 | **C2H / Groth16** | Full devnet round-trip: deposit → flush_epoch → store_withdraw_proof → withdraw. On-chain BN254 pairing passed. 198,502 CU. Nullifier consumed. | Production trusted setup. Production privacy guarantee. |
 | **Umbra** | `@umbra-privacy/sdk@4.0.0` installed. Funded devnet wSOL encrypted-balance deposit and withdrawal confirmed. Seven tx signatures on record. **wSOL Umbra settlement adapter**: two-step post-withdraw path (`scripts/devnet-wsol-umbra-roundtrip.mjs`) + Withdraw UI `wSOL via Umbra` mode. Phase 2 (wSOL wrap + Umbra deposit/withdraw) confirmed live on devnet. | Native protocol-level Umbra payout (flush_exits fail-closed; PER not wired). C2H payout SOL not physically transferred through Umbra by the on-chain program. Roundtrip script Phase 1 (C2H) FAILED with custom error `0x0` — C2H confirmed only via `devnet-fullround.mjs`. Use `SKIP_C2H=1` for Umbra-only demo runs. |
-| **Encrypt** | Live pre-alpha gRPC `encrypt.v1.EncryptService/CreateInput` probe confirmed. Health-ratio test value submitted. Ciphertext handle returned: `5VZ8BhpSWqDCAXMMb4ESVGsQRKb6X9dDgD1xGLydCA6y`. Anchor 0.32.1 workspace compatibility is present. | On-chain FHE. `encrypt-anchor` CPI integration not yet wired. Production encryption guarantee. |
+| **Encrypt** | Live pre-alpha gRPC `encrypt.v1.EncryptService/CreateInput` probe confirmed. Health-ratio test value submitted. Ciphertext handle returned: `DX9ipt7WY1tCXFSv14oWwmZ3a19Ls9aUnSTPfiUUQwEZ`. Official upstream `encrypt-anchor` CPI blocker is reproducible, and ShieldLend now vendors a minimal Anchor 0.32 compatibility fork that compile-wires a separate LendingPool request/reveal path. | On-chain FHE. Live Encrypt ciphertext/decryption-request account round-trip on devnet. Production encryption guarantee. |
 | **MagicBlock** | TEE RPC `https://devnet-tee.magicblock.app` HTTP 200. Router RPC `https://devnet-router.magicblock.app` HTTP 200. PER sidecar TypeScript builders: 4 ShieldLend use-case bundles, 17/17 pass. 13/13 SDK functions verified. Anchor 0.32.1 workspace compatibility is present. Private Payments API `https://payments.magicblock.app` health/challenge/login/mint/balance/builders live; wSOL deposit and withdraw signed and submitted on devnet; private-transfer tx submits through base devnet only after local blockhash refresh. | Rust PER macros not yet wired in Anchor programs. Private-transfer via intended `sendTo=ephemeral` path blocked: router returns `Blockhash not found`; TEE rejects writable accounts. TDX attestation challenge mismatch (SDK 0.8.8). On-chain PER transaction not submitted. |
 | **IKA** | `@ika.xyz/sdk@0.4.0` + WASM loaded. SDK/capability probe: `createDWallet`, `approveMessage`, `createSignature`, `SignatureScheme` all present. WASM `createClassGroupsKeypair(ED25519)` runs locally. | Real Solana relay signing. `ika-dwallet-anchor` CPI crate not published. IKA SDK has no Solana code — all `coordinatorTransactions` functions call Sui Move targets. Direct wallet fallback is labelled "reduced privacy" in UI. |
 
@@ -85,6 +85,7 @@ These claims are accurate and supported by devnet evidence:
 - On-chain nullifier registry CPI succeeded; proof consumed.
 - Umbra `@umbra-privacy/sdk@4.0.0` funded devnet deposit/withdraw confirmed for wSOL.
 - Encrypt live pre-alpha gRPC `CreateInput` probe confirmed with returned ciphertext handle.
+- Encrypt Anchor CPI compatibility probe added; it documents the current upstream AccountInfo crate-family blocker and the local compile-only compatibility fork.
 - MagicBlock TEE RPC + Router RPC HTTP 200 on devnet.
 - MagicBlock PER sidecar TypeScript SDK builders verified (not submitted on-chain).
 - MagicBlock Private Payments public API health/challenge/login/mint/balance and unsigned transaction builders verified on devnet.
@@ -103,7 +104,7 @@ These claims are NOT accurate and must NOT be made:
 - MagicBlock PER macros in Anchor programs (Anchor 0.32.1 compatibility exists, but macros are not wired).
 - MagicBlock TDX attestation verified (challenge format mismatch).
 - Umbra native SOL ShieldLend payout as protocol-level (flush_exits fail-closed; wSOL adapter is post-withdraw simulation, not on-chain program routing).
-- Encrypt on-chain FHE active (Anchor 0.32.1 workspace compatibility present; `encrypt-anchor` CPI not yet wired).
+- Encrypt on-chain FHE active (local CPI wiring compiles, but upstream `encrypt-anchor` remains incompatible and no live devnet Encrypt decryption round-trip is proven).
 - Any full end-to-end privacy rail active from deposit to encrypted exit.
 
 ---
@@ -114,7 +115,7 @@ These are engineering blockers discovered during integration, not design failure
 
 | Blocker | Root cause | Unblock path |
 |---|---|---|
-| Encrypt on-chain FHE | Workspace uses Anchor 0.32.1, but `encrypt-anchor` CPI is not yet wired | Pin/fork a compatible `encrypt-anchor` revision, wire one CPI path, rebuild, and re-run C2H |
+| Encrypt on-chain FHE | Official upstream `encrypt-anchor` still expects `solana_account_info` 3.1.x while Anchor 0.32.1 supplies 2.3.x. ShieldLend works around that today with a local Anchor 0.32 compatibility fork that only compile-wires a CPI request/reveal path. | Prove a real Encrypt devnet ciphertext + decryption-request round-trip through the new LendingPool path, then re-run C2H and keep claim boundaries honest |
 | MagicBlock PER Rust macros | Workspace uses Anchor 0.32.1, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet | Wire PER macros in a dedicated task, rebuild, and re-run C2H |
 | MagicBlock Private Payments private transfer submit | API returns unsigned `sendTo=ephemeral` transaction. Decoded tx blockhash matches API response, but router returns `Blockhash not found` and TEE rejects writable accounts. Base devnet accepts the refreshed tx, but that is not the intended ephemeral route. Deposit/withdraw remain live. | Confirm correct ephemeral submit RPC or API blockhash behavior with MagicBlock |
 | MagicBlock TDX attestation | SDK 0.8.8 challenge format mismatch with current devnet TEE | Upgrade SDK or match challenge encoding |
