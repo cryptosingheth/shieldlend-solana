@@ -226,7 +226,7 @@ export async function createEncryptHealthRatioInput(
 
   const client = createEncryptGrpcClient(params.grpcUrl ?? process.env.ENCRYPT_GRPC_URL ?? ENCRYPT_GRPC_DEFAULT);
   try {
-    const authorized = new PublicKey(params.authorizedProgramId ?? process.env.NEXT_PUBLIC_LENDING_POOL_PROGRAM_ID ?? "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7").toBuffer();
+    const authorized = new PublicKey(params.authorizedProgramId ?? process.env.NEXT_PUBLIC_LENDING_POOL_PROGRAM_ID ?? "J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn").toBuffer();
     const loanBinding = new PublicKey(params.loanPda).toBuffer();
     const healthRatio = u64Le(params.healthRatioBps);
     const ciphertextBytes = Buffer.concat([Buffer.from("shieldlend-health-v1"), loanBinding, healthRatio]);

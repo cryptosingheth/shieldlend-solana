@@ -85,7 +85,7 @@ section('Deployed Program IDs (from Anchor.toml)');
 const EXPECTED_PROGRAMS = {
   nullifier_registry: 'E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF',
   shielded_pool:      '9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE',
-  lending_pool:       'HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7',
+  lending_pool:       'J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn',
 };
 
 const anchorTomlPath = resolve(root, 'Anchor.toml');
@@ -173,7 +173,7 @@ ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
-ok('IKA Anchor CPI: local approve_message path present; devnet DKG + dWallet authority transfer confirmed; approval blocked by stale lending_pool deployment');
+ok('IKA Anchor CPI: local approve_message path present; redeployed lending_pool ID configured; latest approval smoke blocked before approval call by Solana RPC fetch failure');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
 
@@ -197,7 +197,7 @@ console.log(`
   NOT ALLOWED (do not claim):
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
-  ✗ IKA relay signing active (devnet dWallet setup works, but deployed lending_pool lacks approve_ika_borrow_message)
+  ✗ IKA relay signing active (redeployed lending_pool ID is configured, but the latest approval smoke stopped at Solana RPC fetch failure before any approval tx landed)
   ✗ MagicBlock Private Payments private transfer via intended ephemeral/router path (ephemeral submit blocked; base devnet fallback only)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)

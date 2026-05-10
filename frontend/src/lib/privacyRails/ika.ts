@@ -11,8 +11,8 @@
 //   2. lending_pool has compile-level approve_message CPI scaffolding.
 //   3. Real devnet IKA DKG + on-chain dWallet creation + authority transfer to the
 //      LendingPool CPI PDA are confirmed by scripts/ika-anchor-approval-smoke.mjs.
-//   4. The live approval still fails before CPI because the deployed devnet
-//      lending_pool binary predates approve_ika_borrow_message.
+//   4. The redeployed lending_pool program ID is now configured in the runtime
+//      surfaces, but no live approval tx is yet confirmed on that deployment.
 
 export type SignerMode = "direct_wallet" | "ika_dwallet_mock";
 
@@ -48,7 +48,8 @@ export const MOCK_SIGNER_DISCLOSURE =
 
 export const IKA_CPI_DISCLOSURE =
   "ShieldLend lending_pool is compile-wired to IKA approve_message via the official CPI authority seed. " +
-  "Real IKA devnet dWallet setup and CPI-authority transfer are confirmed, but the deployed devnet lending_pool binary does not yet include approve_ika_borrow_message.";
+  "Real IKA devnet dWallet setup and CPI-authority transfer are confirmed, and the redeployed lending_pool program ID is now configured. " +
+  "A live approval tx on that deployment is still unconfirmed.";
 
 export const DIRECT_WALLET_DISCLOSURE =
   "Direct wallet mode: user Phantom wallet is the on-chain signer. " +
@@ -69,8 +70,8 @@ export async function probeIkaCapabilities(): Promise<IkaCapabilityReport> {
 
   const blockers: string[] = [
     "No real devnet IKA approve_message CPI transaction has landed from ShieldLend. " +
-      "Real pre-alpha DKG, on-chain dWallet creation, and authority transfer to the lending_pool CPI authority PDA succeeded, " +
-      "but the deployed devnet lending_pool program rejected approve_ika_borrow_message with Anchor InstructionFallbackNotFound. Redeploy is required.",
+      "Real pre-alpha DKG, on-chain dWallet creation, and authority transfer to the lending_pool CPI authority PDA succeeded. " +
+      "After updating to the redeployed lending_pool program ID, the latest smoke run stopped earlier at Solana RPC getBalance fetch failure, so approval on the new deployment remains unconfirmed.",
     MOCK_SIGNER_DISCLOSURE,
   ];
   if (!sdkAvailable) {

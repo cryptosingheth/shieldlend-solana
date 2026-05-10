@@ -49,7 +49,7 @@ const SHIELDED_POOL_PROGRAM_ID = new PublicKey(
 );
 const LENDING_POOL_PROGRAM_ID = new PublicKey(
   process.env.LENDING_POOL_PROGRAM_ID ??
-    "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7"
+    "J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn"
 );
 const NULLIFIER_REGISTRY_PROGRAM_ID = new PublicKey(
   "E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF"

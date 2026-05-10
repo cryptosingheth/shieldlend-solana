@@ -49,7 +49,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | Path | ID (placeholder) | Role |
 |---|---|---|
 | `programs/shielded_pool/` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | SOL custody; Poseidon Merkle; epoch deposit queue; VRF flush |
-| `programs/lending_pool/` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
+| `programs/lending_pool/` | `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
 | `programs/nullifier_registry/` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | PDA nullifier set; Active/Locked/Spent state machine |
 | `Anchor.toml` | — | Workspace config; cluster = Localnet; wallet = `~/.config/solana/id.json` |
 | `Cargo.toml` | — | Root workspace; `anchor-lang = "0.32.1"` |

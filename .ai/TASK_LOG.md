@@ -939,6 +939,10 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 
 **What is still blocked**:
 - The approval CPI did not land because deployed devnet `lending_pool` program `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` returned Anchor `InstructionFallbackNotFound` (`0x65`) for `approve_ika_borrow_message`.
+- 2026-05-10: traced `scripts/ika-anchor-approval-smoke.mjs` to a local fallback `process.env.LENDING_POOL_PROGRAM_ID ?? "<hardcoded id>"`; it does not read `Anchor.toml`.
+- 2026-05-10: user-provided redeploy ID `J2yn42PLSiRvGEj24Uj2q4QeGHZa1sgbzSfoLK81qn` failed `new PublicKey(...)`. Derived the actual deploy-artifact pubkey from `target/deploy/lending_pool-keypair.json` via `solana address -k`: `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`.
+- 2026-05-10: updated active runtime/config/demo/status surfaces to the redeployed `lending_pool` ID, including `Anchor.toml`, program `declare_id!`, `shielded_pool` cross-program constant, frontend runtime constants, and package-exposed devnet scripts.
+- 2026-05-10: reran `node scripts/ika-anchor-approval-smoke.mjs`; output now prints `Lending  : J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`, but the run stops earlier at Solana RPC `getBalance` fetch failure before any approval attempt.
 - This is now a deployment blocker on our side, not a missing-IKA-state blocker.
 
 **Claim boundary**:

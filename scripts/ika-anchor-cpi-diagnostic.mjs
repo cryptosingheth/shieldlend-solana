@@ -18,7 +18,7 @@ const frontendRequire = createRequire(resolve(rootDir, "frontend/package.json"))
 const IKA_PROGRAM_ID =
   process.env.IKA_PROGRAM_ID ?? "87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY";
 const LENDING_POOL_PROGRAM_ID =
-  process.env.LENDING_POOL_PROGRAM_ID ?? "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7";
+  process.env.LENDING_POOL_PROGRAM_ID ?? "J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn";
 const CPI_AUTHORITY_SEED = "__ika_cpi_authority";
 
 const requiredExternalState = [
@@ -120,7 +120,7 @@ if (missing > 0) {
   warn("No live IKA approve_message transaction was submitted.");
   info("This diagnostic only checks local wiring and optional env hints.");
   info("The real smoke script can now create the IKA-side devnet state and a fresh ShieldLend loan automatically.");
-  info("Current observed live blocker after that path: deployed devnet lending_pool returns Anchor InstructionFallbackNotFound for approve_ika_borrow_message.");
+  info("Latest observed live blocker after updating the redeployed lending_pool ID: the smoke run stopped at Solana RPC getBalance fetch failure before the approval attempt.");
 } else {
   warn("All external-state env vars are present, but this diagnostic is non-submitting by design.");
   info("Use `node scripts/ika-anchor-approval-smoke.mjs` to attempt the real devnet flow.");

@@ -28,7 +28,7 @@ const {
 // ─── Program IDs ──────────────────────────────────────────────────────────────
 
 const SHIELDED_POOL   = new PublicKey("9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE");
-const LENDING_POOL    = new PublicKey("HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7");
+const LENDING_POOL    = new PublicKey("J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn");
 const NULL_REGISTRY   = new PublicKey("E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF");
 
 // ─── Seeds ────────────────────────────────────────────────────────────────────

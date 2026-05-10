@@ -15,7 +15,7 @@ use nullifier_registry::{
     RegistryConfig,
 };
 
-declare_id!("HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7");
+declare_id!("J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn");
 
 pub const KINK_COUNT: usize = 11;
 pub const BPS_DENOMINATOR: u128 = 10_000;

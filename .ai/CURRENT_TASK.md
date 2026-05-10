@@ -11,7 +11,8 @@
 - Official crate currently targets `anchor-lang = "1"`; ShieldLend uses a local source-equivalent compatibility crate at `crates/ika-dwallet-anchor` for Anchor 0.32.1.
 - `lending_pool::approve_ika_borrow_message` compile-wires IKA `approve_message` behind active-loan and `future_sign_authorized` guards.
 - `scripts/ika-anchor-approval-smoke.mjs` confirmed fresh devnet collateral proof generation, nullifier registration, `lending_pool::borrow`, IKA DKG, on-chain dWallet creation, and dWallet authority transfer to the LendingPool CPI authority PDA.
-- No live devnet IKA approval tx landed because the deployed devnet `lending_pool` binary predates `approve_ika_borrow_message` and returns Anchor `InstructionFallbackNotFound` (`0x65`).
+- Active runtime/config surfaces now use redeployed `lending_pool` program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`, sourced from `target/deploy/lending_pool-keypair.json`.
+- The latest `node scripts/ika-anchor-approval-smoke.mjs` rerun prints that ID but stops at Solana RPC `getBalance` fetch failure before the approval attempt, so no live approval tx on the new deployment is confirmed yet.
 
 ## Previous Status: Anchor 0.32.1 upgrade + wSOL Umbra E2E + MagicBlock Private Payments hardening — all merged to `convergence/privacy-rails-integration`.
 

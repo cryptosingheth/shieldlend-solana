@@ -34,20 +34,20 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `anchor build --no-idl` | passed on Anchor 0.32.1 | SBF build passes; still emits existing macro cfg warnings plus SBF post-processing syscall warnings |
 | `anchor deploy` (nullifier_registry) | **deployed** | Devnet slot 460526750; program ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `anchor deploy` (lending_pool) | **deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill |
+| `anchor deploy` (lending_pool) | **deployed** | Program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`; redeployed on devnet |
 | `node scripts/devnet-smoke.mjs` | **confirmed** | store_withdraw_proof tx on devnet; sig 66Bmcz54... |
 | `npm run check:umbra` | **confirmed** | SDK/package/program check passed; devnet indexer and relayer health returned 200 |
 | `npm run smoke:umbra` | **confirmed** | SDK client init + devnet user query passed; no token action submitted |
 | `npm run smoke:umbra-funded` | **confirmed** | wSOL wrap + Umbra encrypted-balance deposit + Umbra withdrawal passed on devnet |
 | `npm run check:ika-cpi` | **confirmed local diagnostic** | Reports official IKA CPI constants, compile-level `lending_pool` wiring, derived CPI authority PDA, and the account/state shape for a real approval attempt |
-| `node scripts/ika-anchor-approval-smoke.mjs` | **partial devnet confirmation** | Fresh collateral proof + nullifier register + `lending_pool::borrow` confirmed; IKA DKG + on-chain dWallet + authority transfer confirmed; approval CPI blocked by deployed `lending_pool` fallback error `0x65` |
+| `node scripts/ika-anchor-approval-smoke.mjs` | **partial devnet confirmation** | Earlier run confirmed fresh collateral proof + nullifier register + `lending_pool::borrow`; IKA DKG + on-chain dWallet + authority transfer confirmed. After updating to the redeployed `lending_pool` ID, the latest rerun prints the new ID but stops earlier at Solana RPC `getBalance` fetch failure, so approval on the new deployment remains unconfirmed |
 
 ## Program IDs
 
 | Program | Anchor ID source | Current ID | Status |
 |---|---|---|---|
 | `shielded_pool` | `Anchor.toml`, `programs/shielded_pool/src/lib.rs` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | Synced |
-| `lending_pool` | `Anchor.toml`, `programs/lending_pool/src/lib.rs` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Synced |
+| `lending_pool` | `Anchor.toml`, `programs/lending_pool/src/lib.rs` | `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn` | Synced |
 | `nullifier_registry` | `Anchor.toml`, `programs/nullifier_registry/src/lib.rs` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | Synced |
 
 Additional synced references:
@@ -68,7 +68,7 @@ Additional synced references:
 | Full `anchor build` with IDL | Not revalidated in this task | Upgrade validation used the requested `anchor build --no-idl` path |
 | `nullifier_registry` devnet deploy | **Deployed** | Slot 460526750; ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `shielded_pool` devnet deploy | **Deployed + upgraded** | Initial slot 460526822; upgraded (Vec capacity fix); ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `lending_pool` devnet deploy | **Deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill (C2G-B) |
+| `lending_pool` devnet deploy | **Deployed** | Program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`; redeployed on devnet |
 | `store_withdraw_proof` smoke tx | **Confirmed** | `scripts/devnet-smoke.mjs`; sig `66Bmcz54...`; devnet |
 | `shielded_pool::initialize` | **Confirmed** | sig `QMVjEr1d...`; pool state PDA created; devnet |
 | `shielded_pool` Vec-capacity upgrade | **Deployed** | MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8; SPACE 14500→1900 bytes |
@@ -169,7 +169,7 @@ Artifact details:
 | MagicBlock PER macros not wired | Anchor 0.32.1 compatibility is present in the workspace, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet. Wire separately and re-run C2H after any program-side change. |
 | ShieldLend native SOL -> Umbra token settlement (protocol-level) | flush_exits fail-closed (PER not wired); wSOL adapter (`devnet-wsol-umbra-roundtrip.mjs`) is a post-withdraw simulation, not on-chain program routing |
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
-| IKA live approval tx missing | This is now a deployment blocker, not an IKA-state blocker. Real IKA devnet DKG, on-chain dWallet creation, fresh devnet loan creation, and authority transfer to the LendingPool CPI PDA are confirmed. The live approval still fails because the deployed `lending_pool` program returns Anchor `InstructionFallbackNotFound` (`0x65`) for `approve_ika_borrow_message`. |
+| IKA live approval tx missing | The stale `lending_pool` deployment blocker was cleared by updating active runtime/config surfaces to the redeployed program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`, sourced from `target/deploy/lending_pool-keypair.json`. The latest smoke rerun now prints that ID, but it stops earlier at Solana RPC `getBalance` fetch failure before the approval attempt, so live approval on the new deployment is still unconfirmed. |
 | PER not wired | No private batching or unified exit batching |
 
 See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file/line evidence.

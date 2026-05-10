@@ -1,7 +1,7 @@
 export const PROGRAM_IDS = {
   nullifierRegistry: "E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF",
   shieldedPool: "9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE",
-  lendingPool: "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7",
+  lendingPool: "J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn",
 } as const;
 
 export const DENOMINATIONS = [

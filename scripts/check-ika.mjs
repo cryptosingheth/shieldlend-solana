@@ -143,7 +143,7 @@ async function main() {
       name: "Solana tx relay         ika-dwallet-anchor CPI",
       available: cpiWired,
       note: cpiWired
-        ? "Compile-wired locally; devnet DKG + dWallet authority transfer confirmed, but deployed lending_pool lacks approve_ika_borrow_message"
+        ? "Compile-wired locally; devnet DKG + dWallet authority transfer confirmed; redeployed lending_pool ID configured; latest live smoke stopped at Solana RPC fetch failure before approval"
         : "Requires Rust CPI crate + approve_message instruction in Anchor programs",
     },
     {
@@ -170,11 +170,11 @@ async function main() {
     },
     cpiWired
       ? {
-          id: "LENDING_POOL_NOT_REDEPLOYED",
-          summary: "Real IKA DKG, on-chain dWallet creation, and authority transfer were confirmed, but the deployed devnet lending_pool binary does not expose approve_ika_borrow_message yet.",
-          source: "local + devnet — node scripts/ika-anchor-approval-smoke.mjs; Anchor error InstructionFallbackNotFound (0x65)",
+          id: "DEVNET_RPC_FETCH_FAILED",
+          summary: "The redeployed lending_pool ID is configured, but the latest live approval smoke failed before the approval call because Solana RPC getBalance fetch failed.",
+          source: "local + devnet — node scripts/ika-anchor-approval-smoke.mjs; getBalance(TypeError: fetch failed)",
           impact:
-            "ShieldLend can create the required IKA-side devnet state, but cannot claim live relay signing until lending_pool is rebuilt and redeployed with the new instruction.",
+            "ShieldLend cannot yet confirm whether approve_ika_borrow_message succeeds on the redeployed lending_pool. A rerun from a healthy RPC environment is required.",
         }
       : {
           id: "SOLANA_CPI_INCOMPLETE",
@@ -207,7 +207,7 @@ async function main() {
   console.log(`   SDK available               : ${sdk.available ? "YES (mock signer only — pre-alpha)" : "NO (run cd frontend && npm install)"}`);
   console.log(`   Real MPC signing            : NO (pre-alpha single mock signer)`);
   console.log(`   Safe to label as relay      : NO`);
-  console.log(`   UI label to use             : "IKA pre-alpha / DKG live, approval blocked by stale devnet lending_pool deployment"`);
+  console.log(`   UI label to use             : "IKA pre-alpha / DKG live, redeployed lending_pool configured, approval still unconfirmed"`);
   console.log(`   Signer mode today           : direct_wallet (reduced privacy)`);
 
   // Exit 1 if SDK not installed (actionable); exit 0 if only architectural/pre-alpha blockers

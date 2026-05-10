@@ -95,7 +95,8 @@ Devnet signatures:
 - Official IKA Solana pre-alpha source confirms `ika-dwallet-anchor`, program ID `87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY`, CPI authority seed `b"__ika_cpi_authority"`, and `approve_message(...)`.
 - Compile-level Anchor CPI wiring is present in `lending_pool::approve_ika_borrow_message` through a local source-equivalent `crates/ika-dwallet-anchor` crate adapted for Anchor 0.32.1.
 - `scripts/ika-anchor-approval-smoke.mjs` confirmed: fresh devnet collateral proof generation; fresh nullifier registration; `lending_pool::borrow`; IKA DKG over TLS gRPC; on-chain dWallet creation; and dWallet authority transfer to the LendingPool CPI authority PDA.
-- No live devnet IKA approval tx submitted. The remaining blocker is not missing IKA state: the deployed devnet `lending_pool` binary predates `approve_ika_borrow_message` and rejects the CPI attempt with Anchor `InstructionFallbackNotFound` (`0x65`).
+- Active runtime/config surfaces now use redeployed `lending_pool` program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`, derived from `target/deploy/lending_pool-keypair.json` after the user-provided ID string failed `PublicKey(...)` validation.
+- No live devnet IKA approval tx is yet confirmed on the redeployed program. The latest `node scripts/ika-anchor-approval-smoke.mjs` rerun prints the new ID but stops at Solana RPC `getBalance` fetch failure before the approval attempt.
 - Direct wallet fallback: labelled "reduced privacy".
 
 ---
@@ -106,9 +107,9 @@ Devnet signatures:
 |---|---|
 | `nullifier_registry` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `shielded_pool` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `lending_pool` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` |
+| `lending_pool` | `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn` |
 
-No redeploy performed.
+`lending_pool` was redeployed; active runtime/config surfaces now point at the deploy-artifact pubkey above.
 
 ## Active Wallet
 
