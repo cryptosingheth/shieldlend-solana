@@ -1,5 +1,17 @@
 # Encrypt Live Hardening
 
+## Encrypt Option B — local Anchor 0.32 compatibility fork
+
+ShieldLend uses **Option B** for the Encrypt Anchor integration:
+
+| Path | Status |
+|---|---|
+| **Option A** — official upstream `encrypt-anchor` CPI | **BLOCKED** — `solana_account_info` 3.1.x vs 2.3.x type-family mismatch |
+| **Option B** — `vendor/encrypt-anchor-anchor032` local fork | **COMPILE-WIRED** — builds against Anchor 0.32.1; `lending_pool` exposes `request_liquidation_reveal_via_encrypt` + `verify_liquidation_reveal_via_encrypt` |
+| **gRPC CreateInput** — `encrypt.v1.EncryptService/CreateInput` | **LIVE** — real ciphertext handles returned from pre-alpha devnet |
+
+Option B does **not** make on-chain FHE live. It preserves the compile-wired CPI path so ShieldLend is ready to activate the on-chain path when the upstream resolves the `solana_account_info` crate-family split.
+
 ## Current boundary
 
 Encrypt remains a pre-alpha client/gRPC integration in this branch. The live path can discover active Encrypt devnet network keys and submit non-sensitive modeled ShieldLend health inputs through `encrypt.v1.EncryptService/CreateInput`.
@@ -77,8 +89,22 @@ The new smoke script submits three modeled non-sensitive inputs:
 
 Each input is bound to a test loan PDA and authorized to the ShieldLend lending program id. This is still only a pre-alpha client/gRPC CreateInput smoke. It is not an on-chain ShieldLend Encrypt verification flow.
 
-Latest live-hardening IDs:
+Latest live-hardening IDs (2026-05-10 — `live/encrypt-anchor`):
 
+Active devnet network keys:
+- disc=2 (real key): `6L4bQjT2ao774nQQ6BkXqnKJMye4nmPW1SMeRRxfm2Yn` — `f00f3465b66ff8034600706ed05bf70ef5318edc511398085a3ab4512b875197`
+- disc=7 (sentinel): `2YP2nxFoYcDFDBRygrN7C3Y3ENdcoaLjVeAmbX8HHwur` — `5555555555555555555555555555555555555555555555555555555555555555`
+
+`check-encrypt.mjs --live` (health_ratio_bps=15000):
+- ciphertext: `TEKonURJhM41WBgKhgJYfyHzmnpnQ3tdgJBSnS62zRi`
+- hex: `06b82ab470f0397306d8a24e4141bfd69204f05979293cc90cfbae077d159a75`
+
+`encrypt-health-smoke.mjs --live` (collateral=2e9, debt=1e9, threshold_bps=12500):
+- `collateral_value_lamports`: `AfVVxyXvMcd5Gia36rRjFUbhwdx7GsDMty6XTuDGQ2Hw`
+- `debt_value_lamports`: `GarhsLbtNa5EKB4GvUac7fZvAidTW3MaSyxFjK5a7q6F`
+- `liquidation_threshold_bps`: `2wF4v3ZhXCN1vbisMGsngiDTPUUfSJuQiixNstC97MtD`
+
+Previous IDs (2026-05-09):
 - `health_ratio_bps`: `DX9ipt7WY1tCXFSv14oWwmZ3a19Ls9aUnSTPfiUUQwEZ`
 - `collateral_value_lamports`: `7U88Hf8T4u1NxdH6yZjFbkQLzfzZi2eT8hLJSW6nYH9L`
 - `debt_value_lamports`: `DM6GWnbeyGoWxcYFXRukAt3yciZCcjpbmWUC8d5aJxJV`

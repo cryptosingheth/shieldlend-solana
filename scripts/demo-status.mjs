@@ -38,8 +38,9 @@ if (branchResult.status !== 0) {
 } else {
   const branch = branchResult.stdout.trim();
   ok(`branch: ${branch}`);
-  if (branch !== 'convergence/privacy-rails-integration') {
-    warn(`expected branch convergence/privacy-rails-integration — got ${branch}`);
+  const VALID_BRANCHES = ['convergence/privacy-rails-integration', 'live/encrypt-anchor'];
+  if (!VALID_BRANCHES.includes(branch)) {
+    warn(`expected one of ${VALID_BRANCHES.join(', ')} — got ${branch}`);
   }
 }
 
@@ -167,9 +168,11 @@ ok('C2H Groth16 BN254 withdraw round-trip: PASSED on devnet');
 ok('  deposit → flush_epoch → store_withdraw_proof → withdraw');
 ok('  198,502 CU consumed; nullifier consumed; nullifier registry CPI succeeded');
 ok('Umbra funded wSOL deposit/withdraw: CONFIRMED — 7 devnet tx signatures on record');
-ok('Encrypt gRPC CreateInput probe: CONFIRMED — ciphertext DX9ipt7WY1tCXFSv14oWwmZ3a19Ls9aUnSTPfiUUQwEZ');
+ok('Encrypt gRPC CreateInput probe: CONFIRMED — latest health_ratio_bps ciphertext TEKonURJhM41WBgKhgJYfyHzmnpnQ3tdgJBSnS62zRi (2026-05-10)');
+ok('Encrypt gRPC health-smoke (3 inputs): collateral AfVVxyXvMcd5Gia36rRjFUbhwdx7GsDMty6XTuDGQ2Hw / debt GarhsLbtNa5EKB4GvUac7fZvAidTW3MaSyxFjK5a7q6F / threshold 2wF4v3ZhXCN1vbisMGsngiDTPUUfSJuQiixNstC97MtD (2026-05-10)');
+ok('Encrypt devnet: 2 active network keys (disc=2 real key, disc=7 sentinel) confirmed on devnet');
 warn('Encrypt Anchor CPI upstream: BLOCKED — official encrypt-anchor expects solana_account_info 3.1.x, while Anchor 0.32.1 supplies 2.3.x');
-ok('Encrypt Anchor CPI local fork: COMPILE-WIRED — vendored Anchor 0.32 compatibility fork builds and lending_pool exposes a separate request/reveal path');
+ok('Encrypt Anchor CPI Option B: COMPILE-WIRED — vendor/encrypt-anchor-anchor032 fork builds against Anchor 0.32.1; lending_pool exposes request_liquidation_reveal_via_encrypt + verify_liquidation_reveal_via_encrypt');
 ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
@@ -185,9 +188,10 @@ console.log(`
   ✓ Full Groth16 BN254 withdraw round-trip confirmed (DEV/TEST trusted setup)
   ✓ On-chain Groth16 BN254 pairing passed; 198,502 CU; nullifier consumed
   ✓ Umbra funded devnet wSOL encrypted-balance deposit and withdrawal confirmed
-  ✓ Encrypt pre-alpha gRPC CreateInput probe live; ciphertext handle returned
-  ✓ Encrypt Anchor upstream blocker is reproducible and documented
-  ✓ Encrypt Anchor local compatibility fork compiles; lending_pool request/reveal path is compile-wired
+  ✓ Encrypt pre-alpha gRPC CreateInput live; health, collateral, and liquidation threshold inputs confirmed
+  ✓ Encrypt Anchor Option B: local vendor/encrypt-anchor-anchor032 fork compiles against Anchor 0.32.1
+  ✓ Encrypt Anchor upstream blocker documented: solana_account_info 3.1.x vs 2.3.x crate-family mismatch
+  ✓ lending_pool: request_liquidation_reveal_via_encrypt + verify_liquidation_reveal_via_encrypt compile-wired
   ✓ MagicBlock TEE RPC + Router RPC HTTP 200 on devnet
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
@@ -203,7 +207,8 @@ console.log(`
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)
   ✗ Umbra native SOL ShieldLend payout (C2H exits direct stealth_address; no wSOL bridge)
-  ✗ Encrypt on-chain FHE active (local CPI wiring compiles, but upstream remains incompatible and no live on-chain Encrypt/FHE path is proven)
+  ✗ Encrypt on-chain FHE active (Option B compile-wires the CPI path, but no live Encrypt decryption/reveal round-trip through ShieldLend programs is proven)
+  ✗ Encrypt production encryption guarantee (pre-alpha only; data may be plaintext/public on devnet)
 `);
 
 // ── Summary ──────────────────────────────────────────────────────────────────
