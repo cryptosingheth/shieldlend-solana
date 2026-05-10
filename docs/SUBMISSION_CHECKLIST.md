@@ -94,7 +94,7 @@ These are implementation gaps, not design gaps:
 
 3. **MagicBlock PER Rust macros not in Anchor programs** — Anchor 0.30.1 is used to protect the confirmed Groth16 round-trip. PER requires `#[ephemeral]`, `#[delegate]`, `#[commit]` macros from Anchor 0.32.1. The TypeScript PER SDK builders are verified but no on-chain PER transaction is submitted.
 
-4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. The private-transfer harness now runs SOL -> wSOL, login, mint check, deposit, balance polling, and transfer attempt. After deposit, authenticated private-balance polling does not show sufficient private wSOL credit for the same owner/mint, and transfer execution fails with Token Program `0x1` InsufficientFunds; router also still fails with `Blockhash not found`.
+4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. The private-transfer harness now runs SOL -> wSOL, login, mint check, deposit, balance polling, transfer namespace probing, and a submitted `base -> ephemeral` top-up retry. After deposit and after the top-up route, authenticated private-balance polling still does not show sufficient private wSOL credit for the same owner/mint, and transfer execution fails with Token Program `0x1` InsufficientFunds; router also still fails with `Blockhash not found`.
 
 5. **MagicBlock TDX attestation challenge mismatch** — SDK 0.8.8 challenge format does not match current devnet TEE expected format. TEE RPC itself responds HTTP 200. Attestation verification is not claimed.
 
@@ -118,7 +118,7 @@ Allowed claims (confirmed by devnet evidence):
 | MagicBlock TEE + Router RPC HTTP 200 | `check-magicblock.mjs` output |
 | MagicBlock PER SDK builders verified | 13/13 SDK functions, 17/17 sidecar tests |
 | MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |
-| MagicBlock Private Payments funded private-transfer diagnosis | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; classified as balance/account setup issue because deposit does not expose sufficient private wSOL balance before Token Program `0x1` |
+| MagicBlock Private Payments funded private-transfer diagnosis | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; classified as MagicBlock API/router/TEE limitation because deposit and the submitted `base -> ephemeral` route do not expose usable private wSOL balance before Token Program `0x1` |
 | IKA SDK/WASM confirmed with source-backed blockers | `check-ika.mjs` output |
 
 Not allowed (must not claim):
@@ -141,7 +141,10 @@ Not allowed (must not claim):
 - [x] Funded private-transfer check deposit: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
 - [x] Funded private-transfer retry wSOL wrap: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
 - [x] Funded private-transfer retry deposit: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
-- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by missing/sufficient private wSOL balance after deposit and router `Blockhash not found`
+- [x] Private-transfer namespace retry deposit: `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed`
+- [x] Private-transfer namespace retry wSOL wrap: `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf`
+- [x] Private-transfer namespace retry `base -> ephemeral` top-up: `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9`
+- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by missing/sufficient private wSOL balance after deposit/top-up and router `Blockhash not found`
 - Umbra native SOL ShieldLend payout
 - Encrypt on-chain FHE active
 

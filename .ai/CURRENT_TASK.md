@@ -1,6 +1,6 @@
 # Current Task
 
-## Status: MagicBlock Private Payments private-transfer balance hardening complete on `live/magicblock-private-payments`
+## Status: MagicBlock Private Payments private-transfer namespace diagnostic complete on `live/magicblock-private-payments`
 
 Base: current `live/magicblock-private-payments` branch.
 
@@ -12,10 +12,14 @@ Base: current `live/magicblock-private-payments` branch.
   - check or initialize the wSOL mint queue
   - deposit wSOL through MagicBlock Private Payments
   - poll public and authenticated private balances after deposit
+  - probe all private transfer balance namespaces
+  - submit the documented `base -> ephemeral` top-up route if deposit does not expose private balance
   - attempt private transfer using the same owner/mint/amount context
 - Added JSON report fields:
   - `balanceSnapshots`
   - `depositCreditChecks`
+  - `privateBalanceTopUpAttempts`
+  - `transferRouteDiagnostics`
   - `privateTransferBlockerClassification`
 - Updated `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`, `docs/HACKATHON.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/SUBMISSION_CHECKLIST.md`, and `scripts/demo-status.mjs` with the new claim boundary.
 
@@ -40,12 +44,16 @@ Base: current `live/magicblock-private-payments` branch.
   - deposit submitted: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
   - retry from zero wSOL wrapped: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
   - retry deposit submitted: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
+  - namespace retry deposit submitted: `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed`
+  - namespace retry wrapped wSOL: `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf`
+  - namespace retry `base -> ephemeral` top-up submitted: `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9`
   - after deposit, authenticated `/v1/spl/private-balance` polling returned `balance: "0"` and `location: "base"` for the same owner/mint after six attempts
+  - after the submitted `base -> ephemeral` top-up, authenticated `/v1/spl/private-balance` still returned `balance: "0"` and `location: "base"` after six attempts
   - private-transfer attempts:
     - router/ephemeral: `Blockhash not found`
     - TEE: `custom program error: 0x1`
     - base fallback: Token Program log `Error: insufficient funds`
-  - classification: `our_balance_account_setup_issue` until MagicBlock confirms a different private-balance namespace/account context or API route
+  - classification: `magicblock_api_router_tee_limitation` because the public API accepted/submitted `base -> ephemeral`, but still did not expose a usable private balance for transfer
 
 ## Validation Status
 
@@ -56,11 +64,11 @@ Base: current `live/magicblock-private-payments` branch.
 
 ## Claim Boundary
 
-- Allowed: MagicBlock Private Payments public API is live/reachable; challenge/login works; wSOL mint is initialized; deposit/withdraw builders and live submissions work on devnet; private-transfer harness now exercises the funded path through the real Token Program failure.
+- Allowed: MagicBlock Private Payments public API is live/reachable; challenge/login works; wSOL mint is initialized; deposit/withdraw builders and live submissions work on devnet; private-transfer harness now exercises deposit plus documented `base -> ephemeral` top-up before the real Token Program failure.
 - Not allowed: full MagicBlock Private Payments private transfer is live end-to-end; ShieldLend repayment settlement is MagicBlock-bound; MagicBlock PER Rust macros are deployed; TDX attestation is verified.
 
 ## Next Actions
 
-1. Ask MagicBlock which private-balance namespace/account context should be credited by `/v1/spl/deposit`, or whether `/v1/spl/private-balance` currently mirrors base balance only.
+1. Ask MagicBlock which private-balance namespace/account context should be credited by `/v1/spl/deposit` and `base -> ephemeral`, or whether `/v1/spl/private-balance` currently mirrors base balance only.
 2. Ask MagicBlock which RPC should accept `sendTo=ephemeral` private-transfer transactions and whether the API-provided blockhash should be accepted by router/TEE.
 3. Once private transfer succeeds with a real private-balance credit and confirmed signature, wire receipt/signature binding into the ShieldLend repay path.

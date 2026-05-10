@@ -381,3 +381,11 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: Do not add an Anchor 0.32 Encrypt sidecar in this branch.
 **Why**: A throwaway Anchor 0.32 sidecar could compile graph-only code, but failed when calling the real `encrypt_anchor::EncryptContext` CPI path. Current upstream `encrypt-anchor` resolves to newer Anchor/Solana account crates, producing duplicate `solana_account_info::AccountInfo` and `anchor_lang::Error` types at the CPI boundary.
 **How to apply**: Keep `lending_pool::verify_encrypt_reveal` fail-closed. Use `scripts/encrypt-health-smoke.mjs` only as a pre-alpha gRPC CreateInput smoke for modeled health/collateral threshold inputs. Program-side Encrypt should move in a separate migration branch that pins/forks a compatible `encrypt-anchor` revision, verifies a single Anchor/Solana account crate family with `cargo tree`, and reruns C2H after any program-side change.
+
+---
+
+## MagicBlock Private Payments Namespace Boundary (2026-05-10)
+
+**Decision**: Do not claim MagicBlock Private Payments private transfer live until a real `ephemeral -> ephemeral` transfer signature succeeds and `/v1/spl/private-balance` or equivalent evidence shows usable private/ephemeral wSOL credit.
+**Why**: `/v1/spl/deposit` and the documented `base -> ephemeral` transfer route both submit on devnet for the same owner/mint, but authenticated private-balance polling still returns `location: "base"` and `balance: "0"` after the funds leave the public ATA. The actual private transfer then fails with router `Blockhash not found` and Token Program `0x1` InsufficientFunds on TEE/base attempts.
+**How to apply**: Keep deposit/withdraw claimed as live, keep private transfer marked blocked as `magicblock_api_router_tee_limitation`, and ask MagicBlock which private-balance namespace/account context or private-router API is required.

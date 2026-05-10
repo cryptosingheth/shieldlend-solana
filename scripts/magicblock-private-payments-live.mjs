@@ -410,6 +410,39 @@ function summarizeBuild(payload) {
   };
 }
 
+function transferBody({
+  owner,
+  recipient,
+  mintAddress,
+  amount,
+  visibility,
+  fromBalance,
+  toBalance,
+  memo,
+  clientRefId = "1",
+}) {
+  return {
+    from: owner,
+    to: recipient,
+    mint: mintAddress,
+    amount: Number(amount),
+    visibility,
+    fromBalance,
+    toBalance,
+    cluster: CLUSTER,
+    initIfMissing: true,
+    initAtasIfMissing: true,
+    initVaultIfMissing: false,
+    memo,
+    minDelayMs: "0",
+    maxDelayMs: "0",
+    clientRefId,
+    split: 1,
+    gasless: false,
+    legacy: true,
+  };
+}
+
 function deserializeBuildTransaction(build) {
   const raw = Buffer.from(build.transactionBase64, "base64");
   if (build.version === "v0") return VersionedTransaction.deserialize(raw);
@@ -607,6 +640,151 @@ async function tryPrivateTransferSubmit(report, connectionByTarget, wallet, buil
   return false;
 }
 
+async function requestTransferRouteDiagnostics(
+  report,
+  owner,
+  recipient,
+  mintAddress,
+  amountBaseUnits,
+  bearerToken
+) {
+  const routes = [
+    ["base", "base"],
+    ["base", "ephemeral"],
+    ["ephemeral", "base"],
+    ["ephemeral", "ephemeral"],
+  ];
+  const diagnostics = [];
+
+  for (const [fromBalance, toBalance] of routes) {
+    const body = transferBody({
+      owner,
+      recipient,
+      mintAddress,
+      amount: amountBaseUnits,
+      visibility: "private",
+      fromBalance,
+      toBalance,
+      memo: `ShieldLend MagicBlock route check ${fromBalance}->${toBalance}`,
+      clientRefId: String(diagnostics.length + 10),
+    });
+    const result = await apiPost(
+      report,
+      "/v1/spl/transfer",
+      body,
+      bearerToken ? { bearerToken } : {}
+    );
+    const raw = result.response;
+    const summary = summarizeBuild(raw);
+    result.response = summary;
+    diagnostics.push({
+      visibility: "private",
+      fromBalance,
+      toBalance,
+      ok: result.ok,
+      status: result.status,
+      sendTo: summary?.sendTo ?? null,
+      recentBlockhash: summary?.recentBlockhash ?? null,
+      lastValidBlockHeight: summary?.lastValidBlockHeight ?? null,
+      instructionCount: summary?.instructionCount ?? null,
+      requiredSigners: summary?.requiredSigners ?? null,
+      validator: summary?.validator ?? null,
+      error: result.ok ? "" : result.responseText,
+      build: raw,
+    });
+  }
+
+  report.transferRouteDiagnostics.push(...diagnostics);
+  return diagnostics;
+}
+
+async function tryBaseToEphemeralTopUp(
+  report,
+  connectionByTarget,
+  baseConnection,
+  wallet,
+  owner,
+  recipient,
+  mint,
+  mintAddress,
+  amountBaseUnits,
+  bearerToken
+) {
+  const before = [...report.depositCreditChecks].reverse()[0] ?? null;
+  if (before?.credited) return null;
+
+  report.tokenTopUpPreparation = await ensureWsol(baseConnection, wallet, mint, amountBaseUnits);
+  for (const signature of report.tokenTopUpPreparation.signatures ?? []) {
+    report.txSignatures.push({
+      label: "wrap-wsol-for-base-to-ephemeral-top-up",
+      signature,
+      sendTo: "base",
+      explorer: explorer(signature),
+    });
+  }
+
+  const body = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: amountBaseUnits,
+    visibility: "private",
+    fromBalance: "base",
+    toBalance: "ephemeral",
+    memo: "ShieldLend MagicBlock base-to-ephemeral top-up",
+    clientRefId: "77",
+  });
+  const route = await apiPost(
+    report,
+    "/v1/spl/transfer",
+    body,
+    bearerToken ? { bearerToken } : {}
+  );
+  const build = route.response;
+  route.response = summarizeBuild(route.response);
+  const attempt = {
+    route: "base->ephemeral",
+    requested: body,
+    build: route.response,
+    submitted: false,
+    signature: "",
+    error: "",
+    creditCheck: null,
+  };
+
+  if (!route.ok) {
+    attempt.error = `builder HTTP ${route.status}: ${route.responseText}`;
+    report.privateBalanceTopUpAttempts.push(attempt);
+    return attempt;
+  }
+
+  try {
+    const signature = await signAndSendBuild(
+      report,
+      connectionByTarget,
+      wallet,
+      "base-to-ephemeral-top-up",
+      build,
+      { target: build.sendTo }
+    );
+    attempt.submitted = true;
+    attempt.signature = signature;
+    attempt.creditCheck = await waitForPrivateBalanceAtLeast(
+      report,
+      owner,
+      mintAddress,
+      bearerToken,
+      amountBaseUnits,
+      "after-base-to-ephemeral-top-up"
+    );
+  } catch (error) {
+    attempt.error = error instanceof Error ? error.message : String(error);
+  }
+
+  report.privateBalanceTopUpAttempts.push(attempt);
+  return attempt;
+}
+
 function classifyPrivateTransferBlocker(report, amountBaseUnits) {
   if (report.privateTransferSubmitAttempts.some((attempt) => attempt.status === "submitted")) {
     return {
@@ -619,11 +797,21 @@ function classifyPrivateTransferBlocker(report, amountBaseUnits) {
     .map((attempt) => attempt.error || attempt.status || "")
     .join(" | ");
   const latestDepositCheck = [...report.depositCreditChecks].reverse()[0] ?? null;
+  const latestTopUpAttempt = [...report.privateBalanceTopUpAttempts].reverse()[0] ?? null;
+  const latestTopUpCheck = latestTopUpAttempt?.creditCheck ?? null;
   const parsedPrivateBalance = maybeBigInt(latestDepositCheck?.parsedPrivateBalance);
+  const parsedTopUpPrivateBalance = maybeBigInt(latestTopUpCheck?.parsedPrivateBalance);
   const hasTokenInsufficientFunds =
     /InsufficientFunds|insufficient funds|custom program error: 0x1|0x1/i.test(errors);
 
   if (hasTokenInsufficientFunds) {
+    if (parsedTopUpPrivateBalance !== null && parsedTopUpPrivateBalance >= amountBaseUnits) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "Base->ephemeral top-up reported enough private wSOL, but transfer execution still returned Token Program 0x1 InsufficientFunds.",
+      };
+    }
     if (parsedPrivateBalance !== null && parsedPrivateBalance >= amountBaseUnits) {
       return {
         category: "magicblock_api_router_tee_limitation",
@@ -631,10 +819,17 @@ function classifyPrivateTransferBlocker(report, amountBaseUnits) {
           "MagicBlock private-balance API reported enough deposited wSOL, but TEE/token execution still returned Token Program 0x1 InsufficientFunds.",
       };
     }
+    if (latestTopUpAttempt?.submitted && latestTopUpCheck?.credited === false) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "Public API accepted and submitted the documented base->ephemeral private transfer route for the same owner/mint, but /v1/spl/private-balance still returned no usable ephemeral credit and the actual ephemeral transfer failed with Token Program 0x1 InsufficientFunds.",
+      };
+    }
     return {
       category: "our_balance_account_setup_issue",
       detail:
-        "Private transfer reached token execution with insufficient private wSOL. The preceding deposit did not produce a parseable/sufficient private-balance credit for the same owner/mint context.",
+        "Private transfer reached token execution with insufficient private wSOL. Neither /v1/spl/deposit nor the documented base->ephemeral transfer route produced a parseable/sufficient private-balance credit for the same owner/mint context.",
     };
   }
 
@@ -722,6 +917,9 @@ async function main() {
     privateTransferSubmitAttempts: [],
     balanceSnapshots: [],
     depositCreditChecks: [],
+    privateBalanceTopUpAttempts: [],
+    tokenTopUpPreparation: null,
+    transferRouteDiagnostics: [],
     privateTransferBlockerClassification: null,
     tokenPreparation: null,
     dryRunNotice:
@@ -810,41 +1008,26 @@ async function main() {
     initAtasIfMissing: true,
     idempotent: true,
   };
-  const publicTransferBody = {
-    from: owner,
-    to: recipient,
-    mint: mintAddress,
-    amount: 1,
+  const publicTransferBody = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: 1n,
     visibility: "public",
     fromBalance: "base",
     toBalance: "base",
-    cluster: CLUSTER,
-    initIfMissing: true,
-    initAtasIfMissing: true,
-    initVaultIfMissing: false,
     memo: "ShieldLend MagicBlock public builder check",
-    legacy: true,
-  };
-  const privateTransferBody = {
-    from: owner,
-    to: recipient,
-    mint: mintAddress,
-    amount: Number(amountBaseUnits),
+  });
+  const privateTransferBody = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: amountBaseUnits,
     visibility: "private",
     fromBalance: "ephemeral",
     toBalance: "ephemeral",
-    cluster: CLUSTER,
-    initIfMissing: true,
-    initAtasIfMissing: true,
-    initVaultIfMissing: false,
     memo: "ShieldLend MagicBlock private live check",
-    minDelayMs: "0",
-    maxDelayMs: "0",
-    clientRefId: "1",
-    split: 1,
-    gasless: false,
-    legacy: true,
-  };
+  });
   const withdrawBody = {
     owner,
     mint: mintAddress,
@@ -877,6 +1060,15 @@ async function main() {
   report.liveStatus.privateTransfer = privateTransfer.ok
     ? "unsigned-builder-ok"
     : `blocked HTTP ${privateTransfer.status}`;
+
+  await requestTransferRouteDiagnostics(
+    report,
+    owner,
+    recipient,
+    mintAddress,
+    amountBaseUnits,
+    bearerToken
+  );
 
   const withdraw = await apiPost(report, "/v1/spl/withdraw", withdrawBody);
   const withdrawBuild = withdraw.response;
@@ -942,6 +1134,28 @@ async function main() {
         "after-deposit"
       );
       report.depositCreditChecks.push(creditCheck);
+
+      if (runPrivateTransfer && !creditCheck.credited) {
+        const topUpAttempt = await tryBaseToEphemeralTopUp(
+          report,
+          connectionByTarget,
+          baseConnection,
+          wallet,
+          owner,
+          recipient,
+          mint,
+          mintAddress,
+          amountBaseUnits,
+          bearerToken
+        );
+        if (topUpAttempt?.creditCheck?.credited) {
+          report.liveStatus.deposit = "submitted; base-to-ephemeral-top-up-credited";
+        } else if (topUpAttempt) {
+          report.liveStatus.deposit = `submitted; base-to-ephemeral-top-up-blocked: ${
+            topUpAttempt.error || "private balance still not credited"
+          }`;
+        }
+      }
     }
 
     if (runPrivateTransfer) {

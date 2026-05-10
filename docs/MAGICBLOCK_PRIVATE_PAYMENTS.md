@@ -130,13 +130,35 @@ Retry result:
   - TEE: `custom program error: 0x1`
   - Base fallback: Token Program log `Error: insufficient funds`
 
-Classification:
+Additional namespace retry:
+
+- `/v1/spl/transfer` accepts all four private balance-route builder variants:
+  - `fromBalance=base`, `toBalance=base` -> `sendTo=base`
+  - `fromBalance=base`, `toBalance=ephemeral` -> `sendTo=base`
+  - `fromBalance=ephemeral`, `toBalance=base` -> `sendTo=ephemeral`
+  - `fromBalance=ephemeral`, `toBalance=ephemeral` -> `sendTo=ephemeral`
+- Because the documented `base -> ephemeral` route exists, the live private-transfer mode now tries it after deposit fails to surface private balance.
+- Latest `base -> ephemeral` top-up retry submitted:
 
 ```text
-our_balance_account_setup_issue
+34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9
 ```
 
-Reason: the deposit path consumes the wallet's public wSOL, but the public API response available to this script does not show a sufficient private/ephemeral wSOL credit for the same owner/mint before transfer. The transfer reaches Token Program `0x1` InsufficientFunds. Until MagicBlock confirms a different private-balance namespace, account context, or router flow, do not classify this as a live private-transfer rail.
+- The top-up consumed the public wSOL, but six authenticated `/v1/spl/private-balance` polls still returned:
+
+```json
+{"location":"base","balance":"0"}
+```
+
+- The actual `ephemeral -> ephemeral` private transfer remained blocked with router `Blockhash not found` and Token Program `0x1` InsufficientFunds on TEE/base fallback attempts.
+
+Classification after the `base -> ephemeral` retry:
+
+```text
+magicblock_api_router_tee_limitation
+```
+
+Reason: the public API accepts and submits the documented `base -> ephemeral` transfer route for the same owner/mint, but the authenticated private-balance endpoint still does not expose a usable ephemeral/private wSOL credit, and the subsequent private-transfer execution still fails. Until MagicBlock confirms the missing namespace/account context or router behavior, do not classify this as a live private-transfer rail.
 
 ## 2026-05-09 Hardening Results
 

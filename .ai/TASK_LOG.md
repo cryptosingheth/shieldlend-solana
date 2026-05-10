@@ -972,7 +972,7 @@ Message: transaction verification error: Transaction loads a writable account th
 
 ### Classification
 
-`our_balance_account_setup_issue` until MagicBlock confirms a different required private-balance namespace/account context or a different public API route. The current public API path available to this script does not prove that deposit credits the private ephemeral wSOL balance required by transfer.
+Superseded by the namespace retry below. At this point the blocker looked like `our_balance_account_setup_issue` because only `/v1/spl/deposit` had been exercised and it did not prove private ephemeral wSOL credit.
 
 ### Validations
 
@@ -991,3 +991,35 @@ Message: transaction verification error: Transaction loads a writable account th
 - Confirmed: funded private-transfer harness now reaches the real insufficient-balance failure instead of skipping deposit setup.
 - Not confirmed: private transfer through intended ephemeral/router path.
 - Not confirmed: MagicBlock PER Rust macros in Anchor programs or deployed.
+
+## 2026-05-10 — MagicBlock Private Payments Namespace Retry
+
+### Changes
+
+- Added `/v1/spl/transfer` route diagnostics for all private balance combinations:
+  - `base -> base`
+  - `base -> ephemeral`
+  - `ephemeral -> base`
+  - `ephemeral -> ephemeral`
+- Added live `base -> ephemeral` top-up fallback after deposit if `/v1/spl/private-balance` does not show sufficient private balance.
+- Updated classification so a submitted `base -> ephemeral` top-up that still does not surface usable private balance is treated as `magicblock_api_router_tee_limitation`, not local balance preparation.
+
+### Latest Evidence
+
+- Dry-run route builders:
+  - `base -> base`: accepted, `sendTo=base`
+  - `base -> ephemeral`: accepted, `sendTo=base`
+  - `ephemeral -> base`: accepted, `sendTo=ephemeral`
+  - `ephemeral -> ephemeral`: accepted, `sendTo=ephemeral`
+- Live namespace retry signatures:
+  - deposit: `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed`
+  - wSOL wrap: `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf`
+  - `base -> ephemeral` top-up: `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9`
+- After the submitted top-up, six authenticated `/v1/spl/private-balance` polls for the same owner/mint still returned `balance: "0"` and `location: "base"`.
+- The actual private transfer stayed blocked:
+  - router/ephemeral: `Blockhash not found`
+  - TEE/base: Token Program `0x1` / `Error: insufficient funds`
+
+### Classification
+
+`magicblock_api_router_tee_limitation`: the public API accepts and submits the documented `base -> ephemeral` namespace route, but the public balance APIs still do not expose a usable private/ephemeral wSOL balance for the subsequent private transfer.
