@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-08 (convergence/privacy-rails-integration: all four rails merged)
+Last reconciled: 2026-05-10 (`live/magicblock-private-payments`: MagicBlock private-transfer balance hardening)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -14,7 +14,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed | IKA relay signing, ShieldLend-native Umbra payout, PER macros (Anchor 0.32.1 blocked), Private Payments private transfer through the intended ephemeral/router RPC, and Encrypt/FHE on-chain health computation are not live |
+| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer harness now funds/deposits/checks balances before transfer; IKA SDK/capability probe confirmed | IKA relay signing, ShieldLend-native Umbra payout, PER macros (Anchor 0.32.1 blocked), Private Payments private transfer through the intended ephemeral/router RPC, private wSOL balance credit after deposit, and Encrypt/FHE on-chain health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -139,7 +139,7 @@ Artifact details:
 | IKA FutureSign liquidation consent | Not wired; borrower-supplied flag exists | No |
 | MagicBlock PER batching | TypeScript adapter wired; TEE RPC live (HTTP 200); Rust macros blocked on Anchor 0.32.1 | No — Rust-side account delegation not wired |
 | MagicBlock VRF dummies | Not wired | No |
-| MagicBlock Private Payments | Public API wired; health/challenge/login/mint/balance/builders verified; wSOL deposit and withdraw submitted on devnet; private-transfer tx submits only through base devnet after local blockhash refresh | Partial — deposit/withdraw live, intended ephemeral/router private-transfer submit still blocked; ShieldLend repayment binding not wired |
+| MagicBlock Private Payments | Public API wired; health/challenge/login/mint/balance/builders verified; wSOL deposit and withdraw submitted on devnet; `--live-private-transfer` now wraps/checks/deposits/polls before transfer | Partial — deposit/withdraw live, but deposit does not expose sufficient private wSOL credit for transfer; intended ephemeral/router private-transfer submit still blocked; ShieldLend repayment binding not wired |
 | Umbra SDK encrypted-balance token flow | Funded devnet wSOL deposit and withdrawal confirmed via `scripts/umbra-funded-smoke.mjs` | Yes — SDK-side wSOL encrypted-balance flow only |
 | Umbra mixer/UTXO path | SDK functions exposed; compatible prover not installed | No |
 | ShieldLend native SOL payout via Umbra | Not wired; C2H native SOL route preserved | No — requires wSOL/SPL settlement bridge |
@@ -161,7 +161,8 @@ Artifact details:
 | ~~Transaction MTU~~ | **Resolved (C2F)** — proof account PDA pattern implemented; all six instructions within 1232-byte MTU | See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` B6 |
 | ~~BPF stack frame warnings (B7)~~ | **Resolved (C2G-A)** — `Box<Account>` applied to all four affected contexts; zero stack-frame error diagnostics in `anchor build --no-idl` | |
 | ~~No integration test past UnknownRoot~~ | **Resolved (C2H)** — full deposit → flush_epoch → store_proof → withdraw round-trip confirmed on devnet with on-chain Groth16 verification |
-| MagicBlock Private Payments private transfer submit | API returns unsigned `sendTo=ephemeral` private-transfer transaction. The decoded transaction blockhash matches the API blockhash, but base/TEE report it invalid and base sees the API last-valid height as expired. Refreshing the blockhash before signing still leaves router blocked with `Blockhash not found`; TEE rejects writable accounts. Base devnet accepts the refreshed transaction, but this is not the intended ephemeral route. Deposit/withdraw remain live on base devnet. |
+| MagicBlock Private Payments private transfer balance | `--live-private-transfer` now performs SOL -> wSOL, login/auth, wSOL mint check, deposit, public/private balance polling, and transfer attempt. The deposit tx submits on devnet, but authenticated private-balance polling for the same owner/mint returns `balance: "0"` and `location: "base"` after six attempts; transfer execution then fails with Token Program `0x1` InsufficientFunds. Classification: balance/account setup issue until MagicBlock confirms the required private balance namespace or account context. |
+| MagicBlock Private Payments ephemeral submit | API returns unsigned `sendTo=ephemeral` private-transfer transaction. The decoded transaction blockhash matches the API blockhash, but base/TEE report it invalid and base sees the API last-valid height as expired. Router submit still leaves `Blockhash not found`. |
 | MagicBlock Anchor version gap | Rust PER macros (#[ephemeral], #[delegate], #[commit]) require Anchor 0.32.1; workspace uses 0.30.1. Do not upgrade without isolating C2H round-trip. |
 | ShieldLend native SOL -> Umbra token settlement not wired | Existing C2H remains native SOL direct `stealth_address`; cannot claim ShieldLend withdraws are Umbra-routed |
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
@@ -200,7 +201,8 @@ See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file
 | Public transfer builder | Live builder | `POST /v1/spl/transfer` with `visibility=public` returned unsigned legacy tx, `sendTo=base` |
 | Deposit builder + submit | Live | wSOL deposit submitted on devnet |
 | Private transfer builder | Live builder | `POST /v1/spl/transfer` with `visibility=private` returned unsigned legacy tx, `sendTo=ephemeral` |
-| Private transfer submit | Partial diagnostic only | Router still fails with `Blockhash not found`; TEE fails with `Transaction loads a writable account that cannot be written`; base devnet accepts the locally refreshed tx |
+| Private transfer funded path | Blocked | `--live-private-transfer` deposits wSOL, but authenticated private-balance polling returns `balance: "0"` for the same owner/mint; transfer fails with Token Program `0x1` InsufficientFunds |
+| Private transfer ephemeral submit | Blocked | Router still fails with `Blockhash not found`; TEE/base attempts reach Token Program `0x1` after the funded deposit path |
 | Withdraw builder + submit | Live | wSOL withdraw submitted on devnet |
 | MCP route | Blocked/not exposed | `GET /v1/mcp` returned `404 {"error":{"code":"NOT_FOUND","message":"Route not found"}}` |
 
@@ -211,7 +213,18 @@ Live tx signatures from minimized wSOL flow (`--amount-base-units=1`):
 | wSOL wrap | `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP` |
 | MagicBlock Private Payments deposit | `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct` |
 | MagicBlock Private Payments withdraw | `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP` |
-| MagicBlock Private Payments private-transfer base-RPC fallback | `2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s` |
+| Historical private-transfer base-RPC diagnostic only | `2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s` |
+
+Latest 2026-05-10 live hardening signatures (`--amount-base-units=1000000` default):
+
+| Step | Signature |
+|---|---|
+| wSOL wrap + SyncNative | `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1` |
+| Deposit/withdraw check deposit | `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF` |
+| Deposit/withdraw check withdraw | `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn` |
+| Funded private-transfer check deposit | `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ` |
+| Funded private-transfer retry wSOL wrap | `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX` |
+| Funded private-transfer retry deposit | `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs` |
 
 See [`docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`](MAGICBLOCK_PRIVATE_PAYMENTS.md) for the exact endpoint list, script modes, and blocker text.
 
@@ -221,7 +234,7 @@ See [`docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`](MAGICBLOCK_PRIVATE_PAYMENTS.md) for 
 |---|---|---|
 | TDX attestation (`verifyTeeRpcIntegrity`) | Returns exception: `challenge must decode to 64 bytes` — minor API delta between SDK 0.8.8 and current devnet TEE | Update SDK to latest patch or contact MagicBlock re: challenge format |
 | Rust PER macros (`#[ephemeral]`, `#[delegate]`, `#[commit]`) | Require Anchor 0.32.1; workspace uses 0.30.1 | Isolated Anchor upgrade task; re-run C2H devnet round-trip before landing |
-| Private Payments private transfer submit | `POST /v1/spl/transfer` returns an unsigned `sendTo=ephemeral` transaction. Router submit fails with `Blockhash not found`; TEE submit fails with writable-account verification; base devnet accepts the locally refreshed transaction only. | Confirm correct ephemeral submit RPC or API blockhash behavior with MagicBlock |
+| Private Payments private transfer balance/submit | `POST /v1/spl/transfer` returns an unsigned `sendTo=ephemeral` transaction. The funded path now deposits wSOL first, but authenticated private-balance polling returns `balance: "0"` for the same owner/mint. Transfer attempts fail with router `Blockhash not found` and Token Program `0x1` InsufficientFunds. | Confirm the required private balance namespace/account context and correct ephemeral submit RPC with MagicBlock |
 | Account delegation in `shielded_pool` | Rust macros blocked (above) | Blocked until Anchor upgrade |
 | MagicBlock VRF | SDK has no VRF module in 0.8.x | Separate VRF integration task; may require different SDK or on-chain program CPI |
 
@@ -229,7 +242,7 @@ See [`docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`](MAGICBLOCK_PRIVATE_PAYMENTS.md) for 
 
 - "MagicBlock SDK 0.8.8 is integrated. TEE RPC endpoint is reachable on devnet."
 - "Permission and delegation instruction builders are wired (TypeScript). Account delegation requires Anchor 0.32.1."
-- "Private Payments public API is integrated. wSOL deposit and withdraw are confirmed on devnet; private-transfer tx can be submitted through base devnet after local blockhash refresh, but the intended ephemeral/router private-transfer path is still blocked."
+- "Private Payments public API is integrated. wSOL deposit and withdraw are confirmed on devnet. The funded private-transfer path now reaches the real Token Program failure: after deposit, the available private-balance endpoint does not show sufficient private wSOL, and transfer fails with `0x1` InsufficientFunds."
 - "Rust PER account delegation is blocked on Anchor 0.32.1 (current 0.30.1)."
 
 ### Unsafe wording (do not use)
@@ -251,7 +264,7 @@ Safe wording:
 - "Borrow and repay verifiers are wired; devnet end-to-end flows not yet exercised."
 - "Umbra SDK funded wSOL encrypted-balance deposit and withdrawal are confirmed on devnet."
 - "ShieldLend native SOL C2H withdraw is not Umbra-routed yet; it needs a wSOL/SPL settlement bridge."
-- "External privacy rails are partially integrated: MagicBlock Private Payments deposit/withdraw and Umbra SDK-side wSOL flows are live; IKA relay signing, MagicBlock PER Rust macros/ephemeral private transfer submit, ShieldLend-native Umbra payout, and Encrypt/FHE remain blocked."
+- "External privacy rails are partially integrated: MagicBlock Private Payments deposit/withdraw and Umbra SDK-side wSOL flows are live; IKA relay signing, MagicBlock PER Rust macros/private-transfer private balance credit, ShieldLend-native Umbra payout, and Encrypt/FHE remain blocked."
 
 Unsafe wording (do not use):
 

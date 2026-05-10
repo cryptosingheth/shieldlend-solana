@@ -135,6 +135,10 @@ transfer amount and graph. Degraded mode does not claim repayment privacy.
 **How to apply**: UI must show "Degraded" mode when Private Payments rail is unavailable.
 Never claim repayment amount privacy without it.
 
+## Needs confirmation
+
+- 2026-05-10 MagicBlock Private Payments funded private-transfer run: `/v1/spl/deposit` submitted for wSOL, but authenticated `/v1/spl/private-balance` for the same owner/mint returned `balance: "0"` and `location: "base"` after six attempts; transfer then failed with Token Program `0x1` InsufficientFunds. Confirm the required private-balance namespace/account context with MagicBlock before claiming private transfer live.
+
 ---
 
 ## Borrow Amount Visibility

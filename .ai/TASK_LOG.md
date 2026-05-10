@@ -933,3 +933,61 @@ Message: transaction verification error: Transaction loads a writable account th
 - Confirmed: private-transfer tx can be submitted through base devnet after local blockhash refresh.
 - Not confirmed: private transfer through the intended ephemeral/router RPC path.
 - Not confirmed: MagicBlock PER Rust macros in Anchor programs.
+
+## 2026-05-10 — MagicBlock Private Payments Private Balance Hardening
+
+**Branch**: `live/magicblock-private-payments`
+
+**Objective**: Continue after the prior private-transfer attempt reached TEE execution but failed with Token Program `0x1` InsufficientFunds, and determine whether MagicBlock deposit credits the private balance required by transfer.
+
+### Changes
+
+- Hardened `scripts/magicblock-private-payments-live.mjs` so `--live-private-transfer` now performs:
+  - SOL -> wSOL preparation when needed
+  - challenge/login auth
+  - wSOL mint initialized check/init
+  - MagicBlock wSOL deposit
+  - public/private balance polling after deposit
+  - private transfer attempt with the same owner/mint/amount context
+- Added report fields: `balanceSnapshots`, `depositCreditChecks`, and `privateTransferBlockerClassification`.
+- Updated MagicBlock docs, hackathon status, implementation status, submission checklist, demo status, current task, session handoff, and decisions.
+
+### Live Findings
+
+- `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` submitted:
+  - wSOL wrap + SyncNative: `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1`
+  - deposit: `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF`
+  - withdraw: `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn`
+- `node scripts/magicblock-private-payments-live.mjs --live-private-transfer` submitted the pre-transfer deposit:
+  - deposit: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
+- Retry after user asked to try the failing path again:
+  - wSOL wrap + SyncNative: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
+  - deposit: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
+  - result unchanged: private-balance remained `balance: "0"` and transfer failed with Token Program `0x1` InsufficientFunds
+- After that deposit, six authenticated `/v1/spl/private-balance` polls for the same owner/mint returned `balance: "0"` and `location: "base"`.
+- Private transfer attempts failed:
+  - router/ephemeral: `Blockhash not found`
+  - TEE: `custom program error: 0x1`
+  - base fallback: Token Program log `Error: insufficient funds`
+
+### Classification
+
+`our_balance_account_setup_issue` until MagicBlock confirms a different required private-balance namespace/account context or a different public API route. The current public API path available to this script does not prove that deposit credits the private ephemeral wSOL balance required by transfer.
+
+### Validations
+
+- `node scripts/check-magicblock.mjs` — PASS with network access; TEE/router/API reachable; TDX attestation still warns
+- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS
+- `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` — PASS
+- `node scripts/magicblock-private-payments-live.mjs --live-private-transfer` — PARTIAL/BLOCKED as above
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS with existing `web-worker`/ffjavascript warning
+- `cargo test --workspace` — PASS, 47 tests
+- `anchor build --no-idl` — PASS with existing Anchor CLI/version and cfg/syscall warnings
+
+### Claim Boundary
+
+- Confirmed: API/auth/builders/mint check/deposit/withdraw live on devnet.
+- Confirmed: funded private-transfer harness now reaches the real insufficient-balance failure instead of skipping deposit setup.
+- Not confirmed: private transfer through intended ephemeral/router path.
+- Not confirmed: MagicBlock PER Rust macros in Anchor programs or deployed.

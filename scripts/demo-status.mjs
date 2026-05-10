@@ -38,8 +38,9 @@ if (branchResult.status !== 0) {
 } else {
   const branch = branchResult.stdout.trim();
   ok(`branch: ${branch}`);
-  if (branch !== 'convergence/privacy-rails-integration') {
-    warn(`expected branch convergence/privacy-rails-integration — got ${branch}`);
+  const expectedBranches = ['live/magicblock-private-payments', 'convergence/privacy-rails-integration'];
+  if (!expectedBranches.includes(branch)) {
+    warn(`expected branch ${expectedBranches.join(' or ')} — got ${branch}`);
   }
 }
 
@@ -170,6 +171,7 @@ ok('Encrypt gRPC CreateInput probe: CONFIRMED — ciphertext 5VZ8BhpSWqDCAXMMb4E
 ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
+warn('MagicBlock private transfer: funded path still blocked — deposit does not expose sufficient private wSOL balance before Token Program 0x1');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
@@ -186,6 +188,7 @@ console.log(`
   ✓ MagicBlock TEE RPC + Router RPC HTTP 200 on devnet
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
+  ✓ MagicBlock private-transfer harness now runs SOL→wSOL, login, mint check, deposit, balance polling, then transfer attempt
   ✓ IKA SDK/WASM loaded; capability probe passed; blockers source-documented
   ✓ All four rail adapters in frontend/src/lib/privacyRails/
   ✓ Frontend privacy status panel shows live rail statuses
@@ -194,7 +197,7 @@ console.log(`
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
   ✗ IKA relay signing active (no ika-dwallet-anchor CPI; direct wallet fallback)
-  ✗ MagicBlock Private Payments private transfer end-to-end live (ephemeral submit blocked)
+  ✗ MagicBlock Private Payments private transfer end-to-end live (funded path reaches Token Program 0x1 InsufficientFunds)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.30.1 vs 0.32.1 gap)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)
   ✗ Umbra native SOL ShieldLend payout (C2H exits direct stealth_address; no wSOL bridge)

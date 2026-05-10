@@ -94,7 +94,7 @@ These are implementation gaps, not design gaps:
 
 3. **MagicBlock PER Rust macros not in Anchor programs** — Anchor 0.30.1 is used to protect the confirmed Groth16 round-trip. PER requires `#[ephemeral]`, `#[delegate]`, `#[commit]` macros from Anchor 0.32.1. The TypeScript PER SDK builders are verified but no on-chain PER transaction is submitted.
 
-4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. Private transfer builder returns 200. Local blockhash refresh lets the tx submit through base devnet, but the intended ephemeral/router path still fails with `Blockhash not found`; TEE rejects writable accounts.
+4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. The private-transfer harness now runs SOL -> wSOL, login, mint check, deposit, balance polling, and transfer attempt. After deposit, authenticated private-balance polling does not show sufficient private wSOL credit for the same owner/mint, and transfer execution fails with Token Program `0x1` InsufficientFunds; router also still fails with `Blockhash not found`.
 
 5. **MagicBlock TDX attestation challenge mismatch** — SDK 0.8.8 challenge format does not match current devnet TEE expected format. TEE RPC itself responds HTTP 200. Attestation verification is not claimed.
 
@@ -118,7 +118,7 @@ Allowed claims (confirmed by devnet evidence):
 | MagicBlock TEE + Router RPC HTTP 200 | `check-magicblock.mjs` output |
 | MagicBlock PER SDK builders verified | 13/13 SDK functions, 17/17 sidecar tests |
 | MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |
-| MagicBlock Private Payments private-transfer base-RPC fallback | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; not a claim that ephemeral/router private transfer is live |
+| MagicBlock Private Payments funded private-transfer diagnosis | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; classified as balance/account setup issue because deposit does not expose sufficient private wSOL balance before Token Program `0x1` |
 | IKA SDK/WASM confirmed with source-backed blockers | `check-ika.mjs` output |
 
 Not allowed (must not claim):
@@ -135,8 +135,13 @@ Not allowed (must not claim):
 - [x] wSOL wrap: `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP`
 - [x] MagicBlock deposit: `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct`
 - [x] MagicBlock withdraw: `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP`
-- [x] MagicBlock private-transfer base-RPC fallback after blockhash refresh: `2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s`
-- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by router `Blockhash not found`; TEE rejects writable accounts
+- [x] Latest wSOL wrap + SyncNative: `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1`
+- [x] Latest MagicBlock deposit/withdraw check deposit: `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF`
+- [x] Latest MagicBlock deposit/withdraw check withdraw: `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn`
+- [x] Funded private-transfer check deposit: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
+- [x] Funded private-transfer retry wSOL wrap: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
+- [x] Funded private-transfer retry deposit: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
+- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by missing/sufficient private wSOL balance after deposit and router `Blockhash not found`
 - Umbra native SOL ShieldLend payout
 - Encrypt on-chain FHE active
 

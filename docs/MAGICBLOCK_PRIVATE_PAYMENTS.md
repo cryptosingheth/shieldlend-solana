@@ -1,6 +1,6 @@
 # MagicBlock Private Payments Live SPL Flow
 
-Last checked: 2026-05-09
+Last checked: 2026-05-10
 
 ## Scope
 
@@ -38,7 +38,7 @@ Minimal live smoke amount:
 node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw --amount-base-units=1
 ```
 
-Isolated private-transfer submit diagnostic:
+Funded private-transfer diagnostic:
 
 ```bash
 node scripts/magicblock-private-payments-live.mjs --live-private-transfer --amount-base-units=1
@@ -57,6 +57,8 @@ Environment overrides:
 | `MAGICBLOCK_EPHEMERAL_RPC_URL` | `https://devnet-router.magicblock.app` | Ephemeral submit RPC override |
 | `MAGICBLOCK_TEE_RPC_URL` | `https://devnet-tee.magicblock.app` | TEE submit diagnostic RPC |
 | `MAGICBLOCK_AUTO_WRAP_WSOL` | `true` | Wrap local devnet SOL to wSOL before live deposit |
+| `MAGICBLOCK_PRIVATE_BALANCE_POLL_ATTEMPTS` | `6` | Private-balance polling attempts after deposit |
+| `MAGICBLOCK_PRIVATE_BALANCE_POLL_DELAY_MS` | `2500` | Delay between private-balance polling attempts |
 
 ## Endpoints Hit
 
@@ -74,13 +76,75 @@ The script covers:
 - `POST /v1/spl/transfer` with `visibility=private`
 - `POST /v1/spl/withdraw`
 
+## 2026-05-10 Funded Private-Transfer Results
+
+`--live-private-transfer` now runs the full funding sequence before attempting a private transfer:
+
+```text
+ensure SOL -> wSOL
+login/auth
+check or initialize wSOL mint
+deposit wSOL into MagicBlock Private Payments
+poll public and authenticated private balance
+attempt private transfer using the same owner/mint/amount context
+```
+
+Live run:
+
+```bash
+node scripts/magicblock-private-payments-live.mjs --live-private-transfer
+```
+
+Observed result:
+
+- Wallet already had `1000000` base units of wSOL at start.
+- `GET /v1/spl/is-mint-initialized` returned `initialized=true` for wSOL.
+- Deposit transaction submitted on devnet:
+
+```text
+51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ
+```
+
+Retry result:
+
+- Wallet started with `0` wSOL; the script wrapped `1000000` base units:
+
+```text
+2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX
+```
+
+- Retry deposit submitted:
+
+```text
+4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs
+```
+
+- After the confirmed deposit, six authenticated `/v1/spl/private-balance` polls for the same owner/mint returned:
+
+```json
+{"location":"base","balance":"0"}
+```
+
+- Private-transfer submit attempts then failed:
+  - Router/ephemeral: `Blockhash not found`
+  - TEE: `custom program error: 0x1`
+  - Base fallback: Token Program log `Error: insufficient funds`
+
+Classification:
+
+```text
+our_balance_account_setup_issue
+```
+
+Reason: the deposit path consumes the wallet's public wSOL, but the public API response available to this script does not show a sufficient private/ephemeral wSOL credit for the same owner/mint before transfer. The transfer reaches Token Program `0x1` InsufficientFunds. Until MagicBlock confirms a different private-balance namespace, account context, or router flow, do not classify this as a live private-transfer rail.
+
 ## 2026-05-09 Hardening Results
 
 The live runner now has separate modes:
 
 - `--dry-run`: requests health/endpoints/builders and records blockhash diagnostics without signing or sending.
 - `--live-deposit-withdraw`: signs and submits only the deposit/withdraw flow.
-- `--live-private-transfer`: signs and submits only the private-transfer diagnostic path.
+- `--live-private-transfer`: prepares wSOL, authenticates, checks mint initialization, deposits wSOL, verifies public/private balance, and then attempts the private-transfer diagnostic path.
 
 Blockhash diagnosis for `POST /v1/spl/transfer` with `visibility=private`:
 
@@ -153,11 +217,11 @@ Allowed after this branch:
 - Challenge signing and `/v1/spl/login` work for the local devnet wallet.
 - The API returns unsigned transactions for public transfer, deposit, private transfer, and withdraw.
 - wSOL deposit and withdraw transactions returned by MagicBlock Private Payments were signed locally and submitted on devnet.
-- Local blockhash refresh can submit the private-transfer transaction through base devnet RPC.
+- The private-transfer harness now covers SOL -> wSOL, auth, mint check, deposit, balance polling, and transfer attempts against the same owner/mint context.
 
 Not allowed yet:
 
-- Full MagicBlock Private Payments transfer flow is live end-to-end. The private transfer builder works, and base devnet accepts the refreshed transaction, but the intended ephemeral/router path is still blocked by `Blockhash not found`.
+- Full MagicBlock Private Payments transfer flow is live end-to-end. The private transfer builder works, but the funded path does not show sufficient private wSOL credit after deposit and transfer execution fails with Token Program `0x1` InsufficientFunds. The intended ephemeral/router path also still blocks with `Blockhash not found`.
 - ShieldLend lending repayment is settled through MagicBlock Private Payments. The protocol still needs a signed/submitted transaction signature or receipt binding path.
 - MagicBlock PER Rust macros are wired into Anchor programs. They remain blocked by the Anchor 0.30.1 vs 0.32.1 gap.
 - TDX attestation is verified. The SDK still throws the known challenge decode mismatch.

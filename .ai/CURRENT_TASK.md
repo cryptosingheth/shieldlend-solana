@@ -1,63 +1,66 @@
 # Current Task
 
-## Status: MagicBlock Private Payments live SPL API hardening complete on `live/magicblock-private-payments`
+## Status: MagicBlock Private Payments private-transfer balance hardening complete on `live/magicblock-private-payments`
 
-Base: `origin/convergence/privacy-rails-integration`
+Base: current `live/magicblock-private-payments` branch.
 
 ## Completed This Session
 
-### MagicBlock Private Payments API
+- Hardened `scripts/magicblock-private-payments-live.mjs` so `--live-private-transfer` now runs the full funded path:
+  - ensure local SOL -> wSOL when needed
+  - login/auth through `/v1/spl/challenge` and `/v1/spl/login`
+  - check or initialize the wSOL mint queue
+  - deposit wSOL through MagicBlock Private Payments
+  - poll public and authenticated private balances after deposit
+  - attempt private transfer using the same owner/mint/amount context
+- Added JSON report fields:
+  - `balanceSnapshots`
+  - `depositCreditChecks`
+  - `privateTransferBlockerClassification`
+- Updated `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`, `docs/HACKATHON.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/SUBMISSION_CHECKLIST.md`, and `scripts/demo-status.mjs` with the new claim boundary.
 
-- Replaced placeholder Private Payments routes with typed `/v1/spl` API helpers in `frontend/src/lib/privacyRails/magicblock.ts`.
-- Added challenge/login bearer-token flow using local wallet message signing.
-- Added mint initialization check, public balance, private balance, deposit, public/private transfer, and withdraw API helpers.
-- Hardened `scripts/magicblock-private-payments-live.mjs`:
-  - `--dry-run` requests health/endpoints/builders without signing or submitting.
-  - `--live-deposit-withdraw` loads the local devnet wallet, signs API challenge, deserializes unsigned deposit/withdraw transactions, signs locally, and submits to base devnet.
-  - `--live-private-transfer` isolates the private-transfer path and retries router, TEE, and base RPC with a locally refreshed blockhash.
-  - Uses wSOL mint by default: `So11111111111111111111111111111111111111112`.
-  - Redacts bearer tokens and never prints private keys.
-  - Records decoded/API blockhash comparisons and per-RPC validity checks.
-- Updated `scripts/check-magicblock.mjs` to probe the public API, wSOL mint initialization, challenge, and MCP route.
-- Added `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md` and updated hackathon/status/checklist docs.
+## Live Results From 2026-05-10
 
-## Live Results
-
-- `GET /health` -> 200.
-- `GET /v1/spl/is-mint-initialized` for wSOL -> 200, initialized=true.
-- `GET /v1/spl/challenge` -> 200.
-- `POST /v1/spl/login` -> 200 with bearer token redacted.
-- `POST /v1/spl/deposit` builder -> 200; signed/submitted on devnet.
-- `POST /v1/spl/transfer` public builder -> 200.
-- `POST /v1/spl/transfer` private builder -> 200. Decoded tx blockhash matches API response. Router submit remains blocked by `Blockhash not found`; TEE submit fails with writable-account verification; base devnet accepts the locally refreshed tx.
-- `POST /v1/spl/withdraw` builder -> 200; signed/submitted on devnet.
-- `GET /v1/mcp` -> 404 `{"error":{"code":"NOT_FOUND","message":"Route not found"}}`.
-
-## MagicBlock Private Payments Devnet Signatures
-
-Minimized live deposit/withdraw run: `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw --amount-base-units=1`
-
-| Step | Signature |
-|---|---|
-| wSOL wrap | `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP` |
-| MagicBlock deposit | `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct` |
-| MagicBlock withdraw | `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP` |
-| MagicBlock private-transfer base-RPC fallback | `2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s` |
+- `node scripts/check-magicblock.mjs` — PASS with network access:
+  - TEE RPC HTTP 200
+  - Router RPC HTTP 200 / method-not-found for `getHealth`, still reachable
+  - Private Payments `/health` HTTP 200
+  - wSOL mint initialized=true
+  - `/v1/mcp` remains 404
+  - TDX attestation still throws `challenge must decode to 64 bytes`
+- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS:
+  - health/challenge/mint/balance/deposit/withdraw/private-transfer builders return expected responses
+  - private-transfer builder returns `sendTo=ephemeral`
+  - decoded tx blockhash matches API blockhash
+- `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` — PASS:
+  - wSOL wrap + SyncNative: `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1`
+  - deposit: `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF`
+  - withdraw: `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn`
+- `node scripts/magicblock-private-payments-live.mjs --live-private-transfer` — PARTIAL/BLOCKED:
+  - deposit submitted: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
+  - retry from zero wSOL wrapped: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
+  - retry deposit submitted: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
+  - after deposit, authenticated `/v1/spl/private-balance` polling returned `balance: "0"` and `location: "base"` for the same owner/mint after six attempts
+  - private-transfer attempts:
+    - router/ephemeral: `Blockhash not found`
+    - TEE: `custom program error: 0x1`
+    - base fallback: Token Program log `Error: insufficient funds`
+  - classification: `our_balance_account_setup_issue` until MagicBlock confirms a different private-balance namespace/account context or API route
 
 ## Validation Status
 
 - `npm run typecheck:frontend` — PASS
 - `npm run build:frontend` — PASS with existing `web-worker`/ffjavascript warning
-- `cargo test --workspace` — PASS (47 tests)
+- `cargo test --workspace` — PASS, 47 tests
 - `anchor build --no-idl` — PASS with existing Anchor CLI/version and cfg/syscall warnings
-- `node scripts/check-magicblock.mjs` — PASS; TEE/router/API reachable; TDX attestation still warns
-- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS; all core SPL builders returned 200; `/v1/mcp` returned 404; private-transfer blockhash diagnostics recorded
-- `node scripts/magicblock-private-payments-live.mjs --live-private-transfer --amount-base-units=1` — PARTIAL LIVE; router blocked with `Blockhash not found`, TEE rejected writable accounts, base devnet submitted refreshed tx
 
-## Hard Constraints
+## Claim Boundary
 
-- Do not claim full MagicBlock Private Payments private transfer is live end-to-end through the intended ephemeral/router path.
-- Do not claim ShieldLend repayment settlement is MagicBlock-bound until a confirmed tx signature or receipt is wired into the protocol path.
-- Do not claim MagicBlock PER Rust macros are wired into Anchor programs.
-- Do not claim TDX attestation is verified; SDK still throws the challenge decode mismatch.
-- Preserve fail-closed behavior for private transfer submit and repayment settlement.
+- Allowed: MagicBlock Private Payments public API is live/reachable; challenge/login works; wSOL mint is initialized; deposit/withdraw builders and live submissions work on devnet; private-transfer harness now exercises the funded path through the real Token Program failure.
+- Not allowed: full MagicBlock Private Payments private transfer is live end-to-end; ShieldLend repayment settlement is MagicBlock-bound; MagicBlock PER Rust macros are deployed; TDX attestation is verified.
+
+## Next Actions
+
+1. Ask MagicBlock which private-balance namespace/account context should be credited by `/v1/spl/deposit`, or whether `/v1/spl/private-balance` currently mirrors base balance only.
+2. Ask MagicBlock which RPC should accept `sendTo=ephemeral` private-transfer transactions and whether the API-provided blockhash should be accepted by router/TEE.
+3. Once private transfer succeeds with a real private-balance credit and confirmed signature, wire receipt/signature binding into the ShieldLend repay path.
