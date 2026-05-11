@@ -32,7 +32,21 @@
 > These signatures confirm on-chain Groth16 BN254 verification (198,502 CU).
 > Verify on Solana Explorer devnet before submission.
 
-### Umbra Devnet Signatures (Confirmed)
+### Umbra Devnet Signatures — 2026-05-12 fresh round-trip (wallet `C2qTgyZ1PS23aHnYUDXTDS4VEYUrZhecowL94uDkkuTe`)
+
+Run via `npm run setup:devnet-wallet` (new helper) + `$env:SKIP_C2H="1"; npm run smoke:wsol-umbra-roundtrip` (PowerShell) — produced 9 confirmed on-chain transactions in one run. Encrypted-balance state proof: deposit moved balance 0 → 1,000,000; withdraw moved balance 1,000,000 → 0. `adapterLive: true`, `umbrawSolFlowLive: true`.
+
+- [x] wSOL wrap: `2DWwADQY6Ty2iwe7t48rDXgqKYQ99fVRRgayntJGnvRnFr7n2C2tjS9UMeZNFT4mzPNUXjGrUU43vhzKjFY5UeoC`
+- [x] Umbra registration 1: `358QmfyTRRcgrV7T1JMzcxSDeS5iVkfdNfPH4zpi3nbU8pfTSrKqgrPacFnLHFKYfWfPeLdHnJK5AA57YDKpPQCt`
+- [x] Umbra registration 2: `3fvPkXUqDPxDcVmvAiGcfgMQNPbS5a5kSekDJt7DHM2zZRFjjjN874Bd594XdbR5XiRRiCXteQAXRaHob1AWLS5p`
+- [x] Umbra deposit queue: `5SURTjiZM8oujeeMChMYA1f6NvgyanTocwTAw6E8ZSny7wAZb3ZxJ1b3321uy9yhbRkxLLcJ6VBHFXfRmGNYGZe5`
+- [x] Umbra deposit callback (finalized in 1.6s): `66Vnro1iQmxQAt6FmwSiKcjSsQbym2th3tymffAVT8EVjWazjmeYvj7kSYG1JrFs18KMD3TMsHBJCvXtcnCcPLPU`
+- [x] Umbra deposit rent reclaim: `3RWd6DVantupHUVxGYqdEZZCjogEgp39A3ZAzcQvXF9Hu2aqk7bNbLMNyVXaHLBnp1miWjbkvwHpZwMmqUtJjuVb`
+- [x] Umbra withdraw queue: `2PvzbYVpa4AEFFTmqaYcnSUhpH883YzCBtw5XdPTzEBjjC26cmP6nfxM3ArozdWiG4ykc18jkP4WJSr3bddvCtBN`
+- [x] Umbra withdraw callback (finalized in 2.5s): `673pMzN2arBYfb8CPaYMBdiLcW9qUt4hW1nt8ayWiK8S9KB9iCGA4ZCwCUb1rhrGctQR1mTMHgBi4PwnYY1zEfNG`
+- [x] Umbra withdraw rent reclaim: `4WZYX7A1ZA7pBojSKh2HMBRLMUwscXf3HkoHr5HHCQ36X4jNDK79ukTHZsfZv3M5ena7tYUt8Sq5WCECKTwTKGKp`
+
+### Umbra Devnet Signatures (Confirmed — prior session, retained)
 
 - [x] wSOL wrap + SyncNative: `cyQG7Bw7Skuu2QCMu8Gvmx5JSfbcSwGGD3utoRq7jm3iAkxKHCgKjXeGxjBBGL3ZWYYe1JTqykdAQFj5thw85As`
 - [x] Umbra deposit queue: `SZeGJ9FMkhiAnz2hq9oeWSgX1pccrE5rCqgZWjUMd4pu7ZzaHrNM9K6aaMxqqNfZ1cYHWSvwYYAp5gJwhtTovyx`

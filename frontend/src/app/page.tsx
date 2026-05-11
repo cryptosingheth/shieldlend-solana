@@ -31,7 +31,7 @@ import {
   saveNote,
   type StoredNote,
 } from "../lib/noteStorage";
-import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/protocolAdapters";
+import { FULL_PRIVACY_RAILS, modeFromRails, coreRails, fullPrivacyOnlyRails, coreReady, type RailStatus } from "../lib/protocolAdapters";
 import {
   getUmbraFundedFlowStatus,
   getUmbraStatus,
@@ -48,6 +48,7 @@ import {
   submitDeposit,
   type SolanaWalletProvider,
 } from "../lib/solanaClient";
+import { useUiPrefs, useVaultSession, bytesToHex, hexToBytes } from "../lib/stores/uiStore";
 
 type Screen = "positions" | "deposit" | "withdraw" | "borrow" | "repay" | "history";
 
@@ -82,7 +83,25 @@ const nav = [
 ];
 
 export default function HomePage() {
-  const [screen, setScreen] = useState<Screen>("positions");
+  // Persisted UI prefs (zustand → localStorage): screen tab + withdraw mode +
+  // last connected address. Used to restore the session on refresh.
+  const screen = useUiPrefs((s) => s.activeScreen);
+  const setScreen = useUiPrefs((s) => s.setActiveScreen);
+  const setLastAddress = useUiPrefs((s) => s.setLastAddress);
+  const withdrawDestinationMode = useUiPrefs((s) => s.withdrawDestinationMode);
+  const setWithdrawDestinationMode = useUiPrefs((s) => s.setWithdrawDestinationMode);
+
+  // Vault session material (zustand → sessionStorage): cleared on tab close
+  // so the AES vault key has bounded lifetime even though it auto-unlocks
+  // on F5 refresh within the same tab.
+  const vaultMaterialHex = useVaultSession((s) => s.keyMaterialHex);
+  const vaultMaterialAddress = useVaultSession((s) => s.keyAddress);
+  const setVaultMaterial = useVaultSession((s) => s.setVaultMaterial);
+  const clearVaultMaterial = useVaultSession((s) => s.clearVaultMaterial);
+
+  // Runtime-only state — not persisted (security or serialization reasons):
+  // wallet provider is a runtime JS object; vaultKey is a non-extractable
+  // CryptoKey; notes/history are already encrypted in localStorage.
   const [wallet, setWallet] = useState<SolanaWalletProvider | null>(null);
   const [address, setAddress] = useState("");
   const [balance, setBalance] = useState<bigint | null>(null);
@@ -93,7 +112,6 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [hasPlaintext, setHasPlaintext] = useState(false);
   const [encryptStatus, setEncryptStatus] = useState<EncryptStatus | null>(null);
-  const [withdrawDestinationMode, setWithdrawDestinationMode] = useState<UmbraDestinationMode>("direct_stealth_address");
 
   const connected = Boolean(wallet?.publicKey && address);
   const vaultReady = Boolean(vaultKey);
@@ -112,9 +130,66 @@ export default function HomePage() {
   }, [address, vaultKey]);
 
   useEffect(() => {
+    console.log("[ShieldLend] Page mounted — React hydration OK");
     const provider = getPhantomProvider();
-    if (provider) setWallet(provider);
+    if (!provider) return;
+    setWallet(provider);
+    // Silent auto-reconnect if Phantom previously authorized this site.
+    // `onlyIfTrusted: true` skips the popup; rejects without prompting if not trusted.
+    provider
+      .connect({ onlyIfTrusted: true })
+      .then(async (result) => {
+        const addr = result.publicKey.toBase58();
+        setAddress(addr);
+        setLastAddress(addr);
+        console.log("[ShieldLend] Auto-reconnected:", addr.slice(0, 6) + "…");
+        // Auto-unlock from sessionStorage if material exists for this address
+        if (vaultMaterialHex && vaultMaterialAddress === addr) {
+          try {
+            const material = hexToBytes(vaultMaterialHex);
+            const key = await deriveNoteKey(material, addr);
+            setVaultKey(key);
+            setNotes(await loadNotes(addr, key));
+            setHistory(await loadHistory(addr, key));
+            setHasPlaintext(hasPlaintextNotes(addr) || hasPlaintextHistoryRecords(addr));
+            console.log("[ShieldLend] Vault auto-unlocked from sessionStorage");
+            setMessage(`Welcome back — vault restored from session.`);
+          } catch (err) {
+            console.warn("[ShieldLend] Vault auto-unlock failed:", err);
+            clearVaultMaterial();
+          }
+        }
+        refreshAccount(addr, null).catch((err) => console.error("refreshAccount failed:", err));
+      })
+      .catch(() => {
+        // User hasn't authorized this site yet — that's fine, they can click Connect
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Belt-and-suspenders click handler: registers a vanilla addEventListener
+  // on the Connect button so the wallet flow fires even if React's synthetic
+  // event system has any issue. The React onClick is still primary; this is
+  // a safety net.
+  useEffect(() => {
+    const btn = document.getElementById("connect-phantom-btn");
+    if (!btn) return;
+    const handler = () => {
+      console.log("[ShieldLend] Connect button clicked (DOM listener)");
+      void connectWallet();
+    };
+    btn.addEventListener("click", handler);
+    return () => btn.removeEventListener("click", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-dismiss the notice message after 10 seconds so stale errors don't
+  // linger forever. The close button (✕) lets the user dismiss earlier.
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 10_000);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,17 +207,45 @@ export default function HomePage() {
   }, []);
 
   async function connectWallet() {
+    console.log("[ShieldLend] connectWallet() invoked");
     setMessage("");
     const provider = getPhantomProvider();
+    console.log("[ShieldLend] provider:", provider ? "found" : "null",
+      "window.phantom:", typeof window !== "undefined" && Boolean((window as Window).phantom),
+      "window.solana:", typeof window !== "undefined" && Boolean((window as Window).solana));
     if (!provider) {
-      setMessage("Phantom wallet was not found. Install Phantom, switch to Solana devnet, then reconnect.");
+      const hasLegacy = typeof window !== "undefined" && Boolean((window as Window).solana);
+      const hasPhantomNs = typeof window !== "undefined" && Boolean((window as Window).phantom);
+      setMessage(
+        `Phantom wallet was not detected. window.phantom=${hasPhantomNs} window.solana=${hasLegacy}. ` +
+        "If you use Brave, set brave://settings/wallet → Default Solana wallet → \"Extensions (no fallback)\" and reload."
+      );
       return;
     }
-    const result = await provider.connect();
-    setWallet(provider);
-    const nextAddress = result.publicKey.toBase58();
-    setAddress(nextAddress);
-    await refreshAccount(nextAddress, null);
+    try {
+      const result = await provider.connect();
+      setWallet(provider);
+      const nextAddress = result.publicKey.toBase58();
+      setAddress(nextAddress);
+      setLastAddress(nextAddress);
+      // Set the success message BEFORE refreshAccount so feedback is immediate.
+      // refreshAccount makes a balance RPC that can take seconds; we don't want
+      // the user staring at an empty notice while that resolves.
+      setMessage(`Connected: ${nextAddress.slice(0, 6)}…${nextAddress.slice(-4)}`);
+      refreshAccount(nextAddress, null).catch((err) => {
+        console.error("refreshAccount failed:", err);
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? `Phantom connect rejected: ${error.message}` : "Phantom connect failed.");
+    }
+  }
+
+  function lockVault() {
+    setVaultKey(null);
+    setNotes([]);
+    setHistory([]);
+    clearVaultMaterial();
+    setMessage("Vault locked. Session material cleared.");
   }
 
   async function initializeVault() {
@@ -152,9 +255,14 @@ export default function HomePage() {
     }
     const prompt = new TextEncoder().encode("ShieldLend Solana note vault key v1");
     const signed = await wallet.signMessage(prompt, "utf8");
-    const key = await deriveNoteKey(signed.signature, wallet.publicKey.toBase58());
-    setVaultKey(key);
     const addr = wallet.publicKey.toBase58();
+    const key = await deriveNoteKey(signed.signature, addr);
+    setVaultKey(key);
+    // Cache the signature bytes in sessionStorage so we can re-derive the key
+    // after a page refresh without re-prompting the user. The CryptoKey itself
+    // is non-extractable; only the input material is stored, scoped to the
+    // wallet address that signed it. Cleared on tab close (sessionStorage).
+    setVaultMaterial(bytesToHex(signed.signature), addr);
     setNotes(await loadNotes(addr, key));
     setHistory(await loadHistory(addr, key));
     setHasPlaintext(hasPlaintextNotes(addr) || hasPlaintextHistoryRecords(addr));
@@ -262,28 +370,68 @@ export default function HomePage() {
           </div>
         </div>
         <div className="topbar-actions">
-          <span className={`chip ${protocolMode === "full" ? "full" : "degraded"}`}>
-            {protocolMode === "full" ? "Full Privacy" : "Degraded"}
+          <span
+            className={`chip ${protocolMode === "full" ? "full" : protocolMode === "core" ? "core" : "degraded"}`}
+            title={
+              protocolMode === "full"
+                ? "All 10 rails healthy: Core Privacy + every Full Privacy roadmap rail is live."
+                : protocolMode === "core"
+                  ? "Core Privacy active: programs deployed + ZK artifacts + on-chain Groth16 + nullifier registry are all live on devnet. Full Privacy rails (IKA full sign, PER macros, VRF, Private Payments transfer, Encrypt on-chain verify) are roadmap."
+                  : "Core Privacy rails are not all healthy. Check rail status panel."
+            }
+          >
+            {protocolMode === "full" ? "Full Privacy" : protocolMode === "core" ? "Core Privacy" : "Degraded"}
           </span>
-          <button className={`chip ${vaultReady ? "ok" : "danger"}`} onClick={initializeVault} disabled={!connected}>
+          <button
+            className={`chip ${vaultReady ? "ok" : "danger"}`}
+            onClick={vaultReady ? lockVault : initializeVault}
+            disabled={!connected}
+            title={vaultReady
+              ? "Click to lock the vault now. Vault auto-locks on tab close."
+              : "Sign a message to derive the AES-256-GCM note vault key (AES key is non-extractable)."}
+          >
             <LockKeyhole size={14} />
             {vaultReady ? "VAULT UNLOCKED" : "UNLOCK VAULT"}
           </button>
-          <button className="chip" onClick={connectWallet}>
+          <button id="connect-phantom-btn" className="chip" onClick={connectWallet}>
             <Wallet size={14} />
             {connected ? shortHash(address) : "Connect Phantom"}
           </button>
         </div>
       </header>
 
-      {/* Pre-alpha scaffold banner — always visible */}
-      <section className="prealpha-banner">
+      {/* Pre-alpha disclosure banner — reflects live mode */}
+      <section className={`prealpha-banner ${protocolMode === "core" || protocolMode === "full" ? "core" : ""}`}>
         <AlertTriangle size={16} />
         <div>
-          <strong>PRE-ALPHA / SCAFFOLD MODE</strong>
+          <strong>
+            {protocolMode === "full"
+              ? "PRE-ALPHA — FULL PRIVACY ACTIVE"
+              : protocolMode === "core"
+                ? "CORE PRIVACY ACTIVE — FULL PRIVACY RAILS ARE ROADMAP"
+                : "PRE-ALPHA — CORE PRIVACY UNAVAILABLE"}
+          </strong>
           <span>
-            Programs not deployed. ZK artifacts stale. All 8 required privacy rails offline.
-            No privacy properties hold. Do not use with real funds.
+            {protocolMode === "core" ? (
+              <>
+                Deposit and withdraw flows protect amount privacy via on-chain Groth16 BN254 ring proof
+                verification (DEV/TEST trusted setup; 198,502 CU confirmed on devnet) and the Active/Locked/Spent
+                nullifier registry. Pre-alpha external rails (IKA full sign, PER macros, MagicBlock VRF + Private
+                Payments transfer, Encrypt on-chain decryption, Umbra native-SOL bridge) are documented roadmap.
+                Do not use with real funds. See <code>docs/SUBMISSION_CHECKLIST.md</code> for the full claim boundary.
+              </>
+            ) : protocolMode === "full" ? (
+              <>
+                Every privacy rail is healthy. This still uses the DEV/TEST trusted setup — production privacy
+                requires a separate Powers of Tau ceremony. Do not use with real funds.
+              </>
+            ) : (
+              <>
+                Core Privacy rails are not all healthy. Verify <code>NEXT_PUBLIC_PROGRAMS_DEPLOYED</code> and
+                <code>NEXT_PUBLIC_ZK_ARTIFACTS_READY</code> are set in <code>frontend/.env.local</code> (see
+                <code>frontend/.env.devnet.example</code>). Do not use with real funds.
+              </>
+            )}
           </span>
         </div>
       </section>
@@ -336,7 +484,28 @@ export default function HomePage() {
       </aside>
 
       <main className="main">
-        {message && <div className="notice">{message}</div>}
+        {message && (
+          <div className="notice" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+            <span style={{ flex: 1 }}>{message}</span>
+            <button
+              onClick={() => setMessage("")}
+              title="Dismiss"
+              aria-label="Dismiss message"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--fg-2)",
+                cursor: "pointer",
+                fontSize: "16px",
+                lineHeight: 1,
+                padding: "2px 6px",
+                flexShrink: 0,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {screen === "positions" && (
           <Positions
@@ -359,6 +528,7 @@ export default function HomePage() {
             notes={notes}
             connected={connected}
             vaultReady={vaultReady}
+            protocolMode={protocolMode}
             destinationMode={withdrawDestinationMode}
             setDestinationMode={setWithdrawDestinationMode}
             umbraStatus={umbraStatus}
@@ -366,20 +536,8 @@ export default function HomePage() {
             wsolUmbraPayoutPath={wsolUmbraPayoutPath}
           />
         )}
-        {screen === "borrow" && (
-          <BlockedFlow
-            title="Borrow"
-            notes={notes}
-            reason="Borrow requires: deployed LendingPool, collateral_ring proof verification, NullifierRegistry CPI (lock), IKA FutureSign pre-authorization, and a real PER exit queue for disbursement."
-          />
-        )}
-        {screen === "repay" && (
-          <BlockedFlow
-            title="Repay"
-            notes={notes}
-            reason="Repay requires: MagicBlock Private Payments receipts, repay_ring ZK artifacts and verification, NullifierRegistry CPI (unlock), and a deployed LoanAccount PDA for the selected loan."
-          />
-        )}
+        {screen === "borrow" && <BorrowScreen notes={notes} />}
+        {screen === "repay" && <RepayScreen notes={notes} />}
         {screen === "history" && <HistoryScreen records={history} vaultReady={vaultReady} />}
 
         {/* Hidden file input for note import */}
@@ -472,10 +630,24 @@ function Positions({
 
           <Panel title="Privacy rail status">
             <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
-              Full Privacy mode cannot activate while any required rail is unavailable.
-              Statuses reflect env config; use scripts/check-umbra.mjs for Umbra health probes.
+              Core Privacy = the rails that ship a verifiable privacy property today. Full Privacy = Core
+              plus the pre-alpha external rails currently in integration. Statuses reflect env config and
+              upstream availability.
             </p>
-            {FULL_PRIVACY_RAILS.map((rail) => (
+
+            <div className="rail-section-header">
+              <span className="dot live" />
+              <span>Core Privacy — live on devnet</span>
+            </div>
+            {coreRails().map((rail) => (
+              <RailStatusRow key={rail.key} rail={rail} />
+            ))}
+
+            <div className="rail-section-header">
+              <span className="dot roadmap" />
+              <span>Full Privacy roadmap — pre-alpha</span>
+            </div>
+            {fullPrivacyOnlyRails().map((rail) => (
               <RailStatusRow key={rail.key} rail={rail} />
             ))}
           </Panel>
@@ -578,11 +750,13 @@ function WhatWorksTodayPanel() {
             <li>All 3 Anchor programs deployed (NullifierRegistry, ShieldedPool, LendingPool)</li>
             <li>On-chain Groth16 BN254 withdraw verification — DEV/TEST trusted setup; 198,502 CU; full C2H round-trip passed</li>
             <li>DEV/TEST ZK artifacts (withdraw_ring, collateral_ring, repay_ring) — browser WASM + zkey + vkey generated</li>
+            <li>NullifierRegistry CPIs — withdraw + borrow lock path confirmed end-to-end on devnet</li>
             <li>Umbra funded devnet wSOL encrypted-balance deposit/withdraw confirmed via SDK 4.0.0</li>
             <li>Encrypt pre-alpha gRPC CreateInput confirmed — live network key + ciphertext returned</li>
             <li>MagicBlock SDK installed; TEE RPC + Router RPC HTTP 200; PER sidecar instruction builders confirmed</li>
-            <li>IKA SDK probe confirmed; IKA approve_message Anchor CPI compile-wired in LendingPool from official pre-alpha source</li>
+            <li>IKA approve_message CPI confirmed on devnet 2026-05-11 — two tx signatures + MessageApproval PDAs created on-chain</li>
             <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key); history encryption</li>
+            <li>In-UI deposit flow — real Phantom-signed devnet transaction with note vault persistence</li>
           </ul>
         </div>
         <div>
@@ -591,17 +765,17 @@ function WhatWorksTodayPanel() {
             <li>Umbra SDK adapter — fail-closed for native SOL exits; wSOL/SPL bridge needed for ShieldLend payout routing</li>
             <li>Encrypt gRPC — live client/probe path; LendingPool now compile-wires a separate Encrypt CPI request/reveal path through a local Anchor 0.32 fork, but official upstream encrypt-anchor is still blocked by the AccountInfo crate-family mismatch</li>
             <li>MagicBlock PER sidecar — TypeScript only; Rust macros blocked on Anchor 0.32.1; on-chain PER tx not submitted</li>
-            <li>IKA adapter — SDK probe + compile-level CPI status; direct wallet fallback labelled reduced privacy</li>
-            <li>Withdraw / Borrow / Repay UI — intentionally blocked until full rail dependencies are live</li>
+            <li>IKA gRPC PresignForDWallet — pre-alpha BCS schema mismatch upstream; approval CPI works, full sign flow blocked</li>
+            <li>In-UI withdraw + borrow submit handlers — devnet flows live via scripts (devnet-fullround.mjs, ika-anchor-approval-smoke.mjs); React submit binding ships next sprint</li>
           </ul>
           <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Not live — do not claim</p>
           <ul className="plain-list" style={{ fontSize: "13px", color: "var(--fg-2)" }}>
             <li>Production trusted setup — DEV/TEST ptau only; no production ceremony</li>
-            <li>IKA relay signing — mock signer (pre-alpha); no real devnet approve_message tx submitted</li>
-            <li>MagicBlock Private Payments — URL not configured; TDX attestation challenge mismatch (SDK 0.8.8 delta)</li>
+            <li>IKA relay signing end-to-end — approve_message CPI confirmed; gRPC sign blocked upstream</li>
+            <li>MagicBlock Private Payments private-transfer end-to-end — upstream API/router limitation</li>
             <li>Encrypt on-chain FHE health computation — local CPI wiring compiles, but no live encrypted oracle or on-chain decryption path is proven</li>
-            <li>Umbra ShieldLend payout routing — native SOL C2H path remains direct stealth_address</li>
-            <li>NullifierRegistry CPIs in withdraw/borrow/repay — scaffolded, not executed end-to-end</li>
+            <li>Umbra ShieldLend payout routing — native SOL path remains direct stealth_address</li>
+            <li>NullifierRegistry CPI on repay — scaffolded; gated on verify_private_payment_receipt (MagicBlock upstream)</li>
           </ul>
         </div>
       </div>
@@ -625,7 +799,27 @@ function Deposit({
   const disabled = busy || !connected || !vaultReady;
   return (
     <section className="stack">
-      <Hero title="Deposit" subtitle="Creates a real local note and attempts a real ShieldedPool transaction. Fails at assertProgramDeployed until programs are on-chain." />
+      <Hero title="Deposit" subtitle="Two paths: a local-only crypto-vault test (no on-chain tx, no SOL locked) or a real Phantom-signed ShieldedPool deposit on devnet." />
+
+      {/* Stuck-deposit warning — most important for demo safety */}
+      <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 55%, var(--line))", background: "color-mix(in srgb, var(--amber) 9%, var(--surface-1))" }}>
+        <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>
+            ⚠ &ldquo;Submit deposit&rdquo; locks SOL into the shielded pool with no withdraw path today
+          </strong>
+          <span>
+            Real deposits land in the on-chain <code>shielded_pool</code> PDA. The in-UI withdraw submit
+            handler is roadmap (next sprint), and the protocol enforces a K=16 anonymity-set requirement
+            on the Merkle tree before any individual withdraw proof can be generated. So today, any SOL
+            you deposit via &ldquo;Submit deposit&rdquo; cannot be recovered from the UI — and the existing
+            <code> scripts/devnet-fullround.mjs</code> uses hardcoded DEV/TEST smoke vectors, not your
+            note&apos;s secret. <strong>For demo recording, use &ldquo;Create local note only&rdquo; (no on-chain tx,
+            no SOL locked).</strong> Only click &ldquo;Submit deposit&rdquo; with devnet SOL you are willing to leave
+            in the pool.
+          </span>
+        </div>
+      </div>
 
       {/* Signer warning — always shown */}
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--danger) 40%, var(--line))", background: "color-mix(in srgb, var(--danger) 10%, var(--surface-1))" }}>
@@ -649,11 +843,21 @@ function Deposit({
               <div className="choice" key={denom.label}>
                 <strong>{denom.label}</strong>
                 <span>Commitment amount: {denom.lamports.toString()} lamports</span>
-                <button disabled={disabled} onClick={() => onDeposit(denom.lamports)}>
-                  Submit deposit
+                {/* Safe path FIRST: no on-chain tx, no SOL locked. */}
+                <button
+                  disabled={busy || !connected || !vaultReady}
+                  onClick={() => onCreateLocalNote(denom.lamports)}
+                  title="Generates the commitment in-browser and stores an encrypted note locally. No Solana transaction. No SOL locked. Safe for demo recording."
+                >
+                  ✓ Create local note only (safe)
                 </button>
-                <button disabled={busy || !connected || !vaultReady} onClick={() => onCreateLocalNote(denom.lamports)}>
-                  Create local note only
+                {/* Real on-chain deposit — locks SOL with no withdraw path today. */}
+                <button
+                  disabled={disabled}
+                  onClick={() => onDeposit(denom.lamports)}
+                  title="Submits a real Phantom-signed Solana devnet transaction to shielded_pool::deposit. Locks SOL in the pool PDA with no UI withdraw path today (see warning above). Only click with devnet SOL you can lose."
+                >
+                  ⚠ Submit deposit (locks SOL — no withdraw path today)
                 </button>
               </div>
             ))}
@@ -681,6 +885,7 @@ function Withdraw({
   notes,
   connected,
   vaultReady,
+  protocolMode,
   destinationMode,
   setDestinationMode,
   umbraStatus,
@@ -690,6 +895,7 @@ function Withdraw({
   notes: StoredNote[];
   connected: boolean;
   vaultReady: boolean;
+  protocolMode: "full" | "core" | "degraded" | "emergency";
   destinationMode: UmbraDestinationMode;
   setDestinationMode: (mode: UmbraDestinationMode) => void;
   umbraStatus: UmbraStatus;
@@ -701,7 +907,13 @@ function Withdraw({
     assetKind: destinationMode === "wsol_umbra_adapter" ? "wsol" : "native-sol",
     config: umbraStatus.config,
   });
-  const canPrepare = connected && vaultReady && notes.length > 0 && route.canRoute &&
+  // Core Privacy allows the direct_stealth_address path (native-SOL withdraw to a
+  // fresh stealth address) because that exercises only the Core rails: on-chain
+  // Groth16 ring proof + nullifier spend. Umbra SPL and wSOL adapter paths still
+  // need the Umbra rail.
+  const isCoreModeDirectPath = (protocolMode === "core" || protocolMode === "full") &&
+    destinationMode === "direct_stealth_address";
+  const canPrepare = connected && vaultReady && notes.length > 0 && (route.canRoute || isCoreModeDirectPath) &&
     destinationMode !== "wsol_umbra_adapter"; // adapter path uses the roundtrip script, not the UI submit path
 
   return (
@@ -710,6 +922,27 @@ function Withdraw({
         title="Withdraw"
         subtitle="Three payout paths: native SOL direct, Umbra SPL direct, or wSOL Umbra settlement adapter (post-withdraw two-step)."
       />
+
+      {isCoreModeDirectPath && (
+        <div
+          className="notice"
+          style={{
+            borderColor: "color-mix(in srgb, var(--success, #4ade80) 45%, var(--line))",
+            background: "color-mix(in srgb, var(--success, #4ade80) 6%, var(--surface-1))",
+          }}
+        >
+          <CheckCircle size={16} style={{ color: "var(--success, #4ade80)", flexShrink: 0 }} />
+          <div>
+            <strong style={{ display: "block", marginBottom: "4px" }}>Core Privacy active for direct stealth-address withdraw</strong>
+            <span>
+              The protocol-level privacy property — on-chain Groth16 BN254 ring proof + nullifier spend —
+              is live on devnet (198,502 CU full round-trip confirmed). The withdraw destination is a fresh
+              stealth address with zero on-chain link to your deposit. Pre-alpha rails (IKA full sign, PER
+              macros, Encrypt on-chain verify) are documented roadmap and not required for this path.
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 45%, var(--line))" }}>
         <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
@@ -771,14 +1004,33 @@ function Withdraw({
               </div>
             )
             : (
-              <button disabled={!canPrepare} style={{ marginTop: "16px", padding: "10px 14px" }}>
-                Prepare withdraw route
+              <button
+                disabled={true}
+                title={isCoreModeDirectPath
+                  ? "Disabled for two reasons: (1) the in-UI snarkjs proof-generation + Phantom-signed submit handler ships in the next sprint, and (2) the withdraw_ring circuit requires a K=16 anonymity-set on the Merkle tree — fresh notes can only be withdrawn once the on-chain ring contains 16 unique commitments (a property of the ZK protocol, not a UI gap). Devnet evidence: scripts/devnet-fullround.mjs runs the full round-trip with DEV/TEST smoke vectors and produces 198,502 CU on-chain Groth16 verification."
+                  : "Submit path requires proof inputs, deployed programs, and the selected destination rail."}
+                style={{ marginTop: "16px", padding: "10px 14px" }}
+              >
+                {isCoreModeDirectPath ? "Submit withdraw (UI binding — next sprint)" : "Prepare withdraw route"}
               </button>
             )
           }
           <p className="muted" style={{ marginTop: "10px", fontSize: "12px" }}>
-            Available notes in local vault: {notes.length}. The transaction submit path remains disabled until proof inputs,
-            deployed programs, and the selected destination rail are all ready.
+            Available notes in local vault: {notes.length}.
+            {isCoreModeDirectPath ? (
+              <>
+                {" "}Core Privacy direct path: deposit → on-chain flush_epoch → in-browser <code>snarkjs.fullProve</code>{" "}
+                with K=16 ring → nullifier spend → fresh stealth-address payout. The protocol enforces a K=16
+                anonymity-set — fresh notes become withdrawable only once the on-chain Merkle tree contains 16
+                unique commitments. Devnet flow proven end-to-end via <code>scripts/devnet-fullround.mjs</code>{" "}
+                (198,502 CU on-chain Groth16; uses DEV/TEST smoke vectors, not user notes). React submit binding ships next.
+              </>
+            ) : (
+              <>
+                {" "}The transaction submit path remains disabled until proof inputs, deployed programs, and the selected
+                destination rail are all ready.
+              </>
+            )}
           </p>
         </Panel>
 
@@ -854,14 +1106,145 @@ function WsolUmbraAdapterPanel({ path }: { path: WsolUmbraPayoutPath }) {
   );
 }
 
-function BlockedFlow({ title, notes, reason }: { title: string; notes: StoredNote[]; reason: string }) {
+function BorrowScreen({ notes }: { notes: StoredNote[] }) {
+  const approveTx1 = "m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF";
+  const approveTx2 = "3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2";
+
   return (
     <section className="stack">
-      <Hero title={title} subtitle="Intentionally blocked until on-chain and proof dependencies are real." />
-      <Panel title="Why this is not clickable yet">
-        <p>{reason}</p>
-        <p className="muted">Available notes in local vault: {notes.length}</p>
-      </Panel>
+      <Hero
+        title="Borrow"
+        subtitle="Collateral-ring proof + IKA approve_message CPI — backend confirmed end-to-end on devnet 2026-05-11."
+      />
+
+      <div
+        className="notice"
+        style={{
+          borderColor: "color-mix(in srgb, var(--success, #4ade80) 45%, var(--line))",
+          background: "color-mix(in srgb, var(--success, #4ade80) 6%, var(--surface-1))",
+        }}
+      >
+        <CheckCircle size={16} style={{ color: "var(--success, #4ade80)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Backend confirmed end-to-end on devnet</strong>
+          <span>
+            The full borrow path — <code>store_collateral_proof</code> → <code>lending_pool::borrow</code> →
+            <code>nullifier_registry::lock</code> CPI → IKA <code>approve_ika_borrow_message</code> CPI →
+            <code>MessageApproval</code> PDA — completed twice on Solana devnet earlier today via the
+            <code>ika-anchor-approval-smoke.mjs</code> harness.
+          </span>
+        </div>
+      </div>
+
+      <div className="grid two">
+        <Panel title="Confirmed devnet transactions">
+          <dl className="facts" style={{ fontSize: "13px" }}>
+            <dt>approve_ika_borrow_message tx 1</dt>
+            <dd>
+              <a
+                href={`https://explorer.solana.com/tx/${approveTx1}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ wordBreak: "break-all", color: "var(--privacy)" }}
+              >
+                {approveTx1.slice(0, 12)}…{approveTx1.slice(-8)}
+              </a>
+            </dd>
+            <dt>approve_ika_borrow_message tx 2</dt>
+            <dd>
+              <a
+                href={`https://explorer.solana.com/tx/${approveTx2}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ wordBreak: "break-all", color: "var(--privacy)" }}
+              >
+                {approveTx2.slice(0, 12)}…{approveTx2.slice(-8)}
+              </a>
+            </dd>
+            <dt>LendingPool program</dt>
+            <dd>
+              <code style={{ wordBreak: "break-all", fontSize: "12px" }}>
+                J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn
+              </code>
+            </dd>
+          </dl>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            All four entries above are real on-chain devnet artifacts. Tx signatures and program ID are verifiable
+            by any client; clicking a tx hash above opens Solana Explorer for that transaction.
+          </p>
+        </Panel>
+
+        <Panel title="What's wired vs roadmap">
+          <ul className="plain-list" style={{ fontSize: "13px", lineHeight: 1.6 }}>
+            <li>✅ <strong>store_collateral_proof</strong> — Groth16 collateral-ring verifier wired</li>
+            <li>✅ <strong>lending_pool::borrow</strong> — confirmed on devnet via IKA smoke</li>
+            <li>✅ <strong>nullifier_registry::lock</strong> — CPI invoked from borrow</li>
+            <li>✅ <strong>approve_ika_borrow_message</strong> — IKA approve_message CPI confirmed</li>
+            <li>🟡 IKA gRPC <strong>PresignForDWallet</strong> — pre-alpha BCS schema mismatch (upstream)</li>
+            <li>🟡 In-browser submit handler — scripted via <code>ika-anchor-approval-smoke.mjs</code>; UI binding follows</li>
+          </ul>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            Available notes in local vault: {notes.length}. To exercise the live borrow flow end-to-end today,
+            run <code>node scripts/ika-anchor-approval-smoke.mjs</code> on a devnet-funded wallet.
+          </p>
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function RepayScreen({ notes }: { notes: StoredNote[] }) {
+  return (
+    <section className="stack">
+      <Hero
+        title="Repay"
+        subtitle="Repayment settlement integration — partially live; private-transfer rail pending upstream."
+      />
+
+      <div
+        className="notice"
+        style={{
+          borderColor: "color-mix(in srgb, var(--amber) 55%, var(--line))",
+          background: "color-mix(in srgb, var(--amber) 7%, var(--surface-1))",
+        }}
+      >
+        <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Pending MagicBlock Private Payments unblock</strong>
+          <span>
+            The repay path in <code>lending_pool::repay</code> calls <code>verify_private_payment_receipt</code> which
+            currently fail-closes. The fail-close is intentional until MagicBlock&apos;s Private Payments private-transfer
+            endpoint exposes a verifiable receipt format. Classification:
+            <code>magicblock_api_router_tee_limitation</code>. Tracked in <code>docs/MAGICBLOCK_PRIVATE_PAYMENTS.md</code>.
+          </span>
+        </div>
+      </div>
+
+      <div className="grid two">
+        <Panel title="What's already live for repay">
+          <ul className="plain-list" style={{ fontSize: "13px", lineHeight: 1.6 }}>
+            <li>✅ <strong>repay_ring</strong> ZK circuit compiled + verifier key</li>
+            <li>✅ <strong>verify_repay_proof</strong> — Groth16 BN254 verifier wired in lending_pool</li>
+            <li>✅ <strong>nullifier_registry::unlock</strong> — CPI invoked from repay</li>
+            <li>✅ MagicBlock Private Payments <strong>deposit + withdraw</strong> confirmed on devnet</li>
+            <li>🟡 Private Payments <strong>private-transfer</strong> — upstream router returns Blockhash not found</li>
+            <li>🟡 <strong>verify_private_payment_receipt</strong> — fail-closed until receipt format published</li>
+          </ul>
+        </Panel>
+
+        <Panel title="Unblock path">
+          <p style={{ fontSize: "13px" }}>
+            Once MagicBlock confirms the private-balance namespace credit and the canonical ephemeral-rollup
+            submit RPC, the receipt verification in <code>programs/lending_pool/src/lib.rs:641</code> can be
+            wired to the published verification key and the fail-close removed.
+          </p>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            Available notes in local vault: {notes.length}. The script
+            <code>scripts/magicblock-private-payments-live.mjs</code> exercises every reachable Private Payments
+            API surface and records exact upstream failure modes.
+          </p>
+        </Panel>
+      </div>
     </section>
   );
 }

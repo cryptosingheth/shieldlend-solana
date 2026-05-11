@@ -241,7 +241,10 @@ export async function buildStoreRepayProofInstruction(params: {
 export interface SolanaWalletProvider {
   isPhantom?: boolean;
   publicKey?: PublicKey;
-  connect(): Promise<{ publicKey: PublicKey }>;
+  // onlyIfTrusted: true → Phantom silently auto-connects without popup if the
+  // site was previously authorized; rejects without popup otherwise. Used to
+  // restore the session on page refresh.
+  connect(options?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: PublicKey }>;
   disconnect(): Promise<void>;
   signMessage?(message: Uint8Array, encoding?: "utf8" | "hex"): Promise<{ signature: Uint8Array }>;
   signAndSendTransaction(transaction: Transaction): Promise<{ signature: string }>;
@@ -249,7 +252,13 @@ export interface SolanaWalletProvider {
 
 export function getPhantomProvider(): SolanaWalletProvider | null {
   if (typeof window === "undefined") return null;
-  return window.solana?.isPhantom ? window.solana : null;
+  // Phantom canonical namespace (current docs). Brave's built-in wallet hijacks
+  // window.solana without isPhantom, so check window.phantom.solana first.
+  const fromPhantom = window.phantom?.solana;
+  if (fromPhantom?.isPhantom) return fromPhantom;
+  const fromLegacy = window.solana;
+  if (fromLegacy?.isPhantom) return fromLegacy;
+  return null;
 }
 
 export function getConnection(): Connection {
