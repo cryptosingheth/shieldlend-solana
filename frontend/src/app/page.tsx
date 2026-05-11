@@ -135,14 +135,24 @@ export default function HomePage() {
     setMessage("");
     const provider = getPhantomProvider();
     if (!provider) {
-      setMessage("Phantom wallet was not found. Install Phantom, switch to Solana devnet, then reconnect.");
+      const hasLegacy = typeof window !== "undefined" && Boolean((window as Window).solana);
+      const hasPhantomNs = typeof window !== "undefined" && Boolean((window as Window).phantom);
+      setMessage(
+        `Phantom wallet was not detected. window.phantom=${hasPhantomNs} window.solana=${hasLegacy}. ` +
+        "If you use Brave, set brave://settings/wallet → Default Solana wallet → \"Extensions (no fallback)\" and reload."
+      );
       return;
     }
-    const result = await provider.connect();
-    setWallet(provider);
-    const nextAddress = result.publicKey.toBase58();
-    setAddress(nextAddress);
-    await refreshAccount(nextAddress, null);
+    try {
+      const result = await provider.connect();
+      setWallet(provider);
+      const nextAddress = result.publicKey.toBase58();
+      setAddress(nextAddress);
+      await refreshAccount(nextAddress, null);
+      setMessage(`Connected: ${nextAddress.slice(0, 6)}…${nextAddress.slice(-4)}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? `Phantom connect rejected: ${error.message}` : "Phantom connect failed.");
+    }
   }
 
   async function initializeVault() {

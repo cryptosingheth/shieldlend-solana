@@ -249,7 +249,13 @@ export interface SolanaWalletProvider {
 
 export function getPhantomProvider(): SolanaWalletProvider | null {
   if (typeof window === "undefined") return null;
-  return window.solana?.isPhantom ? window.solana : null;
+  // Phantom canonical namespace (current docs). Brave's built-in wallet hijacks
+  // window.solana without isPhantom, so check window.phantom.solana first.
+  const fromPhantom = window.phantom?.solana;
+  if (fromPhantom?.isPhantom) return fromPhantom;
+  const fromLegacy = window.solana;
+  if (fromLegacy?.isPhantom) return fromLegacy;
+  return null;
 }
 
 export function getConnection(): Connection {
