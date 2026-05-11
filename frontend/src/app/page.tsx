@@ -183,6 +183,14 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-dismiss the notice message after 10 seconds so stale errors don't
+  // linger forever. The close button (✕) lets the user dismiss earlier.
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 10_000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/integrations/encrypt/status")
@@ -476,7 +484,28 @@ export default function HomePage() {
       </aside>
 
       <main className="main">
-        {message && <div className="notice">{message}</div>}
+        {message && (
+          <div className="notice" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+            <span style={{ flex: 1 }}>{message}</span>
+            <button
+              onClick={() => setMessage("")}
+              title="Dismiss"
+              aria-label="Dismiss message"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--fg-2)",
+                cursor: "pointer",
+                fontSize: "16px",
+                lineHeight: 1,
+                padding: "2px 6px",
+                flexShrink: 0,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {screen === "positions" && (
           <Positions
