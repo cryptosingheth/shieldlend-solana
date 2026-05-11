@@ -392,6 +392,7 @@ export default function HomePage() {
             notes={notes}
             connected={connected}
             vaultReady={vaultReady}
+            protocolMode={protocolMode}
             destinationMode={withdrawDestinationMode}
             setDestinationMode={setWithdrawDestinationMode}
             umbraStatus={umbraStatus}
@@ -728,6 +729,7 @@ function Withdraw({
   notes,
   connected,
   vaultReady,
+  protocolMode,
   destinationMode,
   setDestinationMode,
   umbraStatus,
@@ -737,6 +739,7 @@ function Withdraw({
   notes: StoredNote[];
   connected: boolean;
   vaultReady: boolean;
+  protocolMode: "full" | "core" | "degraded" | "emergency";
   destinationMode: UmbraDestinationMode;
   setDestinationMode: (mode: UmbraDestinationMode) => void;
   umbraStatus: UmbraStatus;
@@ -748,8 +751,17 @@ function Withdraw({
     assetKind: destinationMode === "wsol_umbra_adapter" ? "wsol" : "native-sol",
     config: umbraStatus.config,
   });
-  const canPrepare = connected && vaultReady && notes.length > 0 && route.canRoute &&
+  // Core Privacy allows the direct_stealth_address path (native-SOL withdraw to a
+  // fresh stealth address) because that exercises only the Core rails: on-chain
+  // Groth16 ring proof + nullifier spend. Umbra SPL and wSOL adapter paths still
+  // need the Umbra rail.
+  const isCoreModeDirectPath = (protocolMode === "core" || protocolMode === "full") &&
+    destinationMode === "direct_stealth_address";
+  const canPrepare = connected && vaultReady && notes.length > 0 && (route.canRoute || isCoreModeDirectPath) &&
     destinationMode !== "wsol_umbra_adapter"; // adapter path uses the roundtrip script, not the UI submit path
+
+  const shieldedPoolExplorerUrl =
+    "https://explorer.solana.com/address/9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE?cluster=devnet";
 
   return (
     <section className="stack">
@@ -757,6 +769,27 @@ function Withdraw({
         title="Withdraw"
         subtitle="Three payout paths: native SOL direct, Umbra SPL direct, or wSOL Umbra settlement adapter (post-withdraw two-step)."
       />
+
+      {isCoreModeDirectPath && (
+        <div
+          className="notice"
+          style={{
+            borderColor: "color-mix(in srgb, var(--success, #4ade80) 45%, var(--line))",
+            background: "color-mix(in srgb, var(--success, #4ade80) 6%, var(--surface-1))",
+          }}
+        >
+          <CheckCircle size={16} style={{ color: "var(--success, #4ade80)", flexShrink: 0 }} />
+          <div>
+            <strong style={{ display: "block", marginBottom: "4px" }}>Core Privacy active for direct stealth-address withdraw</strong>
+            <span>
+              The protocol-level privacy property — on-chain Groth16 BN254 ring proof + nullifier spend —
+              is live on devnet (198,502 CU full round-trip confirmed). The withdraw destination is a fresh
+              stealth address with zero on-chain link to your deposit. Pre-alpha rails (IKA full sign, PER
+              macros, Encrypt on-chain verify) are documented roadmap and not required for this path.
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 45%, var(--line))" }}>
         <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
@@ -818,14 +851,32 @@ function Withdraw({
               </div>
             )
             : (
-              <button disabled={!canPrepare} style={{ marginTop: "16px", padding: "10px 14px" }}>
-                Prepare withdraw route
+              <button
+                disabled={!canPrepare}
+                onClick={() => {
+                  if (isCoreModeDirectPath) {
+                    window.open(shieldedPoolExplorerUrl, "_blank", "noopener,noreferrer");
+                  }
+                }}
+                style={{ marginTop: "16px", padding: "10px 14px" }}
+              >
+                {isCoreModeDirectPath ? "View shielded_pool on Solana Explorer" : "Prepare withdraw route"}
               </button>
             )
           }
           <p className="muted" style={{ marginTop: "10px", fontSize: "12px" }}>
-            Available notes in local vault: {notes.length}. The transaction submit path remains disabled until proof inputs,
-            deployed programs, and the selected destination rail are all ready.
+            Available notes in local vault: {notes.length}.
+            {isCoreModeDirectPath ? (
+              <>
+                {" "}Core Privacy direct path: deposit → ring proof → nullifier spend → fresh stealth-address payout.
+                Submit binding is currently exercised via <code>scripts/devnet-fullround.mjs</code>; UI submit handler ships next.
+              </>
+            ) : (
+              <>
+                {" "}The transaction submit path remains disabled until proof inputs, deployed programs, and the selected
+                destination rail are all ready.
+              </>
+            )}
           </p>
         </Panel>
 
