@@ -1,11 +1,12 @@
 [toolchain]
+anchor_version = "0.32.1"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.localnet]
-lending_pool = "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7"
+lending_pool = "J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn"
 nullifier_registry = "E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF"
 shielded_pool = "9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE"
 

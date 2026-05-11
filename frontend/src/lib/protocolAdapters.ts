@@ -1,4 +1,5 @@
 export type ProtocolMode = "full" | "degraded" | "emergency";
+export type { SignerMode } from "./privacyRails/ika";
 
 export interface RailStatus {
   key: "programs_deployed" | "zk_artifacts" | "groth16" | "ika" | "per" | "vrf" | "private_payments" | "encrypt" | "umbra";
@@ -33,15 +34,18 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
   {
     key: "ika",
     name: "IKA dWallet relay",
-    role: "Relay authorization — prevents user wallet from being on-chain signer",
-    healthy: process.env.NEXT_PUBLIC_IKA_ENABLED === "true",
+    role: "Relay authorization (pre-alpha / mock signer) — approve_message CPI compile-wired in lending_pool; no live devnet approval tx confirmed",
+    healthy: false,
     requiredForFullPrivacy: true,
   },
   {
     key: "per",
     name: "MagicBlock PER",
     role: "Private execution lane — deposit batching and exit batching inside TDX enclave",
-    // Must not be hardcoded true: no PER macros exist in any program.
+    // TEE RPC is reachable (devnet-tee.magicblock.app HTTP 200 confirmed).
+    // Attestation: challenge-encoding mismatch vs SDK 0.8.8 (minor TEE API delta).
+    // Rust macros (#[ephemeral], #[delegate], #[commit]) blocked on Anchor 0.32.1.
+    // Set NEXT_PUBLIC_PER_ENABLED=true only after Anchor upgrade + macro wiring.
     healthy: Boolean(process.env.NEXT_PUBLIC_PER_ENABLED),
     requiredForFullPrivacy: true,
   },
@@ -69,9 +73,11 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
   {
     key: "umbra",
     name: "Umbra SDK",
-    role: "One-time stealth addresses for withdrawal and disbursement destinations",
-    healthy: Boolean(process.env.NEXT_PUBLIC_UMBRA_ENABLED),
-    requiredForFullPrivacy: false,
+    role: "SPL/Token-2022 encrypted balances and mixer receiver path for exits",
+    healthy: process.env.NEXT_PUBLIC_UMBRA_ENABLED === "true" &&
+      Boolean(process.env.NEXT_PUBLIC_UMBRA_PROGRAM_ID) &&
+      Boolean(process.env.NEXT_PUBLIC_UMBRA_INDEXER_URL),
+    requiredForFullPrivacy: true,
   },
 ];
 
@@ -148,18 +154,10 @@ function receiptHashFromPayload(payload: unknown): string {
 
 export const magicBlockPrivatePayments: PrivatePaymentAdapter = {
   async settleRepayment(params) {
-    const baseUrl = process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL;
-    if (!baseUrl) throw new AdapterNotConfiguredError("MagicBlock Private Payments");
-    const payload = await postJson<unknown>(`${baseUrl.replace(/\/$/, "")}/repayments/settle`, params);
-    const receiptHash = receiptHashFromPayload(payload);
-    if (!receiptHash) {
-      throw new Error("MagicBlock Private Payments response did not include a settlement receipt hash.");
-    }
-    return {
-      provider: "private_payments",
-      receiptHash,
-      raw: payload,
-    };
+    void params;
+    throw new AdapterNotConfiguredError(
+      "MagicBlock Private Payments repayment settlement. The public API now returns unsigned /v1/spl transactions; the frontend must sign, submit, and bind the confirmed tx signature before this adapter can return a receipt."
+    );
   },
 };
 

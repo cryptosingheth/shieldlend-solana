@@ -17,3 +17,8 @@ default = []
 [dependencies]
 anchor-lang = { workspace = true }
 nullifier_registry = { path = "../nullifier_registry", features = ["cpi"] }
+groth16-solana = "0.0.3"
+ika-dwallet-anchor = { path = "../../crates/ika-dwallet-anchor" }
+encrypt-anchor = { path = "../../vendor/encrypt-anchor-anchor032" }
+encrypt-solana-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+encrypt-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }

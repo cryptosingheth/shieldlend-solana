@@ -1,17 +1,44 @@
 {
   "withdraw": {
-    "wasm": { "path": "/circuits/withdraw_ring.wasm", "sha256": null },
-    "zkey": { "path": "/circuits/withdraw_ring.zkey", "sha256": null },
-    "vkey": { "path": "/circuits/withdraw_ring_vkey.json", "sha256": null }
+    "wasm": {
+      "path": "/circuits/withdraw_ring.wasm",
+      "sha256": "d674b773b61480fb754fd3e59eb0e267b5cabda876f02d21f1bd277aa7091dd8"
+    },
+    "zkey": {
+      "path": "/circuits/withdraw_ring.zkey",
+      "sha256": "177945b52aa4bab6a8d98343161b1d88d23fdcf5e3aefb005c5dd92469944032"
+    },
+    "vkey": {
+      "path": "/circuits/withdraw_ring_vkey.json",
+      "sha256": "2c86811b19a5ee92609cef0a5d6072393714ec3cb019a06fd0b74af3ace7a163"
+    }
   },
   "collateral": {
-    "wasm": { "path": "/circuits/collateral_ring.wasm", "sha256": null },
-    "zkey": { "path": "/circuits/collateral_ring.zkey", "sha256": null },
-    "vkey": { "path": "/circuits/collateral_ring_vkey.json", "sha256": null }
+    "wasm": {
+      "path": "/circuits/collateral_ring.wasm",
+      "sha256": "aea5b64a706135118c9ef6e30a42e24eea7360b862026904ed1caea92c0bf938"
+    },
+    "zkey": {
+      "path": "/circuits/collateral_ring.zkey",
+      "sha256": "af4fd077424412ad899a061999817d5367217114798a961272ceb351aa7821ea"
+    },
+    "vkey": {
+      "path": "/circuits/collateral_ring_vkey.json",
+      "sha256": "26fc1c67eb8340a690961369dfebec688f23bbbbf14f1ade76055a974ac1f7e8"
+    }
   },
   "repay": {
-    "wasm": { "path": "/circuits/repay_ring.wasm", "sha256": null },
-    "zkey": { "path": "/circuits/repay_ring.zkey", "sha256": null },
-    "vkey": { "path": "/circuits/repay_ring_vkey.json", "sha256": null }
+    "wasm": {
+      "path": "/circuits/repay_ring.wasm",
+      "sha256": "e00a728fc3438f16773ffda437762fec964f6f1b30e744e8aee9e12b06a81a4f"
+    },
+    "zkey": {
+      "path": "/circuits/repay_ring.zkey",
+      "sha256": "213ab27a8e88e1568e7543d5eb031841a302fde0cea9c9518feb0b2cc05e1f1e"
+    },
+    "vkey": {
+      "path": "/circuits/repay_ring_vkey.json",
+      "sha256": "41fbad43d297734fb66b305c3bbc9acdac182863f54ed64b4734c1fcc0bf0d83"
+    }
   }
 }

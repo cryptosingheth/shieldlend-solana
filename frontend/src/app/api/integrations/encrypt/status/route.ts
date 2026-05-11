@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getEncryptPreAlphaStatus } from "../../../../../lib/prealphaIntegrations";
+import { probeEncryptRail } from "../../../../../lib/privacyRails/encrypt";
 
 export async function GET() {
-  return NextResponse.json(await getEncryptPreAlphaStatus());
+  return NextResponse.json(await probeEncryptRail());
 }

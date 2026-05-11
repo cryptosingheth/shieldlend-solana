@@ -1,0 +1,11 @@
+[package]
+name = "encrypt-anchor"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause-Clear"
+publish = false
+
+[dependencies]
+encrypt-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+encrypt-solana-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+anchor-lang = "0.32.1"

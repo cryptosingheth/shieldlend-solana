@@ -6,6 +6,8 @@
 // Security: See security-checklist.md
 // ============================================================
 
+pub mod groth16_verifier;
+
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use nullifier_registry::{
@@ -15,12 +17,15 @@ use nullifier_registry::{
 declare_id!("9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE");
 
 pub const ROOT_HISTORY_SIZE: usize = 30;
-pub const MAX_EPOCH_COMMITMENTS: usize = 128;
-pub const MAX_EXIT_QUEUE: usize = 128;
+// Reduced from 128 for devnet: Anchor init realloc is limited to 10240 bytes per CPI.
+// Production path: start with base SPACE and use realloc constraints on Deposit/FlushEpoch.
+pub const MAX_EPOCH_COMMITMENTS: usize = 8;
+pub const MAX_EXIT_QUEUE: usize = 8;
 pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
 pub const LENDING_POOL_AUTHORITY_SEED: &[u8] = b"lending-pool-authority";
+pub const PROOF_DATA_SEED: &[u8] = b"proof-data";
 pub const LENDING_POOL_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT");
+    anchor_lang::pubkey!("J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn");
 
 #[program]
 pub mod shielded_pool {
@@ -100,13 +105,46 @@ pub mod shielded_pool {
         Ok(())
     }
 
+    /// Write a Groth16 withdraw proof to a PDA before calling withdraw.
+    ///
+    /// Two-transaction flow (B6 MTU fix):
+    ///   1. store_withdraw_proof — writes proof_a/b/c + public_inputs to a proof PDA.
+    ///   2. withdraw             — reads proof from the PDA; marks it consumed.
+    ///
+    /// The proof_nonce seeds the PDA and must be passed again to withdraw as
+    /// WithdrawArgs.proof_nonce. Generate a fresh random nonce per use.
+    ///
+    /// Transaction size: ~1109 bytes (within 1232-byte Solana MTU).
+    pub fn store_withdraw_proof(
+        ctx: Context<StoreWithdrawProof>,
+        proof_nonce: [u8; 32],
+        proof_a: [u8; 64],
+        proof_b: [u8; 128],
+        proof_c: [u8; 64],
+        public_inputs: [[u8; 32]; 19],
+    ) -> Result<()> {
+        let p = &mut ctx.accounts.proof_data;
+        p.authority = ctx.accounts.authority.key();
+        p.circuit_kind = ProofKind::Withdraw;
+        p.proof_a = proof_a;
+        p.proof_b = proof_b;
+        p.proof_c = proof_c;
+        p.public_inputs = public_inputs;
+        p.consumed = false;
+        p.bump = ctx.bumps.proof_data;
+        let _ = proof_nonce; // consumed by the #[instruction] macro for PDA seed derivation
+        Ok(())
+    }
+
     pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<()> {
         require!(
             ctx.accounts.state.is_known_root(args.root),
             PoolError::UnknownRoot
         );
         require_valid_denomination(args.denomination_lamports)?;
-        verify_withdraw_proof(&args)?;
+        verify_withdraw_proof(&args, &ctx.accounts.proof_data)?;
+        // Mark consumed before CPI to prevent re-entrancy on the proof account.
+        ctx.accounts.proof_data.consumed = true;
         register_and_spend_withdraw_nullifier(&ctx, &args)?;
         require!(
             ctx.accounts.state.exit_queue.len() < MAX_EXIT_QUEUE,
@@ -166,8 +204,47 @@ fn require_valid_denomination(amount: u64) -> Result<()> {
     Ok(())
 }
 
-fn verify_withdraw_proof(_args: &WithdrawArgs) -> Result<()> {
-    err!(PoolError::Groth16VerifierNotWired)
+fn verify_withdraw_proof(args: &WithdrawArgs, proof: &ProofData) -> Result<()> {
+    require!(!proof.consumed, PoolError::ProofAccountConsumed);
+    require!(
+        proof.circuit_kind == ProofKind::Withdraw,
+        PoolError::WrongProofKind
+    );
+    require!(
+        proof.proof_a != [0u8; 64],
+        PoolError::Groth16VerificationFailed
+    );
+
+    // Cross-field consistency: proof public signals must match instruction args.
+    // withdraw_ring public signal ordering (see circuits/public_signals.json):
+    //   [0]     denomination  (u64 as BE u256)
+    //   [1..16] ring[0..15]
+    //   [17]    nullifierHash
+    //   [18]    root
+    let mut expected_denom = [0u8; 32];
+    expected_denom[24..32].copy_from_slice(&args.denomination_lamports.to_be_bytes());
+    require!(
+        proof.public_inputs[0] == expected_denom,
+        PoolError::Groth16VerificationFailed
+    );
+    require!(
+        proof.public_inputs[17] == args.nullifier_hash,
+        PoolError::Groth16VerificationFailed
+    );
+    require!(
+        proof.public_inputs[18] == args.root,
+        PoolError::Groth16VerificationFailed
+    );
+
+    let ok = groth16_verifier::verify_withdraw_groth16(
+        &proof.proof_a,
+        &proof.proof_b,
+        &proof.proof_c,
+        &proof.public_inputs,
+    )
+    .map_err(|_| error!(PoolError::Groth16VerificationFailed))?;
+    require!(ok, PoolError::Groth16VerificationFailed);
+    Ok(())
 }
 
 fn register_and_spend_withdraw_nullifier(
@@ -253,13 +330,34 @@ pub struct FlushEpoch<'info> {
     pub state: Account<'info, ShieldedPoolState>,
 }
 
+/// Context for store_withdraw_proof.
+/// proof_nonce is the PDA seed component; pass the same value to withdraw as
+/// WithdrawArgs.proof_nonce to identify the proof account.
+#[derive(Accounts)]
+#[instruction(proof_nonce: [u8; 32])]
+pub struct StoreWithdrawProof<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(
+        init,
+        payer = authority,
+        space = ProofData::SPACE,
+        seeds = [PROOF_DATA_SEED, authority.key().as_ref(), proof_nonce.as_ref()],
+        bump
+    )]
+    pub proof_data: Account<'info, ProofData>,
+    pub system_program: Program<'info, System>,
+}
+
 #[derive(Accounts)]
 #[instruction(args: WithdrawArgs)]
 pub struct Withdraw<'info> {
     #[account(mut)]
     pub relay: Signer<'info>,
+    /// Box<Account> keeps ShieldedPoolState (~1100 bytes) on the heap, reducing
+    /// try_accounts and the entry-point stack frame (B7 mitigation).
     #[account(mut, seeds = [b"shielded-pool-state"], bump = state.bump)]
-    pub state: Account<'info, ShieldedPoolState>,
+    pub state: Box<Account<'info, ShieldedPoolState>>,
     /// CHECK: created and mutated by the nullifier registry CPI.
     #[account(
         mut,
@@ -279,6 +377,18 @@ pub struct Withdraw<'info> {
     pub registry_writer: UncheckedAccount<'info>,
     pub nullifier_registry_program: Program<'info, NullifierRegistry>,
     pub system_program: Program<'info, System>,
+    /// Proof account written by store_withdraw_proof; consumed after use.
+    /// PDA seeds must match: [PROOF_DATA_SEED, relay, args.proof_nonce].
+    /// Box<Account> keeps the 908-byte ProofData on the heap (B7 mitigation).
+    #[account(
+        mut,
+        seeds = [PROOF_DATA_SEED, relay.key().as_ref(), args.proof_nonce.as_ref()],
+        bump = proof_data.bump,
+        constraint = proof_data.authority == relay.key() @ PoolError::ProofAccountOwnerMismatch,
+        constraint = !proof_data.consumed @ PoolError::ProofAccountConsumed,
+        constraint = proof_data.circuit_kind == ProofKind::Withdraw @ PoolError::WrongProofKind,
+    )]
+    pub proof_data: Box<Account<'info, ProofData>>,
 }
 
 #[derive(Accounts)]
@@ -339,6 +449,34 @@ impl ShieldedPoolState {
     }
 }
 
+/// Proof account for DEV/TEST Groth16 withdraw proofs.
+/// Written by store_withdraw_proof; read and consumed by withdraw.
+/// Space: ProofData::SPACE bytes.
+#[account]
+pub struct ProofData {
+    pub authority: Pubkey,
+    pub circuit_kind: ProofKind,
+    pub proof_a: [u8; 64],
+    pub proof_b: [u8; 128],
+    pub proof_c: [u8; 64],
+    /// 19 public signals in withdraw_ring order (circuits/public_signals.json).
+    pub public_inputs: [[u8; 32]; 19],
+    pub consumed: bool,
+    pub bump: u8,
+}
+
+impl ProofData {
+    // discriminator(8) + authority(32) + circuit_kind(1) +
+    // proof_a(64) + proof_b(128) + proof_c(64) + public_inputs(19*32=608) +
+    // consumed(1) + bump(1) + 1 padding = 908
+    pub const SPACE: usize = 8 + 32 + 1 + 64 + 128 + 64 + (19 * 32) + 1 + 1 + 1;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ProofKind {
+    Withdraw,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct QueuedDeposit {
     pub commitment: [u8; 32],
@@ -383,6 +521,10 @@ pub struct WithdrawArgs {
     pub denomination_lamports: u64,
     pub stealth_address: Pubkey,
     pub relay_nonce: u64,
+    /// PDA nonce used to locate the proof account written by store_withdraw_proof.
+    /// Must match the proof_nonce passed to store_withdraw_proof.
+    /// Compute budget: prepend ComputeBudgetProgram::set_compute_unit_limit(1_400_000).
+    pub proof_nonce: [u8; 32],
 }
 
 #[error_code]
@@ -405,17 +547,54 @@ pub enum PoolError {
     UnknownRoot,
     #[msg("Groth16 verifier is not wired yet")]
     Groth16VerifierNotWired,
+    #[msg("Groth16 proof verification failed")]
+    Groth16VerificationFailed,
     #[msg("PER exit adapter is not wired yet")]
     PerAdapterNotWired,
     #[msg("Protocol is in emergency mode")]
     EmergencyMode,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
+    #[msg("Proof account authority does not match relay signer")]
+    ProofAccountOwnerMismatch,
+    #[msg("Proof account has already been consumed")]
+    ProofAccountConsumed,
+    #[msg("Proof account is for the wrong circuit")]
+    WrongProofKind,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_withdraw_proof_data(
+        proof_a: [u8; 64],
+        proof_b: [u8; 128],
+        proof_c: [u8; 64],
+        public_inputs: [[u8; 32]; 19],
+    ) -> ProofData {
+        ProofData {
+            authority: Pubkey::new_unique(),
+            circuit_kind: ProofKind::Withdraw,
+            proof_a,
+            proof_b,
+            proof_c,
+            public_inputs,
+            consumed: false,
+            bump: 255,
+        }
+    }
+
+    fn make_withdraw_args(root: [u8; 32], nullifier_hash: [u8; 32]) -> WithdrawArgs {
+        WithdrawArgs {
+            root,
+            nullifier_hash,
+            denomination_lamports: 100_000_000,
+            stealth_address: Pubkey::new_unique(),
+            relay_nonce: 1,
+            proof_nonce: [1u8; 32],
+        }
+    }
 
     #[test]
     fn fixed_denominations_are_the_only_valid_deposit_amounts() {
@@ -487,14 +666,123 @@ mod tests {
     }
 
     #[test]
-    fn verifier_guards_fail_closed_until_real_verifier_is_configured() {
-        let args = WithdrawArgs {
-            root: [1; 32],
-            nullifier_hash: [2; 32],
-            denomination_lamports: 100_000_000,
-            stealth_address: Pubkey::new_unique(),
-            relay_nonce: 1,
+    fn proof_data_space_constant_matches_struct_layout() {
+        // discriminator(8) + authority(32) + circuit_kind(1) +
+        // proof_a(64) + proof_b(128) + proof_c(64) + public_inputs(19*32=608) +
+        // consumed(1) + bump(1) = 908
+        assert_eq!(ProofData::SPACE, 908);
+    }
+
+    #[test]
+    fn store_withdraw_proof_stores_expected_payload() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
         };
-        assert!(verify_withdraw_proof(&args).is_err());
+        let proof = make_withdraw_proof_data(
+            WITHDRAW_SMOKE_PROOF_A,
+            WITHDRAW_SMOKE_PROOF_B,
+            WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert_eq!(proof.circuit_kind, ProofKind::Withdraw);
+        assert_eq!(proof.proof_a, WITHDRAW_SMOKE_PROOF_A);
+        assert_eq!(proof.proof_b, WITHDRAW_SMOKE_PROOF_B);
+        assert_eq!(proof.proof_c, WITHDRAW_SMOKE_PROOF_C);
+        assert_eq!(proof.public_inputs, WITHDRAW_SMOKE_PUBLIC_SIGNALS);
+        assert!(!proof.consumed);
+    }
+
+    #[test]
+    fn withdraw_proof_with_valid_smoke_vector_passes() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = make_withdraw_args(
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
+        );
+        let proof = make_withdraw_proof_data(
+            WITHDRAW_SMOKE_PROOF_A,
+            WITHDRAW_SMOKE_PROOF_B,
+            WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_withdraw_proof(&args, &proof).is_ok());
+    }
+
+    #[test]
+    fn withdraw_proof_with_empty_proof_fails() {
+        use crate::groth16_verifier::tests::WITHDRAW_SMOKE_PUBLIC_SIGNALS;
+        let args = make_withdraw_args(
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
+        );
+        let proof = make_withdraw_proof_data(
+            [0u8; 64],
+            [0u8; 128],
+            [0u8; 64],
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_withdraw_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn withdraw_proof_with_mutated_proof_fails() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = make_withdraw_args(
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
+        );
+        let mut bad_a = WITHDRAW_SMOKE_PROOF_A;
+        bad_a[32] ^= 0xff;
+        let proof = make_withdraw_proof_data(
+            bad_a,
+            WITHDRAW_SMOKE_PROOF_B,
+            WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_withdraw_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn withdraw_proof_with_mismatched_nullifier_fails() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        // args.nullifier_hash disagrees with public_inputs[17]; caught by cross-check.
+        let args = make_withdraw_args(WITHDRAW_SMOKE_PUBLIC_SIGNALS[18], [0xde; 32]);
+        let proof = make_withdraw_proof_data(
+            WITHDRAW_SMOKE_PROOF_A,
+            WITHDRAW_SMOKE_PROOF_B,
+            WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        );
+        assert!(verify_withdraw_proof(&args, &proof).is_err());
+    }
+
+    #[test]
+    fn withdraw_with_consumed_proof_fails() {
+        use crate::groth16_verifier::tests::{
+            WITHDRAW_SMOKE_PROOF_A, WITHDRAW_SMOKE_PROOF_B, WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        };
+        let args = make_withdraw_args(
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[18],
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS[17],
+        );
+        let mut proof = make_withdraw_proof_data(
+            WITHDRAW_SMOKE_PROOF_A,
+            WITHDRAW_SMOKE_PROOF_B,
+            WITHDRAW_SMOKE_PROOF_C,
+            WITHDRAW_SMOKE_PUBLIC_SIGNALS,
+        );
+        proof.consumed = true;
+        assert!(verify_withdraw_proof(&args, &proof).is_err());
     }
 }

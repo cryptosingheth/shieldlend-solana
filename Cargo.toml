@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ika-dwallet-anchor",
     "programs/nullifier_registry",
     "programs/shielded_pool",
     "programs/lending_pool",
@@ -7,7 +8,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-anchor-lang = "0.30.1"
+anchor-lang = "0.32.1"
 
 [profile.release]
 overflow-checks = true

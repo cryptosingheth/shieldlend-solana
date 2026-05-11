@@ -1,0 +1,1234 @@
+#!/usr/bin/env node
+/**
+ * MagicBlock Private Payments live SPL flow.
+ *
+ * Dry run:
+ *   node scripts/magicblock-private-payments-live.mjs --dry-run
+ *
+ * Live deposit/withdraw:
+ *   node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw
+ *
+ * Live private transfer submit diagnostic:
+ *   node scripts/magicblock-private-payments-live.mjs --live-private-transfer
+ *
+ * The live path signs locally with the Solana CLI devnet wallet and submits
+ * only unsigned transactions returned by the public MagicBlock API. The
+ * private-transfer mode deliberately funds the private balance before transfer:
+ * SOL -> wSOL, login, mint check/init, deposit, balance verification, transfer.
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import process from "node:process";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  VersionedTransaction,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
+
+const PRIVATE_PAYMENTS_API =
+  process.env.MAGICBLOCK_PRIVATE_PAYMENTS_API_URL ||
+  process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL ||
+  "https://payments.magicblock.app";
+
+const CLUSTER = process.env.MAGICBLOCK_PRIVATE_PAYMENTS_CLUSTER || "devnet";
+const WSOL_MINT = "So11111111111111111111111111111111111111112";
+const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const DEFAULT_AMOUNT_BASE_UNITS = "1000000";
+const DEFAULT_BASE_RPC = "https://api.devnet.solana.com";
+const DEFAULT_EPHEMERAL_RPC = "https://devnet-router.magicblock.app";
+const DEFAULT_TEE_RPC = "https://devnet-tee.magicblock.app";
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+const args = new Set(process.argv.slice(2));
+const validModes = ["--dry-run", "--live", "--live-deposit-withdraw", "--live-private-transfer"];
+const selectedModes = validModes.filter((flag) => args.has(flag));
+const mode =
+  selectedModes[0] === "--live"
+    ? "live"
+    : selectedModes[0]?.replace(/^--/, "") || "dry-run";
+let activeReport = null;
+if (selectedModes.length !== 1) {
+  console.error(
+    "Usage: node scripts/magicblock-private-payments-live.mjs " +
+      "--dry-run|--live-deposit-withdraw|--live-private-transfer"
+  );
+  process.exit(1);
+}
+
+const isLiveMode = mode !== "dry-run";
+const runDepositWithdraw = mode === "live" || mode === "live-deposit-withdraw";
+const runPrivateTransfer = mode === "live" || mode === "live-private-transfer";
+const runPrivateTransferFunding = runPrivateTransfer;
+
+function argValue(name, fallback = "") {
+  const prefix = `${name}=`;
+  const match = process.argv.slice(2).find((arg) => arg.startsWith(prefix));
+  return match ? match.slice(prefix.length) : fallback;
+}
+
+function env(name, fallback = "") {
+  return process.env[name] || fallback;
+}
+
+function normalizeBase(url) {
+  return url.replace(/\/$/, "");
+}
+
+function walletPath() {
+  return env(
+    "MAGICBLOCK_PRIVATE_PAYMENTS_KEYPAIR",
+    env("SOLANA_WALLET_PATH", env("SOLANA_KEYPAIR", `${homedir()}/.config/solana/id.json`))
+  );
+}
+
+function readKeypair(path) {
+  if (!existsSync(path)) throw new Error(`Keypair file not found: ${path}`);
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  if (!Array.isArray(parsed) || parsed.length !== 64) {
+    throw new Error(`Expected Solana CLI 64-byte keypair array at ${path}`);
+  }
+  return Keypair.fromSecretKey(new Uint8Array(parsed));
+}
+
+const BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function base58Encode(bytes) {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) + BigInt(byte);
+  let encoded = "";
+  while (value > 0n) {
+    encoded = BASE58_ALPHABET[Number(value % 58n)] + encoded;
+    value /= 58n;
+  }
+  for (const byte of bytes) {
+    if (byte === 0) encoded = "1" + encoded;
+    else break;
+  }
+  return encoded || "1";
+}
+
+function toBase64(bytes) {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function appendQuery(path, params) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+  const qs = search.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+function redactedHeaders(headers) {
+  const out = { ...headers };
+  if (out.authorization) out.authorization = "Bearer <redacted>";
+  return out;
+}
+
+function safeJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function stringifyReport(value) {
+  return JSON.stringify(
+    value,
+    (_key, item) => (typeof item === "bigint" ? item.toString() : item),
+    2
+  );
+}
+
+function explorer(signature) {
+  return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getAssociatedTokenAddressSync(mint, owner) {
+  return PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  )[0];
+}
+
+function createAssociatedTokenAccountInstruction(payer, ata, owner, mint) {
+  return {
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: ata, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+    data: Buffer.alloc(0),
+  };
+}
+
+function createSyncNativeInstruction(account) {
+  return {
+    keys: [{ pubkey: account, isSigner: false, isWritable: true }],
+    programId: TOKEN_PROGRAM_ID,
+    data: Buffer.from([17]),
+  };
+}
+
+async function tokenBalance(connection, owner, mint) {
+  const response = await connection.getParsedTokenAccountsByOwner(owner, { mint }, "confirmed");
+  let total = 0n;
+  const accounts = [];
+  for (const item of response.value) {
+    const info = item.account.data.parsed.info;
+    const amount = BigInt(info.tokenAmount.amount);
+    total += amount;
+    accounts.push({
+      pubkey: item.pubkey.toBase58(),
+      amount: amount.toString(),
+      decimals: info.tokenAmount.decimals,
+      uiAmountString: info.tokenAmount.uiAmountString,
+    });
+  }
+  return { total, accounts };
+}
+
+function maybeBigInt(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return BigInt(value);
+  }
+  return null;
+}
+
+function collectBalanceCandidates(value, path = "$", candidates = []) {
+  if (value === null || value === undefined) return candidates;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectBalanceCandidates(item, `${path}[${index}]`, candidates));
+    return candidates;
+  }
+  if (typeof value !== "object") return candidates;
+
+  const tokenAmount = value.tokenAmount;
+  if (tokenAmount && typeof tokenAmount === "object") {
+    const tokenAmountValue = maybeBigInt(tokenAmount.amount);
+    if (tokenAmountValue !== null) {
+      candidates.push({
+        path: `${path}.tokenAmount.amount`,
+        amount: tokenAmountValue.toString(),
+      });
+    }
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (["decimals", "slot", "lastValidBlockHeight", "instructionCount"].includes(key)) {
+      continue;
+    }
+    const direct = maybeBigInt(nested);
+    if (
+      direct !== null &&
+      /(^|_)(amount|balance|total|available|baseUnits|rawAmount|privateBalance|publicBalance)$/i.test(key)
+    ) {
+      candidates.push({ path: `${path}.${key}`, amount: direct.toString() });
+    }
+    collectBalanceCandidates(nested, `${path}.${key}`, candidates);
+  }
+  return candidates;
+}
+
+function bestBalanceAmount(payload) {
+  const candidates = collectBalanceCandidates(payload);
+  if (candidates.length === 0) return { amount: null, candidates };
+  const direct = candidates.find((candidate) =>
+    /\.(amount|balance|total|available|privateBalance|publicBalance)$/i.test(candidate.path)
+  );
+  return {
+    amount: direct?.amount ?? candidates[0].amount,
+    candidates,
+  };
+}
+
+async function getMagicBlockBalanceSnapshot(report, label, owner, mintAddress, bearerToken) {
+  const publicBalance = await apiGet(
+    report,
+    appendQuery("/v1/spl/balance", {
+      address: owner,
+      mint: mintAddress,
+      cluster: CLUSTER,
+    })
+  );
+  const privateBalance = bearerToken
+    ? await apiGet(
+        report,
+        appendQuery("/v1/spl/private-balance", {
+          address: owner,
+          mint: mintAddress,
+          cluster: CLUSTER,
+        }),
+        { bearerToken }
+      )
+    : null;
+
+  const publicParsed = bestBalanceAmount(publicBalance.response);
+  const privateParsed = privateBalance
+    ? bestBalanceAmount(privateBalance.response)
+    : { amount: null, candidates: [] };
+  const snapshot = {
+    label,
+    public: {
+      ok: publicBalance.ok,
+      status: publicBalance.status,
+      parsedAmountBaseUnits: publicParsed.amount,
+      parsedCandidates: publicParsed.candidates,
+      response: publicBalance.response,
+    },
+    private: privateBalance
+      ? {
+          ok: privateBalance.ok,
+          status: privateBalance.status,
+          parsedAmountBaseUnits: privateParsed.amount,
+          parsedCandidates: privateParsed.candidates,
+          response: privateBalance.response,
+        }
+      : null,
+  };
+  report.balanceSnapshots.push(snapshot);
+  return snapshot;
+}
+
+async function waitForPrivateBalanceAtLeast(
+  report,
+  owner,
+  mintAddress,
+  bearerToken,
+  minimumBaseUnits,
+  label
+) {
+  const maxAttempts = Number(env("MAGICBLOCK_PRIVATE_BALANCE_POLL_ATTEMPTS", "6"));
+  const delayMs = Number(env("MAGICBLOCK_PRIVATE_BALANCE_POLL_DELAY_MS", "2500"));
+  let lastSnapshot = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastSnapshot = await getMagicBlockBalanceSnapshot(
+      report,
+      `${label}-attempt-${attempt}`,
+      owner,
+      mintAddress,
+      bearerToken
+    );
+    const parsed = maybeBigInt(lastSnapshot.private?.parsedAmountBaseUnits);
+    if (parsed !== null && parsed >= minimumBaseUnits) {
+      return {
+        credited: true,
+        parsedPrivateBalance: parsed.toString(),
+        attempts: attempt,
+        snapshot: lastSnapshot,
+      };
+    }
+    if (attempt < maxAttempts) await sleep(delayMs);
+  }
+
+  return {
+    credited: false,
+    parsedPrivateBalance: lastSnapshot?.private?.parsedAmountBaseUnits ?? null,
+    attempts: maxAttempts,
+    snapshot: lastSnapshot,
+  };
+}
+
+async function ensureWsol(connection, wallet, mint, amountBaseUnits) {
+  const before = await tokenBalance(connection, wallet.publicKey, mint);
+  if (before.total >= amountBaseUnits) {
+    return { action: "existing-wsol-balance", before, after: before, signatures: [] };
+  }
+
+  const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey);
+  const amountToWrap = amountBaseUnits - before.total;
+  const solBalance = BigInt(await connection.getBalance(wallet.publicKey, "confirmed"));
+  if (solBalance <= amountToWrap + 10_000_000n) {
+    throw new Error(
+      `Insufficient devnet SOL to wrap ${amountToWrap.toString()} lamports into wSOL and keep fees.`
+    );
+  }
+
+  const tx = new Transaction();
+  const ataInfo = await connection.getAccountInfo(ata, "confirmed");
+  if (!ataInfo) {
+    tx.add(createAssociatedTokenAccountInstruction(wallet.publicKey, ata, wallet.publicKey, mint));
+  }
+  tx.add(
+    SystemProgram.transfer({
+      fromPubkey: wallet.publicKey,
+      toPubkey: ata,
+      lamports: Number(amountToWrap),
+    }),
+    createSyncNativeInstruction(ata)
+  );
+  const signature = await sendAndConfirmTransaction(connection, tx, [wallet], {
+    commitment: "confirmed",
+  });
+  const after = await tokenBalance(connection, wallet.publicKey, mint);
+  return {
+    action: "wrapped-native-sol-to-wsol-ata",
+    ata: ata.toBase58(),
+    amountWrapped: amountToWrap.toString(),
+    before,
+    after,
+    signatures: [signature],
+  };
+}
+
+function summarizeBuild(payload) {
+  if (!payload || typeof payload !== "object") return payload;
+  return {
+    kind: payload.kind,
+    version: payload.version,
+    sendTo: payload.sendTo,
+    recentBlockhash: payload.recentBlockhash,
+    lastValidBlockHeight: payload.lastValidBlockHeight,
+    instructionCount: payload.instructionCount,
+    requiredSigners: payload.requiredSigners,
+    validator: payload.validator,
+    transactionBase64Length:
+      typeof payload.transactionBase64 === "string"
+        ? payload.transactionBase64.length
+        : undefined,
+  };
+}
+
+function transferBody({
+  owner,
+  recipient,
+  mintAddress,
+  amount,
+  visibility,
+  fromBalance,
+  toBalance,
+  memo,
+  clientRefId = "1",
+}) {
+  return {
+    from: owner,
+    to: recipient,
+    mint: mintAddress,
+    amount: Number(amount),
+    visibility,
+    fromBalance,
+    toBalance,
+    cluster: CLUSTER,
+    initIfMissing: true,
+    initAtasIfMissing: true,
+    initVaultIfMissing: false,
+    memo,
+    minDelayMs: "0",
+    maxDelayMs: "0",
+    clientRefId,
+    split: 1,
+    gasless: false,
+    legacy: true,
+  };
+}
+
+function deserializeBuildTransaction(build) {
+  const raw = Buffer.from(build.transactionBase64, "base64");
+  if (build.version === "v0") return VersionedTransaction.deserialize(raw);
+  return Transaction.from(raw);
+}
+
+function transactionBlockhash(tx) {
+  return tx instanceof VersionedTransaction ? tx.message.recentBlockhash : tx.recentBlockhash;
+}
+
+function setTransactionBlockhash(tx, blockhash) {
+  if (tx instanceof VersionedTransaction) {
+    tx.message.recentBlockhash = blockhash;
+  } else {
+    tx.recentBlockhash = blockhash;
+  }
+}
+
+async function diagnoseBuildBlockhash(report, connectionByTarget, label, build) {
+  if (!build?.transactionBase64) return null;
+  const tx = deserializeBuildTransaction(build);
+  const txBlockhash = transactionBlockhash(tx);
+  const diag = {
+    label,
+    sendTo: build.sendTo,
+    apiRecentBlockhash: build.recentBlockhash || "",
+    transactionRecentBlockhash: txBlockhash || "",
+    apiMatchesTransaction:
+      Boolean(build.recentBlockhash && txBlockhash) && build.recentBlockhash === txBlockhash,
+    lastValidBlockHeight: build.lastValidBlockHeight ?? null,
+    rpcChecks: [],
+  };
+
+  for (const [target, connection] of Object.entries(connectionByTarget)) {
+    const check = { target, rpcEndpoint: connection.rpcEndpoint };
+    try {
+      const [latest, currentBlockHeight, validity] = await Promise.all([
+        connection.getLatestBlockhash("confirmed"),
+        connection.getBlockHeight("confirmed"),
+        txBlockhash
+          ? connection.isBlockhashValid(txBlockhash, "confirmed").catch((error) => ({
+              context: null,
+              value: false,
+              error: error instanceof Error ? error.message : String(error),
+            }))
+          : Promise.resolve({ context: null, value: false }),
+      ]);
+      check.latestBlockhash = latest.blockhash;
+      check.latestLastValidBlockHeight = latest.lastValidBlockHeight;
+      check.currentBlockHeight = currentBlockHeight;
+      check.transactionBlockhashValid = Boolean(validity.value);
+      if (validity.error) check.validityError = validity.error;
+      check.apiLastValidExpired =
+        typeof build.lastValidBlockHeight === "number"
+          ? currentBlockHeight > build.lastValidBlockHeight
+          : null;
+    } catch (error) {
+      check.error = error instanceof Error ? error.message : String(error);
+    }
+    diag.rpcChecks.push(check);
+  }
+
+  report.blockhashDiagnostics.push(diag);
+  return diag;
+}
+
+async function request(report, method, path, { body, bearerToken } = {}) {
+  const url = `${normalizeBase(PRIVATE_PAYMENTS_API)}${path}`;
+  const headers = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (bearerToken) headers.authorization = `Bearer ${bearerToken}`;
+
+  const entry = {
+    method,
+    path,
+    url,
+    requestHeaders: redactedHeaders(headers),
+    requestBody: body ?? null,
+    status: null,
+    ok: false,
+    response: null,
+    responseText: "",
+  };
+  report.endpointsHit.push(entry);
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    entry.status = res.status;
+    entry.ok = res.ok;
+    const text = await res.text();
+    entry.responseText = text;
+    entry.response = safeJson(text) ?? text;
+    return entry;
+  } catch (error) {
+    entry.responseText = error instanceof Error ? error.message : String(error);
+    entry.response = { error: entry.responseText };
+    return entry;
+  }
+}
+
+async function apiGet(report, path, opts) {
+  return request(report, "GET", path, opts);
+}
+
+async function apiPost(report, path, body, opts = {}) {
+  return request(report, "POST", path, { ...opts, body });
+}
+
+async function signAndSendBuild(report, connectionByTarget, wallet, label, build, options = {}) {
+  if (!build?.transactionBase64 || !build?.sendTo) {
+    throw new Error(`${label} did not return a usable unsigned transaction.`);
+  }
+
+  const target = options.target || build.sendTo;
+  const connection = connectionByTarget[target];
+  if (!connection) throw new Error(`${label} returned unsupported sendTo=${target}`);
+
+  const tx = deserializeBuildTransaction(build);
+  const originalBlockhash = transactionBlockhash(tx);
+  let confirmBlockhash = build.recentBlockhash || originalBlockhash;
+  let confirmLastValidBlockHeight = build.lastValidBlockHeight;
+
+  if (options.refreshBlockhash) {
+    const latest = await connection.getLatestBlockhash("confirmed");
+    setTransactionBlockhash(tx, latest.blockhash);
+    confirmBlockhash = latest.blockhash;
+    confirmLastValidBlockHeight = latest.lastValidBlockHeight;
+  }
+
+  let serialized;
+  if (tx instanceof VersionedTransaction) {
+    tx.sign([wallet]);
+    serialized = tx.serialize();
+  } else {
+    tx.sign(wallet);
+    serialized = tx.serialize();
+  }
+
+  const signature = await connection.sendRawTransaction(serialized, {
+    skipPreflight: false,
+    preflightCommitment: "confirmed",
+  });
+  await connection.confirmTransaction(
+    {
+      signature,
+      blockhash: confirmBlockhash,
+      lastValidBlockHeight: confirmLastValidBlockHeight,
+    },
+    "confirmed"
+  );
+  report.txSignatures.push({
+    label,
+    signature,
+    sendTo: target,
+    explorer: explorer(signature),
+    originalBlockhash,
+    submittedBlockhash: confirmBlockhash,
+    refreshedBlockhash: Boolean(options.refreshBlockhash),
+  });
+  return signature;
+}
+
+async function tryPrivateTransferSubmit(report, connectionByTarget, wallet, build) {
+  const fallbackTargets =
+    build.sendTo === "ephemeral" ? ["tee", "base"] : ["ephemeral", "tee"];
+  const targets = [build.sendTo, ...fallbackTargets].filter(
+    (target, index, values) => target && values.indexOf(target) === index
+  );
+  const attempts = [];
+
+  for (const target of targets) {
+    try {
+      await signAndSendBuild(report, connectionByTarget, wallet, `private-transfer-${target}`, build, {
+        target,
+        refreshBlockhash: true,
+      });
+      attempts.push({ target, status: "submitted" });
+      report.privateTransferSubmitAttempts.push(...attempts);
+      return true;
+    } catch (error) {
+      attempts.push({
+        target,
+        status: "blocked",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  report.privateTransferSubmitAttempts.push(...attempts);
+  return false;
+}
+
+async function requestTransferRouteDiagnostics(
+  report,
+  owner,
+  recipient,
+  mintAddress,
+  amountBaseUnits,
+  bearerToken
+) {
+  const routes = [
+    ["base", "base"],
+    ["base", "ephemeral"],
+    ["ephemeral", "base"],
+    ["ephemeral", "ephemeral"],
+  ];
+  const diagnostics = [];
+
+  for (const [fromBalance, toBalance] of routes) {
+    const body = transferBody({
+      owner,
+      recipient,
+      mintAddress,
+      amount: amountBaseUnits,
+      visibility: "private",
+      fromBalance,
+      toBalance,
+      memo: `ShieldLend MagicBlock route check ${fromBalance}->${toBalance}`,
+      clientRefId: String(diagnostics.length + 10),
+    });
+    const result = await apiPost(
+      report,
+      "/v1/spl/transfer",
+      body,
+      bearerToken ? { bearerToken } : {}
+    );
+    const raw = result.response;
+    const summary = summarizeBuild(raw);
+    result.response = summary;
+    diagnostics.push({
+      visibility: "private",
+      fromBalance,
+      toBalance,
+      ok: result.ok,
+      status: result.status,
+      sendTo: summary?.sendTo ?? null,
+      recentBlockhash: summary?.recentBlockhash ?? null,
+      lastValidBlockHeight: summary?.lastValidBlockHeight ?? null,
+      instructionCount: summary?.instructionCount ?? null,
+      requiredSigners: summary?.requiredSigners ?? null,
+      validator: summary?.validator ?? null,
+      error: result.ok ? "" : result.responseText,
+      build: raw,
+    });
+  }
+
+  report.transferRouteDiagnostics.push(...diagnostics);
+  return diagnostics;
+}
+
+async function tryBaseToEphemeralTopUp(
+  report,
+  connectionByTarget,
+  baseConnection,
+  wallet,
+  owner,
+  recipient,
+  mint,
+  mintAddress,
+  amountBaseUnits,
+  bearerToken
+) {
+  const before = [...report.depositCreditChecks].reverse()[0] ?? null;
+  if (before?.credited) return null;
+
+  report.tokenTopUpPreparation = await ensureWsol(baseConnection, wallet, mint, amountBaseUnits);
+  for (const signature of report.tokenTopUpPreparation.signatures ?? []) {
+    report.txSignatures.push({
+      label: "wrap-wsol-for-base-to-ephemeral-top-up",
+      signature,
+      sendTo: "base",
+      explorer: explorer(signature),
+    });
+  }
+
+  const body = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: amountBaseUnits,
+    visibility: "private",
+    fromBalance: "base",
+    toBalance: "ephemeral",
+    memo: "ShieldLend MagicBlock base-to-ephemeral top-up",
+    clientRefId: "77",
+  });
+  const route = await apiPost(
+    report,
+    "/v1/spl/transfer",
+    body,
+    bearerToken ? { bearerToken } : {}
+  );
+  const build = route.response;
+  route.response = summarizeBuild(route.response);
+  const attempt = {
+    route: "base->ephemeral",
+    requested: body,
+    build: route.response,
+    submitted: false,
+    signature: "",
+    error: "",
+    creditCheck: null,
+  };
+
+  if (!route.ok) {
+    attempt.error = `builder HTTP ${route.status}: ${route.responseText}`;
+    report.privateBalanceTopUpAttempts.push(attempt);
+    return attempt;
+  }
+
+  try {
+    const signature = await signAndSendBuild(
+      report,
+      connectionByTarget,
+      wallet,
+      "base-to-ephemeral-top-up",
+      build,
+      { target: build.sendTo }
+    );
+    attempt.submitted = true;
+    attempt.signature = signature;
+    attempt.creditCheck = await waitForPrivateBalanceAtLeast(
+      report,
+      owner,
+      mintAddress,
+      bearerToken,
+      amountBaseUnits,
+      "after-base-to-ephemeral-top-up"
+    );
+  } catch (error) {
+    attempt.error = error instanceof Error ? error.message : String(error);
+  }
+
+  report.privateBalanceTopUpAttempts.push(attempt);
+  return attempt;
+}
+
+function classifyPrivateTransferBlocker(report, amountBaseUnits) {
+  if (report.privateTransferSubmitAttempts.some((attempt) => attempt.status === "submitted")) {
+    return {
+      category: "none",
+      detail: "A private-transfer transaction submitted. Confirm whether the accepting RPC is the intended MagicBlock private route before making stronger privacy claims.",
+    };
+  }
+
+  const errors = report.privateTransferSubmitAttempts
+    .map((attempt) => attempt.error || attempt.status || "")
+    .join(" | ");
+  const latestDepositCheck = [...report.depositCreditChecks].reverse()[0] ?? null;
+  const latestTopUpAttempt = [...report.privateBalanceTopUpAttempts].reverse()[0] ?? null;
+  const latestTopUpCheck = latestTopUpAttempt?.creditCheck ?? null;
+  const parsedPrivateBalance = maybeBigInt(latestDepositCheck?.parsedPrivateBalance);
+  const parsedTopUpPrivateBalance = maybeBigInt(latestTopUpCheck?.parsedPrivateBalance);
+  const hasTokenInsufficientFunds =
+    /InsufficientFunds|insufficient funds|custom program error: 0x1|0x1/i.test(errors);
+
+  if (hasTokenInsufficientFunds) {
+    if (parsedTopUpPrivateBalance !== null && parsedTopUpPrivateBalance >= amountBaseUnits) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "Base->ephemeral top-up reported enough private wSOL, but transfer execution still returned Token Program 0x1 InsufficientFunds.",
+      };
+    }
+    if (parsedPrivateBalance !== null && parsedPrivateBalance >= amountBaseUnits) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "MagicBlock private-balance API reported enough deposited wSOL, but TEE/token execution still returned Token Program 0x1 InsufficientFunds.",
+      };
+    }
+    if (latestTopUpAttempt?.submitted && latestTopUpCheck?.credited === false) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "Public API accepted and submitted the documented base->ephemeral private transfer route for the same owner/mint, but /v1/spl/private-balance still returned no usable ephemeral credit and the actual ephemeral transfer failed with Token Program 0x1 InsufficientFunds.",
+      };
+    }
+    return {
+      category: "our_balance_account_setup_issue",
+      detail:
+        "Private transfer reached token execution with insufficient private wSOL. Neither /v1/spl/deposit nor the documented base->ephemeral transfer route produced a parseable/sufficient private-balance credit for the same owner/mint context.",
+    };
+  }
+
+  if (/Blockhash not found|cannot be written|writable account|blockhash/i.test(errors)) {
+    return {
+      category: "magicblock_api_router_tee_limitation",
+      detail:
+        "The funded private-transfer transaction is still blocked by MagicBlock router/TEE submission semantics, not by local wSOL wrapping or account preparation.",
+    };
+  }
+
+  if (latestDepositCheck && latestDepositCheck.credited === false) {
+    return {
+      category: "our_balance_account_setup_issue",
+      detail:
+        "Deposit submitted, but the private-balance endpoint did not show sufficient credit before transfer.",
+    };
+  }
+
+  return {
+    category: "unknown",
+    detail: errors || "No private-transfer submit attempts were recorded.",
+  };
+}
+
+async function main() {
+  const keypairPath = walletPath();
+  const wallet = readKeypair(keypairPath);
+  const owner = wallet.publicKey.toBase58();
+  const mintAddress = argValue(
+    "--mint",
+    env("MAGICBLOCK_PRIVATE_PAYMENTS_MINT", WSOL_MINT)
+  );
+  const recipient = argValue(
+    "--recipient",
+    env("MAGICBLOCK_PRIVATE_PAYMENTS_RECIPIENT", owner)
+  );
+  const amountBaseUnits = BigInt(
+    argValue(
+      "--amount-base-units",
+      env("MAGICBLOCK_PRIVATE_PAYMENTS_AMOUNT_BASE_UNITS", DEFAULT_AMOUNT_BASE_UNITS)
+    )
+  );
+  if (amountBaseUnits < 1n) throw new Error("Amount must be at least 1 base unit.");
+  if (amountBaseUnits > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Amount is above JavaScript safe integer range for this API script.");
+  }
+
+  const baseRpcUrl = env("MAGICBLOCK_BASE_RPC_URL", env("NEXT_PUBLIC_SOLANA_RPC_URL", DEFAULT_BASE_RPC));
+  const ephemeralRpcUrl = env(
+    "MAGICBLOCK_EPHEMERAL_RPC_URL",
+    env("NEXT_PUBLIC_MAGICBLOCK_ROUTER_RPC_URL", DEFAULT_EPHEMERAL_RPC)
+  );
+  const teeRpcUrl = env(
+    "MAGICBLOCK_TEE_RPC_URL",
+    env("NEXT_PUBLIC_MAGICBLOCK_TEE_RPC_URL", DEFAULT_TEE_RPC)
+  );
+  const baseConnection = new Connection(baseRpcUrl, "confirmed");
+  const ephemeralConnection = new Connection(ephemeralRpcUrl, "confirmed");
+  const teeConnection = new Connection(teeRpcUrl, "confirmed");
+  const connectionByTarget = {
+    base: baseConnection,
+    ephemeral: ephemeralConnection,
+    tee: teeConnection,
+  };
+  const report = {
+    script: "magicblock-private-payments-live",
+    mode,
+    apiBaseUrl: normalizeBase(PRIVATE_PAYMENTS_API),
+    cluster: CLUSTER,
+    wallet: owner,
+    keypairPath,
+    mint: mintAddress,
+    preferredMint: mintAddress === WSOL_MINT ? "wSOL" : "custom/devnet SPL",
+    wsolMint: WSOL_MINT,
+    devnetUsdcMint: DEVNET_USDC_MINT,
+    amountBaseUnits: amountBaseUnits.toString(),
+    recipient,
+    baseRpcUrl,
+    ephemeralRpcUrl,
+    teeRpcUrl,
+    endpointsHit: [],
+    txSignatures: [],
+    blockhashDiagnostics: [],
+    privateTransferSubmitAttempts: [],
+    balanceSnapshots: [],
+    depositCreditChecks: [],
+    privateBalanceTopUpAttempts: [],
+    tokenTopUpPreparation: null,
+    transferRouteDiagnostics: [],
+    privateTransferBlockerClassification: null,
+    tokenPreparation: null,
+    dryRunNotice:
+      mode === "dry-run"
+        ? "Unsigned transactions may be requested from the API, but no challenge, transaction, or message is signed and nothing is submitted."
+        : "",
+    liveStatus: {
+      health: "unknown",
+      challengeLogin: "not-attempted",
+      mintInitialized: "unknown",
+      deposit: "not-attempted",
+      privateTransfer: "not-attempted",
+      publicTransfer: "builder-only",
+      withdraw: "not-attempted",
+    },
+    blocker: "",
+  };
+  activeReport = report;
+
+  const health = await apiGet(report, "/health");
+  report.liveStatus.health = health.ok ? "ok" : `blocked HTTP ${health.status}`;
+
+  await apiGet(report, "/v1/mcp");
+
+  await getMagicBlockBalanceSnapshot(report, "initial-public-balance", owner, mintAddress, "");
+
+  const mintStatusPath = appendQuery("/v1/spl/is-mint-initialized", {
+    mint: mintAddress,
+    cluster: CLUSTER,
+  });
+  const mintStatus = await apiGet(report, mintStatusPath);
+  const mintInitialized = Boolean(mintStatus.response?.initialized);
+  report.liveStatus.mintInitialized = mintStatus.ok
+    ? String(mintInitialized)
+    : `blocked HTTP ${mintStatus.status}`;
+
+  const challengePath = appendQuery("/v1/spl/challenge", {
+    pubkey: owner,
+    cluster: CLUSTER,
+  });
+  const challenge = await apiGet(report, challengePath);
+
+  let bearerToken = "";
+  if (isLiveMode) {
+    if (!challenge.ok || typeof challenge.response?.challenge !== "string") {
+      throw new Error("Challenge request failed; cannot perform bearer-token login.");
+    }
+    const challengeBytes = new TextEncoder().encode(challenge.response.challenge);
+    const signatureBytes = wallet.secretKey.slice(0, 64);
+    const nacl = await import("tweetnacl");
+    const detached = nacl.default.sign.detached(challengeBytes, signatureBytes);
+    const loginBody = {
+      pubkey: owner,
+      challenge: challenge.response.challenge,
+      signature: base58Encode(detached),
+      cluster: CLUSTER,
+    };
+    let login = await apiPost(report, "/v1/spl/login", loginBody);
+    if (!login.ok) {
+      login = await apiPost(report, "/v1/spl/login", {
+        ...loginBody,
+        signature: toBase64(detached),
+      });
+    }
+    if (!login.ok || typeof login.response?.token !== "string") {
+      report.liveStatus.challengeLogin = `blocked HTTP ${login.status}`;
+      throw new Error(`Login failed with HTTP ${login.status}: ${login.responseText}`);
+    }
+    bearerToken = login.response.token;
+    login.response = { token: "<redacted>" };
+    report.liveStatus.challengeLogin = "ok";
+    await getMagicBlockBalanceSnapshot(report, "after-login", owner, mintAddress, bearerToken);
+  } else {
+    report.liveStatus.challengeLogin = challenge.ok
+      ? "challenge-ok; login skipped in dry-run"
+      : `challenge blocked HTTP ${challenge.status}`;
+  }
+
+  const depositBody = {
+    owner,
+    mint: mintAddress,
+    amount: Number(amountBaseUnits),
+    cluster: CLUSTER,
+    initIfMissing: true,
+    initVaultIfMissing: true,
+    initAtasIfMissing: true,
+    idempotent: true,
+  };
+  const publicTransferBody = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: 1n,
+    visibility: "public",
+    fromBalance: "base",
+    toBalance: "base",
+    memo: "ShieldLend MagicBlock public builder check",
+  });
+  const privateTransferBody = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: amountBaseUnits,
+    visibility: "private",
+    fromBalance: "ephemeral",
+    toBalance: "ephemeral",
+    memo: "ShieldLend MagicBlock private live check",
+  });
+  const withdrawBody = {
+    owner,
+    mint: mintAddress,
+    amount: Number(amountBaseUnits),
+    cluster: CLUSTER,
+    initIfMissing: true,
+    initAtasIfMissing: true,
+    idempotent: true,
+  };
+
+  const publicTransfer = await apiPost(report, "/v1/spl/transfer", publicTransferBody);
+  publicTransfer.response = summarizeBuild(publicTransfer.response);
+
+  const deposit = await apiPost(report, "/v1/spl/deposit", depositBody);
+  const depositBuild = deposit.response;
+  deposit.response = summarizeBuild(deposit.response);
+  report.liveStatus.deposit = deposit.ok ? "unsigned-builder-ok" : `blocked HTTP ${deposit.status}`;
+
+  const privateTransfer = await apiPost(
+    report,
+    "/v1/spl/transfer",
+    privateTransferBody,
+    bearerToken ? { bearerToken } : {}
+  );
+  const privateTransferBuild = privateTransfer.response;
+  privateTransfer.response = summarizeBuild(privateTransfer.response);
+  if (privateTransfer.ok) {
+    await diagnoseBuildBlockhash(report, connectionByTarget, "private-transfer-builder", privateTransferBuild);
+  }
+  report.liveStatus.privateTransfer = privateTransfer.ok
+    ? "unsigned-builder-ok"
+    : `blocked HTTP ${privateTransfer.status}`;
+
+  await requestTransferRouteDiagnostics(
+    report,
+    owner,
+    recipient,
+    mintAddress,
+    amountBaseUnits,
+    bearerToken
+  );
+
+  const withdraw = await apiPost(report, "/v1/spl/withdraw", withdrawBody);
+  const withdrawBuild = withdraw.response;
+  withdraw.response = summarizeBuild(withdraw.response);
+  report.liveStatus.withdraw = withdraw.ok ? "unsigned-builder-ok" : `blocked HTTP ${withdraw.status}`;
+
+  if (isLiveMode) {
+    const mint = new PublicKey(mintAddress);
+    if ((runDepositWithdraw || runPrivateTransferFunding) && !mintInitialized) {
+      const initMint = await apiPost(report, "/v1/spl/initialize-mint", {
+        owner,
+        mint: mintAddress,
+        cluster: CLUSTER,
+      });
+      const initBuild = initMint.response;
+      initMint.response = summarizeBuild(initMint.response);
+      if (!initMint.ok) throw new Error(`initialize-mint blocked HTTP ${initMint.status}: ${initMint.responseText}`);
+      await signAndSendBuild(
+        report,
+        connectionByTarget,
+        wallet,
+        "initialize-mint",
+        initBuild
+      );
+    }
+
+    if (
+      (runDepositWithdraw || runPrivateTransferFunding) &&
+      mintAddress === WSOL_MINT &&
+      env("MAGICBLOCK_AUTO_WRAP_WSOL", "true") !== "false"
+    ) {
+      report.tokenPreparation = await ensureWsol(baseConnection, wallet, mint, amountBaseUnits);
+      for (const signature of report.tokenPreparation.signatures ?? []) {
+        report.txSignatures.push({
+          label: "wrap-wsol",
+          signature,
+          sendTo: "base",
+          explorer: explorer(signature),
+        });
+      }
+    }
+
+    if (runDepositWithdraw || runPrivateTransferFunding) {
+      const liveDeposit = await apiPost(report, "/v1/spl/deposit", depositBody);
+      const liveDepositBuild = liveDeposit.response;
+      liveDeposit.response = summarizeBuild(liveDeposit.response);
+      if (!liveDeposit.ok) throw new Error(`deposit blocked HTTP ${liveDeposit.status}: ${liveDeposit.responseText}`);
+      await signAndSendBuild(
+        report,
+        connectionByTarget,
+        wallet,
+        "deposit",
+        liveDepositBuild
+      );
+      report.liveStatus.deposit = "submitted";
+
+      const creditCheck = await waitForPrivateBalanceAtLeast(
+        report,
+        owner,
+        mintAddress,
+        bearerToken,
+        amountBaseUnits,
+        "after-deposit"
+      );
+      report.depositCreditChecks.push(creditCheck);
+
+      if (runPrivateTransfer && !creditCheck.credited) {
+        const topUpAttempt = await tryBaseToEphemeralTopUp(
+          report,
+          connectionByTarget,
+          baseConnection,
+          wallet,
+          owner,
+          recipient,
+          mint,
+          mintAddress,
+          amountBaseUnits,
+          bearerToken
+        );
+        if (topUpAttempt?.creditCheck?.credited) {
+          report.liveStatus.deposit = "submitted; base-to-ephemeral-top-up-credited";
+        } else if (topUpAttempt) {
+          report.liveStatus.deposit = `submitted; base-to-ephemeral-top-up-blocked: ${
+            topUpAttempt.error || "private balance still not credited"
+          }`;
+        }
+      }
+    }
+
+    if (runPrivateTransfer) {
+      const livePrivateTransfer = await apiPost(
+        report,
+        "/v1/spl/transfer",
+        privateTransferBody,
+        bearerToken ? { bearerToken } : {}
+      );
+      const livePrivateTransferBuild = livePrivateTransfer.response;
+      livePrivateTransfer.response = summarizeBuild(livePrivateTransfer.response);
+      if (livePrivateTransfer.ok) {
+        await diagnoseBuildBlockhash(report, connectionByTarget, "private-transfer-live", livePrivateTransferBuild);
+        const submitted = await tryPrivateTransferSubmit(
+          report,
+          connectionByTarget,
+          wallet,
+          livePrivateTransferBuild
+        );
+        report.liveStatus.privateTransfer = submitted
+          ? "submitted"
+          : `submit-blocked: ${
+              report.privateTransferSubmitAttempts
+                .map((attempt) => `${attempt.target}: ${attempt.error || attempt.status}`)
+                .join(" | ")
+            }`;
+        report.privateTransferBlockerClassification = classifyPrivateTransferBlocker(
+          report,
+          amountBaseUnits
+        );
+      } else {
+        report.liveStatus.privateTransfer = `blocked HTTP ${livePrivateTransfer.status}`;
+        report.privateTransferBlockerClassification = {
+          category: "magicblock_api_router_tee_limitation",
+          detail: `Private transfer builder returned HTTP ${livePrivateTransfer.status}.`,
+        };
+      }
+    }
+
+    if (runDepositWithdraw) {
+      const liveWithdraw = await apiPost(report, "/v1/spl/withdraw", withdrawBody);
+      const liveWithdrawBuild = liveWithdraw.response;
+      liveWithdraw.response = summarizeBuild(liveWithdraw.response);
+      if (!liveWithdraw.ok) throw new Error(`withdraw blocked HTTP ${liveWithdraw.status}: ${liveWithdraw.responseText}`);
+      await signAndSendBuild(
+        report,
+        connectionByTarget,
+        wallet,
+        "withdraw",
+        liveWithdrawBuild
+      );
+      report.liveStatus.withdraw = "submitted";
+    }
+
+    await getMagicBlockBalanceSnapshot(report, "final", owner, mintAddress, bearerToken);
+  }
+
+  const blocked = report.endpointsHit.filter((entry) => !entry.ok);
+  if (blocked.length > 0) {
+    report.blocker = blocked
+      .map((entry) => `${entry.method} ${entry.path} -> HTTP ${entry.status}: ${entry.responseText}`)
+      .join("\n");
+  }
+
+  console.log(stringifyReport(report));
+  if (isLiveMode && report.txSignatures.length === 0) process.exitCode = 1;
+}
+
+main().catch((error) => {
+  process.exitCode = 1;
+  if (activeReport) {
+    activeReport.blocker = error instanceof Error ? error.message : String(error);
+    console.error(stringifyReport(activeReport));
+  }
+  console.error(error instanceof Error ? error.stack || error.message : error);
+});

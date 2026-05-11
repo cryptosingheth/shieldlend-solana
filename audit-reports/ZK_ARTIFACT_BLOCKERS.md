@@ -1,6 +1,6 @@
-# ZK Artifact Blockers
+# ZK Artifact Status And Remaining Blockers
 
-Date: 2026-05-04
+Date: 2026-05-05
 
 ## Checks Run
 
@@ -16,35 +16,26 @@ snarkjs@0.7.6
 
 Note: this `snarkjs --version` command printed the version and usage text, then exited with status 99.
 
+`circomlib` is now materialized under `node_modules/`, so the previous
+`circomlib/circuits/poseidon.circom` include blocker is cleared.
+
 ## Validation Commands
 
 Command:
 
 ```sh
-npm run typecheck:frontend
-```
-
-Result:
-
-```text
-sh: tsc: command not found
-```
-
-This is the same local dependency-materialization blocker: `typescript` is declared, but dependencies are not installed locally.
-
-Command:
-
-```sh
 npm run circuits:compile
 ```
 
 Result:
 
 ```text
-error[P1014]: The file circomlib/circuits/poseidon.circom to be included has not been found
+completed
 ```
 
-## Artifact Generation Attempt
+The first attempt failed with `invalid output path` because `build/circuits` did
+not exist. After creating that directory, all three circuits compiled and wrote
+`.r1cs`, `.sym`, and WASM outputs under `build/circuits`.
 
 Command:
 
@@ -55,45 +46,43 @@ node scripts/generate-zk-artifacts.mjs
 Result:
 
 ```text
-error[P1014]: The file circomlib/circuits/poseidon.circom to be included has not been found
+completed
 ```
 
-The script stopped before producing `.r1cs`, `.wasm`, `.sym`, `.zkey`, or `_vkey.json` artifacts.
+The generator compiled all three circuits, copied browser WASM files to
+`frontend/public/circuits/`, generated final DEV/TEST zkeys and verification
+keys, and updated `circuits/artifact_manifest.json` with WASM, zkey, and vkey
+hashes.
 
-## Blockers
+## Cleared In C2B
 
-1. `circomlib` is not installed/materialized locally.
+1. Missing local `.ptau` no longer blocks dev/test artifact generation.
 
-The repo has `circomlib` in `frontend/package.json`, but no local dependency tree exists at `node_modules/` or `frontend/node_modules/`.
+Generated local DEV/TEST-only file:
 
-Install/materialize dependencies from the repo root:
+| Path | Power | Size | SHA-256 |
+|---|---:|---:|---|
+| `circuits/keys/dev_pot14_final.ptau` | 14 | 18 MB | `3838aee2feec6518a6eb1198a04c74317652630fbaf5715870fbd1a32deaa18c` |
 
-```sh
-npm install
-```
+2. DEV/TEST Groth16 `.zkey` files and `_vkey.json` files now exist for
+`withdraw_ring`, `collateral_ring`, and `repay_ring`.
 
-Then retry validation and artifact generation:
+3. Local proof smoke tests now pass for all three circuits.
 
-```sh
-npm run typecheck:frontend
-npm run circuits:compile
-node scripts/generate-zk-artifacts.mjs
-```
+## Remaining Blockers
 
-2. No Powers of Tau `.ptau` file exists locally.
+1. Production trusted setup is missing.
 
-After circuit compilation works, provide a reviewed BN254 Powers of Tau file. For a local non-production ceremony only:
+The generated `.ptau`, `.zkey`, and verification keys are DEV/TEST-only. For
+production or public privacy claims, use a reviewed ceremony artifact with
+documented provenance and hashes instead of this local one-person ceremony.
 
-```sh
-mkdir -p build/circuits
-snarkjs powersoftau new bn128 20 build/circuits/pot20_0000.ptau -v
-snarkjs powersoftau contribute build/circuits/pot20_0000.ptau build/circuits/pot20_0001.ptau --name="ShieldLend local test contribution" -v -e="replace-with-high-entropy-randomness"
-snarkjs powersoftau prepare phase2 build/circuits/pot20_0001.ptau build/circuits/pot20_final.ptau -v
-node scripts/generate-zk-artifacts.mjs
-```
+2. On-chain verifier integration remains blocked.
 
-For production or public testing claims, use a trusted ceremony artifact with documented provenance and hashes instead of a local one-person ceremony.
+The generated verification keys are not yet wired into `groth16-solana`, and
+the Anchor programs still fail closed for proof verification.
 
-3. Existing browser artifacts were stale.
+3. Devnet deployment is not done.
 
-The previous `frontend/public/circuits/withdraw_ring.wasm` and `frontend/public/circuits/collateral_ring.wasm` files were removed instead of being treated as valid artifacts. They predated the current circuit changes and there was no matching `.zkey` or verification key.
+Frontend browser proving artifacts exist locally, but no deployed program
+accounts have been verified on devnet.

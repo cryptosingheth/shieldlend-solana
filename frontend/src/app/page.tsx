@@ -12,6 +12,7 @@ import {
   Home,
   KeyRound,
   LockKeyhole,
+  Radio,
   RotateCcw,
   Shield,
   Upload,
@@ -32,6 +33,16 @@ import {
 } from "../lib/noteStorage";
 import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/protocolAdapters";
 import {
+  getUmbraFundedFlowStatus,
+  getUmbraStatus,
+  getWsolUmbraPayoutPath,
+  planUmbraDestinationRoute,
+  type UmbraDestinationMode,
+  type UmbraFundedFlowStatus,
+  type UmbraStatus,
+  type WsolUmbraPayoutPath,
+} from "../lib/privacyRails/umbra";
+import {
   getConnection,
   getPhantomProvider,
   submitDeposit,
@@ -39,6 +50,27 @@ import {
 } from "../lib/solanaClient";
 
 type Screen = "positions" | "deposit" | "withdraw" | "borrow" | "repay" | "history";
+
+type EncryptStatus = {
+  configured: boolean;
+  sdkPackage: string;
+  sdkVersion: string;
+  grpcApi: string;
+  grpcUrl: string;
+  programId: string;
+  clientConstructed: boolean;
+  sdkImportStatus: "blocked" | "not-checked";
+  sdkImportNote: string;
+  networkKeys: Array<{ account: string; discriminator: number; publicKeyHex: string; active: boolean }>;
+  selectedNetworkKeyHex?: string;
+  anchorIntegration?: {
+    dependencyPattern: string;
+    compileStatus: "compile-wired-local-fork" | "blocked";
+    blocker: string;
+    onChainFheLive: false;
+  };
+  claimBoundary: string;
+};
 
 const nav = [
   { key: "positions" as const, label: "Positions", icon: Home },
@@ -60,10 +92,15 @@ export default function HomePage() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [hasPlaintext, setHasPlaintext] = useState(false);
+  const [encryptStatus, setEncryptStatus] = useState<EncryptStatus | null>(null);
+  const [withdrawDestinationMode, setWithdrawDestinationMode] = useState<UmbraDestinationMode>("direct_stealth_address");
 
   const connected = Boolean(wallet?.publicKey && address);
   const vaultReady = Boolean(vaultKey);
   const protocolMode = useMemo(() => modeFromRails(FULL_PRIVACY_RAILS), []);
+  const umbraStatus = useMemo(() => getUmbraStatus(), []);
+  const umbraFundedFlowStatus = useMemo(() => getUmbraFundedFlowStatus(), []);
+  const wsolUmbraPayoutPath = useMemo(() => getWsolUmbraPayoutPath(), []);
 
   const refreshAccount = useCallback(async (nextAddress = address, key = vaultKey) => {
     if (!nextAddress) return;
@@ -77,6 +114,21 @@ export default function HomePage() {
   useEffect(() => {
     const provider = getPhantomProvider();
     if (provider) setWallet(provider);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/integrations/encrypt/status")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((status: EncryptStatus | null) => {
+        if (!cancelled) setEncryptStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setEncryptStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function connectWallet() {
@@ -291,6 +343,9 @@ export default function HomePage() {
             notes={notes}
             connected={connected}
             vaultReady={vaultReady}
+            encryptStatus={encryptStatus}
+            umbraStatus={umbraStatus}
+            umbraFundedFlowStatus={umbraFundedFlowStatus}
             setScreen={setScreen}
             onExport={handleExportNotes}
             onImportClick={() => importFileRef.current?.click()}
@@ -300,10 +355,15 @@ export default function HomePage() {
           <Deposit busy={busy} connected={connected} vaultReady={vaultReady} onDeposit={deposit} onCreateLocalNote={createLocalNote} />
         )}
         {screen === "withdraw" && (
-          <BlockedFlow
-            title="Withdraw"
+          <Withdraw
             notes={notes}
-            reason="Withdrawal requires: compiled .wasm/.zkey artifacts for withdraw_ring, deployed ShieldedPool with groth16 verifier wired, NullifierRegistry CPI, and Umbra stealth address adapter."
+            connected={connected}
+            vaultReady={vaultReady}
+            destinationMode={withdrawDestinationMode}
+            setDestinationMode={setWithdrawDestinationMode}
+            umbraStatus={umbraStatus}
+            umbraFundedFlowStatus={umbraFundedFlowStatus}
+            wsolUmbraPayoutPath={wsolUmbraPayoutPath}
           />
         )}
         {screen === "borrow" && (
@@ -348,6 +408,9 @@ function Positions({
   notes,
   connected,
   vaultReady,
+  encryptStatus,
+  umbraStatus,
+  umbraFundedFlowStatus,
   setScreen,
   onExport,
   onImportClick,
@@ -355,6 +418,9 @@ function Positions({
   notes: StoredNote[];
   connected: boolean;
   vaultReady: boolean;
+  encryptStatus: EncryptStatus | null;
+  umbraStatus: UmbraStatus;
+  umbraFundedFlowStatus: UmbraFundedFlowStatus;
   setScreen: (screen: Screen) => void;
   onExport: () => void;
   onImportClick: () => void;
@@ -365,6 +431,7 @@ function Positions({
 
       {/* What works today / planned / blocked */}
       <WhatWorksTodayPanel />
+      <EncryptStatusPanel status={encryptStatus} />
 
       <div className="grid two">
         <Panel
@@ -405,12 +472,43 @@ function Positions({
 
           <Panel title="Privacy rail status">
             <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
-              All required rails are currently offline. Full Privacy mode cannot activate.
-              Statuses reflect env config — not live health probes.
+              Full Privacy mode cannot activate while any required rail is unavailable.
+              Statuses reflect env config; use scripts/check-umbra.mjs for Umbra health probes.
             </p>
             {FULL_PRIVACY_RAILS.map((rail) => (
               <RailStatusRow key={rail.key} rail={rail} />
             ))}
+          </Panel>
+
+          <Panel title="Umbra rail status">
+            <RailStateLine status={umbraStatus} />
+            <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+              <dt>Network</dt>
+              <dd>{umbraStatus.config.network}</dd>
+              <dt>Program</dt>
+              <dd><code>{shortHash(umbraStatus.config.programId)}</code></dd>
+              <dt>Mint</dt>
+              <dd>{umbraStatus.config.mintAddress ? <code>{shortHash(umbraStatus.config.mintAddress)}</code> : "Not set"}</dd>
+            </dl>
+            {umbraStatus.blockers.length > 0 && (
+              <ul className="plain-list" style={{ marginTop: "12px", fontSize: "12px" }}>
+                {umbraStatus.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+              </ul>
+            )}
+          </Panel>
+
+          <Panel title="Umbra funded flow">
+            <FundedFlowLine status={umbraFundedFlowStatus} />
+            <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+              <dt>Asset</dt>
+              <dd>{umbraFundedFlowStatus.assetKind}</dd>
+              <dt>Mint</dt>
+              <dd>{umbraFundedFlowStatus.mintAddress ? <code>{shortHash(umbraFundedFlowStatus.mintAddress)}</code> : "Not confirmed"}</dd>
+              <dt>Deposit tx</dt>
+              <dd>{umbraFundedFlowStatus.depositSignature ? <code>{shortHash(umbraFundedFlowStatus.depositSignature)}</code> : "None"}</dd>
+              <dt>Withdraw tx</dt>
+              <dd>{umbraFundedFlowStatus.withdrawSignature ? <code>{shortHash(umbraFundedFlowStatus.withdrawSignature)}</code> : "None"}</dd>
+            </dl>
           </Panel>
         </div>
       </div>
@@ -418,41 +516,92 @@ function Positions({
   );
 }
 
-function WhatWorksTodayPanel() {
+function EncryptStatusPanel({ status }: { status: EncryptStatus | null }) {
+  const clientOk = Boolean(status?.clientConstructed);
+  const keyCount = status?.networkKeys.length ?? 0;
   return (
-    <Panel title="Scaffold status — what works, what is planned, what is blocked">
+    <Panel title="Encrypt pre-alpha rail">
       <div className="grid two" style={{ gap: "12px" }}>
         <div>
-          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--success)" }}>Working now</p>
+          <StatusLine label="gRPC client" value={status ? status.grpcApi : "loading"} healthy={clientOk} />
+          <StatusLine label="Active network keys" value={status ? `${keyCount}` : "loading"} healthy={keyCount > 0} />
+          <StatusLine label="SDK package" value={status ? `${status.sdkPackage}@${status.sdkVersion}` : "loading"} healthy={Boolean(status)} />
+          <StatusLine
+            label="Anchor CPI probe"
+            value={status?.anchorIntegration?.compileStatus ?? "loading"}
+            healthy={false}
+          />
+        </div>
+        <div className="responsibility" style={{ margin: 0 }}>
+          <Radio size={16} />
+          <span>
+            {status?.claimBoundary ??
+              "Encrypt status probe has not returned yet. The rail must remain degraded until the adapter can prove the client surface and active pre-alpha key."}
+          </span>
+        </div>
+      </div>
+      {status && (
+        <dl className="facts" style={{ marginTop: "16px" }}>
+          <dt>Endpoint</dt>
+          <dd>{status.grpcUrl}</dd>
+          <dt>Program</dt>
+          <dd>{shortHash(status.programId, 8, 6)}</dd>
+          <dt>SDK import</dt>
+          <dd>{status.sdkImportStatus === "blocked" ? "Blocked by package export" : "Not checked"}</dd>
+          <dt>Selected key</dt>
+          <dd>{status.selectedNetworkKeyHex ? shortHash(status.selectedNetworkKeyHex, 10, 8) : "--"}</dd>
+          <dt>On-chain FHE</dt>
+          <dd>{status.anchorIntegration?.onChainFheLive ? "Live" : "Not live"}</dd>
+        </dl>
+      )}
+      {status?.anchorIntegration?.blocker && (
+        <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+          {status.anchorIntegration.blocker}
+        </p>
+      )}
+      {status?.sdkImportNote && (
+        <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+          {status.sdkImportNote}
+        </p>
+      )}
+    </Panel>
+  );
+}
+
+function WhatWorksTodayPanel() {
+  return (
+    <Panel title="Privacy rail status — confirmed, partial, and not live">
+      <div className="grid two" style={{ gap: "12px" }}>
+        <div>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--success)" }}>Confirmed on devnet</p>
           <ul className="plain-list" style={{ fontSize: "13px" }}>
-            <li>Wallet connection (Phantom, Solana devnet)</li>
-            <li>Devnet balance via RPC</li>
-            <li>Note secret generation (browser WebCrypto)</li>
-            <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key)</li>
-            <li>History log encryption (AES-256-GCM, same vault key)</li>
-            <li>Note backup export / import</li>
-            <li>Deposit blocked until programs deployed (assertProgramDeployed)</li>
-            <li>Rust unit tests (8 categories, local only)</li>
+            <li>All 3 Anchor programs deployed (NullifierRegistry, ShieldedPool, LendingPool)</li>
+            <li>On-chain Groth16 BN254 withdraw verification — DEV/TEST trusted setup; 198,502 CU; full C2H round-trip passed</li>
+            <li>DEV/TEST ZK artifacts (withdraw_ring, collateral_ring, repay_ring) — browser WASM + zkey + vkey generated</li>
+            <li>Umbra funded devnet wSOL encrypted-balance deposit/withdraw confirmed via SDK 4.0.0</li>
+            <li>Encrypt pre-alpha gRPC CreateInput confirmed — live network key + ciphertext returned</li>
+            <li>MagicBlock SDK installed; TEE RPC + Router RPC HTTP 200; PER sidecar instruction builders confirmed</li>
+            <li>IKA SDK probe confirmed; IKA approve_message Anchor CPI compile-wired in LendingPool from official pre-alpha source</li>
+            <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key); history encryption</li>
           </ul>
         </div>
         <div>
-          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--amber)" }}>Scaffolded / fail-closed</p>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--amber)" }}>Partial / fail-closed</p>
           <ul className="plain-list" style={{ fontSize: "13px" }}>
-            <li>All 3 Anchor programs (cargo check passes, not deployed)</li>
-            <li>ZK circuits written, not compiled to final artifacts</li>
-            <li>Withdraw / Borrow / Repay UI (intentionally blocked)</li>
-            <li>IKA + Encrypt API routes (return context JSON, no SDK calls)</li>
-            <li>Protocol mode logic (always Degraded until rails go online)</li>
+            <li>Umbra SDK adapter — fail-closed for native SOL exits; wSOL/SPL bridge needed for ShieldLend payout routing</li>
+            <li>Encrypt gRPC — live client/probe path; LendingPool now compile-wires a separate Encrypt CPI request/reveal path through a local Anchor 0.32 fork, but official upstream encrypt-anchor is still blocked by the AccountInfo crate-family mismatch</li>
+            <li>MagicBlock PER sidecar — TypeScript only; Rust macros blocked on Anchor 0.32.1; on-chain PER tx not submitted</li>
+            <li>IKA adapter — SDK probe + compile-level CPI status; direct wallet fallback labelled reduced privacy</li>
+            <li>Withdraw / Borrow / Repay UI — intentionally blocked until full rail dependencies are live</li>
           </ul>
-          <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Unsafe to claim today</p>
+          <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Not live — do not claim</p>
           <ul className="plain-list" style={{ fontSize: "13px", color: "var(--fg-2)" }}>
-            <li>Depositor wallet hidden — user wallet is on-chain signer today</li>
-            <li>K=16 anonymity — ring decoys are integers 2–16, not real commitments</li>
-            <li>Double-spend prevention — NullifierRegistry CPIs absent</li>
-            <li>IKA FutureSign wired — API routes echo JSON, no SDK call</li>
-            <li>MagicBlock PER batching — no PER macros in any program</li>
-            <li>Encrypt FHE oracle — verifier returns error, no ciphertexts</li>
-            <li>Umbra stealth addresses — SDK not in package.json</li>
+            <li>Production trusted setup — DEV/TEST ptau only; no production ceremony</li>
+            <li>IKA relay signing — mock signer (pre-alpha); no real devnet approve_message tx submitted</li>
+            <li>MagicBlock Private Payments — URL not configured; TDX attestation challenge mismatch (SDK 0.8.8 delta)</li>
+            <li>Encrypt on-chain FHE health computation — local CPI wiring compiles, but no live encrypted oracle or on-chain decryption path is proven</li>
+            <li>Umbra ShieldLend payout routing — native SOL C2H path remains direct stealth_address</li>
+            <li>NullifierRegistry CPIs in withdraw/borrow/repay — scaffolded, not executed end-to-end</li>
           </ul>
         </div>
       </div>
@@ -482,11 +631,13 @@ function Deposit({
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--danger) 40%, var(--line))", background: "color-mix(in srgb, var(--danger) 10%, var(--surface-1))" }}>
         <AlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} />
         <div>
-          <strong style={{ display: "block", marginBottom: "4px" }}>Privacy warning: your wallet is the on-chain signer today.</strong>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Signer mode: direct_wallet (reduced privacy)</strong>
           <span>
-            IKA dWallet relay is not wired. Your Phantom wallet public key will be the permanent transaction
-            signer for every deposit. The claim &ldquo;depositor wallet hidden&rdquo; is false until the IKA relay
-            is deployed and wired in solanaClient.ts. Do not deposit with real funds expecting privacy.
+            IKA dWallet relay is not active. Your Phantom wallet public key is the on-chain signer for every
+            deposit. IKA pre-alpha SDK is available but uses a single mock signer (not real MPC), and
+            LendingPool only has compile-level approve_message CPI wiring until real IKA dWallet accounts
+            are supplied and a devnet CPI transaction succeeds. The claim
+            &ldquo;depositor wallet hidden&rdquo; is false in this mode. Do not deposit real funds expecting privacy.
           </span>
         </div>
       </div>
@@ -523,6 +674,183 @@ function Deposit({
         </Panel>
       </div>
     </section>
+  );
+}
+
+function Withdraw({
+  notes,
+  connected,
+  vaultReady,
+  destinationMode,
+  setDestinationMode,
+  umbraStatus,
+  umbraFundedFlowStatus,
+  wsolUmbraPayoutPath,
+}: {
+  notes: StoredNote[];
+  connected: boolean;
+  vaultReady: boolean;
+  destinationMode: UmbraDestinationMode;
+  setDestinationMode: (mode: UmbraDestinationMode) => void;
+  umbraStatus: UmbraStatus;
+  umbraFundedFlowStatus: UmbraFundedFlowStatus;
+  wsolUmbraPayoutPath: WsolUmbraPayoutPath;
+}) {
+  const route = planUmbraDestinationRoute({
+    mode: destinationMode,
+    assetKind: destinationMode === "wsol_umbra_adapter" ? "wsol" : "native-sol",
+    config: umbraStatus.config,
+  });
+  const canPrepare = connected && vaultReady && notes.length > 0 && route.canRoute &&
+    destinationMode !== "wsol_umbra_adapter"; // adapter path uses the roundtrip script, not the UI submit path
+
+  return (
+    <section className="stack">
+      <Hero
+        title="Withdraw"
+        subtitle="Three payout paths: native SOL direct, Umbra SPL direct, or wSOL Umbra settlement adapter (post-withdraw two-step)."
+      />
+
+      <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 45%, var(--line))" }}>
+        <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Umbra does not make the existing native SOL C2H exit private by itself.</strong>
+          <span>
+            The official SDK shields SPL/Token-2022 balances, with wSOL as the SOL-compatible token route.
+            The wSOL Umbra settlement adapter wraps SOL post-withdraw and routes through Umbra — it is a
+            devnet demo adapter, not a native protocol-level exit.
+          </span>
+        </div>
+      </div>
+
+      <div className="grid two">
+        <Panel title="Destination mode">
+          <div className="segmented">
+            <button
+              className={destinationMode === "direct_stealth_address" ? "active" : ""}
+              onClick={() => setDestinationMode("direct_stealth_address")}
+            >
+              Direct SOL
+            </button>
+            <button
+              className={destinationMode === "wsol_umbra_adapter" ? "active" : ""}
+              onClick={() => setDestinationMode("wsol_umbra_adapter")}
+            >
+              wSOL via Umbra
+            </button>
+            <button
+              className={destinationMode === "umbra" ? "active" : ""}
+              onClick={() => setDestinationMode("umbra")}
+            >
+              Umbra SPL
+            </button>
+          </div>
+
+          <div className="route-card" style={{ marginTop: "14px" }}>
+            <strong>{route.title}</strong>
+            <span>{route.summary}</span>
+            <small className={route.canRoute ? "green" : "amber"}>
+              {route.canRoute ? "Route available" : route.nextStep}
+            </small>
+          </div>
+
+          {route.blockers.length > 0 && (
+            <ul className="plain-list" style={{ marginTop: "12px", fontSize: "13px" }}>
+              {route.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+            </ul>
+          )}
+
+          {destinationMode === "wsol_umbra_adapter"
+            ? (
+              <div className="notice" style={{ marginTop: "14px", borderColor: "color-mix(in srgb, var(--success) 35%, var(--line))", background: "color-mix(in srgb, var(--success) 6%, var(--surface-1))" }}>
+                <CheckCircle size={15} style={{ color: "var(--success)", flexShrink: 0 }} />
+                <span style={{ fontSize: "12px" }}>
+                  Run <code>node scripts/devnet-wsol-umbra-roundtrip.mjs</code> to execute the full adapter flow on devnet.
+                  This path is outside the frontend submit button — it requires the roundtrip script and a funded devnet wallet.
+                </span>
+              </div>
+            )
+            : (
+              <button disabled={!canPrepare} style={{ marginTop: "16px", padding: "10px 14px" }}>
+                Prepare withdraw route
+              </button>
+            )
+          }
+          <p className="muted" style={{ marginTop: "10px", fontSize: "12px" }}>
+            Available notes in local vault: {notes.length}. The transaction submit path remains disabled until proof inputs,
+            deployed programs, and the selected destination rail are all ready.
+          </p>
+        </Panel>
+
+        {destinationMode === "wsol_umbra_adapter"
+          ? <WsolUmbraAdapterPanel path={wsolUmbraPayoutPath} />
+          : (
+            <Panel title="Umbra status">
+              <RailStateLine status={umbraStatus} />
+              <dl className="facts" style={{ marginTop: "12px", fontSize: "13px" }}>
+                <dt>SDK</dt>
+                <dd>@umbra-privacy/sdk 4.0.0</dd>
+                <dt>Network</dt>
+                <dd>{umbraStatus.config.network}</dd>
+                <dt>Program</dt>
+                <dd><code>{umbraStatus.config.programId}</code></dd>
+                <dt>Indexer</dt>
+                <dd>{umbraStatus.config.indexerApiEndpoint ? "Configured" : "Missing"}</dd>
+                <dt>Funded flow</dt>
+                <dd>{umbraFundedFlowStatus.label}</dd>
+                <dt>Funded mint</dt>
+                <dd>{umbraFundedFlowStatus.mintAddress ? <code>{shortHash(umbraFundedFlowStatus.mintAddress)}</code> : "Not confirmed"}</dd>
+              </dl>
+              <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+                Supported route: public SPL/Token-2022 balance to Umbra encrypted balance or receiver-claimable UTXO,
+                then Umbra withdrawal/claim. Native SOL requires wSOL or another supported token representation.
+              </p>
+              {umbraFundedFlowStatus.state !== "live" && (
+                <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+                  Funded Umbra status: {umbraFundedFlowStatus.blocker}
+                </p>
+              )}
+            </Panel>
+          )
+        }
+      </div>
+    </section>
+  );
+}
+
+function WsolUmbraAdapterPanel({ path }: { path: WsolUmbraPayoutPath }) {
+  return (
+    <Panel title="wSOL Umbra settlement adapter">
+      <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
+        Post-withdraw Umbra settlement adapter — two steps after the C2H proof verifies on-chain.
+        Not a native protocol-level Umbra payout.
+      </p>
+      <dl className="facts" style={{ fontSize: "13px" }}>
+        <dt>Step 1 — C2H</dt>
+        <dd style={{ color: "var(--success)" }}>{path.step1}</dd>
+        <dt>Step 2 — Wrap</dt>
+        <dd>{path.step2}</dd>
+        <dt>Step 3 — Umbra</dt>
+        <dd>{path.step3}</dd>
+      </dl>
+      <div className="notice" style={{ marginTop: "14px", borderColor: "color-mix(in srgb, var(--success) 35%, var(--line))", background: "color-mix(in srgb, var(--success) 6%, var(--surface-1))" }}>
+        <CheckCircle size={15} style={{ color: "var(--success)", flexShrink: 0 }} />
+        <div style={{ fontSize: "12px" }}>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Confirmed on devnet</strong>
+          <span>{path.claimBoundary}</span>
+        </div>
+      </div>
+      <div className="notice" style={{ marginTop: "10px", borderColor: "color-mix(in srgb, var(--danger) 35%, var(--line))", background: "color-mix(in srgb, var(--danger) 6%, var(--surface-1))" }}>
+        <XCircle size={15} style={{ color: "var(--danger)", flexShrink: 0 }} />
+        <div style={{ fontSize: "12px" }}>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Not live — do not claim</strong>
+          <span>{path.notLive}</span>
+        </div>
+      </div>
+      <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+        Script: <code>{path.scriptPath}</code>
+      </p>
+    </Panel>
   );
 }
 
@@ -612,6 +940,34 @@ function StatusLine({ label, value, healthy }: { label: string; value: string; h
       <div>
         <strong>{label}</strong>
         <span>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function RailStateLine({ status }: { status: UmbraStatus }) {
+  const Icon = status.state === "live" || status.state === "configured" ? CheckCircle : XCircle;
+  const color = status.state === "live" ? "green" : status.state === "configured" ? "amber" : "danger";
+  return (
+    <div className="rail">
+      <Icon size={16} className={color} />
+      <div>
+        <strong>Umbra {status.label}</strong>
+        <span>{status.details}</span>
+      </div>
+    </div>
+  );
+}
+
+function FundedFlowLine({ status }: { status: UmbraFundedFlowStatus }) {
+  const Icon = status.state === "live" ? CheckCircle : XCircle;
+  const color = status.state === "live" ? "green" : status.state === "blocked" ? "danger" : "amber";
+  return (
+    <div className="rail">
+      <Icon size={16} className={color} />
+      <div>
+        <strong>{status.label}</strong>
+        <span>{status.state === "live" ? "Funded Umbra token transaction signature recorded." : status.blocker}</span>
       </div>
     </div>
   );

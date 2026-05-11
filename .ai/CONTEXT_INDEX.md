@@ -11,7 +11,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | Canonical path | `/Users/opinderpreetsingh/Projects/shieldlend-solana` |
 | Old paths (do not use) | iCloud/Codex Workspace copies archived; `~/shieldlend-solana` archived |
 | EVM repo (separate) | `~/shieldlend-v2` — do not modify unless explicitly asked |
-| Branch | `main` |
+| Branch | `upgrade/anchor-032-privacy-rails` |
 | Remote: origin | `https://github.com/cryptosingheth/shieldlend-solana.git` |
 
 ## Agent Instructions
@@ -36,11 +36,11 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `anchor build` | Compiles Anchor programs + generates IDLs (requires Anchor CLI) |
 | `anchor keys list` | Shows program IDs (use to replace placeholders) |
 
-**CLI prerequisites** (none installed yet):
-- `solana` CLI
-- `anchor` CLI (via `avm`)
-- `circom`
-- `snarkjs` (npm package, already in deps)
+**CLI prerequisites**:
+- `solana` CLI installed
+- `anchor` CLI installed (`0.32.1`)
+- `circom` installed (`2.2.3`)
+- `snarkjs` available (`0.7.6`; `--version` prints usage and exits non-zero)
 
 ---
 
@@ -48,11 +48,11 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 | Path | ID (placeholder) | Role |
 |---|---|---|
-| `programs/shielded_pool/` | `EKMPkr2qFAQ8g7P4rNsaGPKVpx2T7eC5fDzYXwfWJge7` | SOL custody; Poseidon Merkle; epoch deposit queue; VRF flush |
-| `programs/lending_pool/` | `2y2t22zkJ8ZyHpCDWM5j2u47vvstFRLpQjzhy42FR4UT` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
-| `programs/nullifier_registry/` | `HsaVmvSd88h8w5LVtD9byiTu8N6zZrpu3KxuXH592GRL` | PDA nullifier set; Active/Locked/Spent state machine |
+| `programs/shielded_pool/` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | SOL custody; Poseidon Merkle; epoch deposit queue; VRF flush |
+| `programs/lending_pool/` | `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn` | Accounting only (no SOL); interest model; borrow/repay/liquidation |
+| `programs/nullifier_registry/` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | PDA nullifier set; Active/Locked/Spent state machine |
 | `Anchor.toml` | — | Workspace config; cluster = Localnet; wallet = `~/.config/solana/id.json` |
-| `Cargo.toml` | — | Root workspace; `anchor-lang = "0.30.1"` |
+| `Cargo.toml` | — | Root workspace; `anchor-lang = "0.32.1"` |
 
 ---
 
@@ -60,10 +60,10 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 | Path | Status |
 |---|---|
-| `circuits/withdraw_ring.circom` | Updated — has `leaf_index`, new nullifier formula; WASM/zkey need recompile |
-| `circuits/collateral_ring.circom` | Updated — same as withdraw |
-| `circuits/repay_ring.circom` | New — proves collateral nullifier knowledge + receipt binding |
-| `frontend/public/circuits/*.wasm` | Stale — must recompile via `npm run circuits:compile` |
+| `circuits/withdraw_ring.circom` | Compiles; browser WASM generated; zkey/vkey blocked without `.ptau` |
+| `circuits/collateral_ring.circom` | Compiles; browser WASM generated; zkey/vkey blocked without `.ptau` |
+| `circuits/repay_ring.circom` | Compiles; browser WASM generated; zkey/vkey blocked without `.ptau` |
+| `frontend/public/circuits/*.wasm` | Generated 2026-05-05 by `scripts/generate-zk-artifacts.mjs` |
 
 ---
 
@@ -74,8 +74,9 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `frontend/src/lib/circuits.ts` | snarkjs proof generation |
 | `frontend/src/lib/noteStorage.ts` | AES-256-GCM note vault |
 | `frontend/src/lib/solanaClient.ts` | Wallet/RPC/program instruction boundaries; PROGRAM_IDS |
+| `frontend/src/lib/privacyRails/umbra.ts` | Official Umbra SDK adapter, fail-closed route planning, SPL/Token-2022 action wrappers |
 | `frontend/src/app/` | Pages: Deposit, Withdraw, Borrow, Repay, Positions, History |
-| `frontend/package.json` | Next.js 15, React 19, @solana/web3.js, @ika.xyz/sdk, @encrypt.xyz/pre-alpha-solana-client |
+| `frontend/package.json` | Next.js 15, React 19, @solana/web3.js, @ika.xyz/sdk, @encrypt.xyz/pre-alpha-solana-client, @umbra-privacy/sdk |
 
 ---
 
@@ -92,6 +93,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `docs/USER_JOURNEYS_AND_TEST_PLAN.md` | Product journey matrix + pass/block status |
 | `docs/IMPLEMENTATION_PLAN.md` | Phase-by-phase implementation checklist |
 | `docs/DESIGN_PLAN.md` | Product/UI design direction and screen planning |
+| `docs/ANCHOR_032_UPGRADE.md` | Anchor 0.32.1 upgrade ledger, validations, and warnings |
 | `security-checklist.md` | Pre-submission security review checklist |
 
 ---
@@ -102,6 +104,10 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 |---|---|
 | `.env.example` | All env vars needed (Solana, MagicBlock, IKA, Encrypt, Umbra) |
 | `scripts/check-env.mjs` | Validates cargo, solana, anchor, circom, snarkjs + env vars |
+| `scripts/check-ika.mjs` | IKA SDK + Anchor CPI compile-wiring probe; no network call |
+| `scripts/ika-anchor-cpi-diagnostic.mjs` | Reports IKA CPI authority PDA, local compile wiring, and missing external dWallet/message approval state |
+| `scripts/check-umbra.mjs` | Validates Umbra SDK package, program ID, devnet indexer health, relayer health |
+| `scripts/umbra-smoke.mjs` | Initializes Umbra SDK client and queries devnet user account without submitting token action |
 | `package.json` | Root workspace scripts |
 
 ---
@@ -134,7 +140,7 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 | `https://github.com/cryptosingheth/shieldlend-solana.git` | Standalone public GitHub repo (last pushed: `bc891b9`) |
 | `groth16-solana` crate | On-chain BN254 Groth16 verifier — not yet wired |
 | MagicBlock PER/VRF/PrivatePayments | Discord: `discord.com/invite/MBkdC3gxcv` — join for devnet access |
-| IKA dWallet | Pre-alpha gated devnet — single mock signer in current build |
+| IKA dWallet | Pre-alpha gated devnet — single mock signer; `lending_pool` has compile-level `approve_message` CPI wiring, but no live approval tx |
 | Encrypt FHE | Pre-alpha — plaintext on-chain storage, no real encryption yet |
 | Umbra SDK | Solana mainnet alpha (Feb 2026) — strongest ready integration |
 
@@ -156,5 +162,5 @@ Key files and folders. After `/clear`, load: AGENTS.md → CLAUDE.md → SESSION
 
 ## Needs Confirmation
 
-- Program IDs are documented as placeholders in current handoff/decision/security docs, despite one task-log line saying generated IDs were used.
 - Current external protocol availability/status may have changed since these local files were written.
+- Full Anchor IDL generation remains blocked by Anchor/proc-macro2 compatibility and should be handled separately.

@@ -10,14 +10,31 @@
     "build:frontend": "npm --workspace frontend run build",
     "typecheck:frontend": "npm --workspace frontend run typecheck",
     "check:env": "node scripts/check-env.mjs",
+    "check:encrypt": "node scripts/check-encrypt.mjs",
+    "check:encrypt-anchor": "node scripts/encrypt-anchor-smoke.mjs",
+    "smoke:encrypt-health": "node scripts/encrypt-health-smoke.mjs",
+    "check:umbra": "node scripts/check-umbra.mjs",
+    "smoke:umbra": "node scripts/umbra-smoke.mjs",
+    "smoke:umbra-funded": "node scripts/umbra-funded-smoke.mjs",
+    "smoke:wsol-umbra-roundtrip": "node scripts/devnet-wsol-umbra-roundtrip.mjs",
+    "check:magicblock": "node scripts/check-magicblock.mjs",
+    "smoke:magicblock": "node scripts/magicblock-per-smoke.mjs",
+    "typecheck:sidecar": "cd examples/magicblock-per-sidecar && npx tsc --noEmit",
+    "check:ika": "node scripts/check-ika.mjs",
+    "check:ika-cpi": "node scripts/ika-anchor-cpi-diagnostic.mjs",
+    "smoke:ika": "node scripts/ika-live-sign-smoke.mjs",
+    "smoke:ika-approval": "node scripts/ika-anchor-approval-smoke.mjs",
+    "demo:status": "node scripts/demo-status.mjs",
     "test:programs": "cargo test --workspace",
     "test:anchor": "anchor test",
     "circuits:compile": "circom circuits/withdraw_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/collateral_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/repay_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits"
   },
   "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "bn.js": "^5.2.3"
+    "bn.js": "^5.2.3",
+    "tweetnacl": "^1.0.3"
   }
 }
