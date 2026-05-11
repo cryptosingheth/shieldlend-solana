@@ -148,8 +148,13 @@ export default function HomePage() {
       setWallet(provider);
       const nextAddress = result.publicKey.toBase58();
       setAddress(nextAddress);
-      await refreshAccount(nextAddress, null);
+      // Set the success message BEFORE refreshAccount so feedback is immediate.
+      // refreshAccount makes a balance RPC that can take seconds; we don't want
+      // the user staring at an empty notice while that resolves.
       setMessage(`Connected: ${nextAddress.slice(0, 6)}…${nextAddress.slice(-4)}`);
+      refreshAccount(nextAddress, null).catch((err) => {
+        console.error("refreshAccount failed:", err);
+      });
     } catch (error) {
       setMessage(error instanceof Error ? `Phantom connect rejected: ${error.message}` : "Phantom connect failed.");
     }
