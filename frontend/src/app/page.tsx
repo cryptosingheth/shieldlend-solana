@@ -948,7 +948,7 @@ function Withdraw({
               <button
                 disabled={true}
                 title={isCoreModeDirectPath
-                  ? "In-UI submit binding ships in the next sprint. The devnet flow is already proven via scripts/devnet-fullround.mjs (198,502 CU on-chain Groth16 verification)."
+                  ? "Disabled for two reasons: (1) the in-UI snarkjs proof-generation + Phantom-signed submit handler ships in the next sprint, and (2) the withdraw_ring circuit requires a K=16 anonymity-set on the Merkle tree — fresh notes can only be withdrawn once the on-chain ring contains 16 unique commitments (a property of the ZK protocol, not a UI gap). Devnet evidence: scripts/devnet-fullround.mjs runs the full round-trip with DEV/TEST smoke vectors and produces 198,502 CU on-chain Groth16 verification."
                   : "Submit path requires proof inputs, deployed programs, and the selected destination rail."}
                 style={{ marginTop: "16px", padding: "10px 14px" }}
               >
@@ -960,9 +960,11 @@ function Withdraw({
             Available notes in local vault: {notes.length}.
             {isCoreModeDirectPath ? (
               <>
-                {" "}Core Privacy direct path: deposit → ring proof → nullifier spend → fresh stealth-address payout.
-                Devnet flow proven end-to-end: 198,502 CU on-chain Groth16 verification via
-                <code> scripts/devnet-fullround.mjs</code>. React submit handler ships next.
+                {" "}Core Privacy direct path: deposit → on-chain flush_epoch → in-browser <code>snarkjs.fullProve</code>{" "}
+                with K=16 ring → nullifier spend → fresh stealth-address payout. The protocol enforces a K=16
+                anonymity-set — fresh notes become withdrawable only once the on-chain Merkle tree contains 16
+                unique commitments. Devnet flow proven end-to-end via <code>scripts/devnet-fullround.mjs</code>{" "}
+                (198,502 CU on-chain Groth16; uses DEV/TEST smoke vectors, not user notes). React submit binding ships next.
               </>
             ) : (
               <>
