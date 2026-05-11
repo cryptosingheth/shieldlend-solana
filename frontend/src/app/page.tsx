@@ -31,7 +31,7 @@ import {
   saveNote,
   type StoredNote,
 } from "../lib/noteStorage";
-import { FULL_PRIVACY_RAILS, modeFromRails, type RailStatus } from "../lib/protocolAdapters";
+import { FULL_PRIVACY_RAILS, modeFromRails, coreRails, fullPrivacyOnlyRails, coreReady, type RailStatus } from "../lib/protocolAdapters";
 import {
   getUmbraFundedFlowStatus,
   getUmbraStatus,
@@ -262,8 +262,17 @@ export default function HomePage() {
           </div>
         </div>
         <div className="topbar-actions">
-          <span className={`chip ${protocolMode === "full" ? "full" : "degraded"}`}>
-            {protocolMode === "full" ? "Full Privacy" : "Degraded"}
+          <span
+            className={`chip ${protocolMode === "full" ? "full" : protocolMode === "core" ? "core" : "degraded"}`}
+            title={
+              protocolMode === "full"
+                ? "All 10 rails healthy: Core Privacy + every Full Privacy roadmap rail is live."
+                : protocolMode === "core"
+                  ? "Core Privacy active: programs deployed + ZK artifacts + on-chain Groth16 + nullifier registry are all live on devnet. Full Privacy rails (IKA full sign, PER macros, VRF, Private Payments transfer, Encrypt on-chain verify) are roadmap."
+                  : "Core Privacy rails are not all healthy. Check rail status panel."
+            }
+          >
+            {protocolMode === "full" ? "Full Privacy" : protocolMode === "core" ? "Core Privacy" : "Degraded"}
           </span>
           <button className={`chip ${vaultReady ? "ok" : "danger"}`} onClick={initializeVault} disabled={!connected}>
             <LockKeyhole size={14} />
@@ -276,14 +285,38 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Pre-alpha scaffold banner — always visible */}
-      <section className="prealpha-banner">
+      {/* Pre-alpha disclosure banner — reflects live mode */}
+      <section className={`prealpha-banner ${protocolMode === "core" || protocolMode === "full" ? "core" : ""}`}>
         <AlertTriangle size={16} />
         <div>
-          <strong>PRE-ALPHA / SCAFFOLD MODE</strong>
+          <strong>
+            {protocolMode === "full"
+              ? "PRE-ALPHA — FULL PRIVACY ACTIVE"
+              : protocolMode === "core"
+                ? "CORE PRIVACY ACTIVE — FULL PRIVACY RAILS ARE ROADMAP"
+                : "PRE-ALPHA — CORE PRIVACY UNAVAILABLE"}
+          </strong>
           <span>
-            Programs not deployed. ZK artifacts stale. All 8 required privacy rails offline.
-            No privacy properties hold. Do not use with real funds.
+            {protocolMode === "core" ? (
+              <>
+                Deposit and withdraw flows protect amount privacy via on-chain Groth16 BN254 ring proof
+                verification (DEV/TEST trusted setup; 198,502 CU confirmed on devnet) and the Active/Locked/Spent
+                nullifier registry. Pre-alpha external rails (IKA full sign, PER macros, MagicBlock VRF + Private
+                Payments transfer, Encrypt on-chain decryption, Umbra native-SOL bridge) are documented roadmap.
+                Do not use with real funds. See <code>docs/SUBMISSION_CHECKLIST.md</code> for the full claim boundary.
+              </>
+            ) : protocolMode === "full" ? (
+              <>
+                Every privacy rail is healthy. This still uses the DEV/TEST trusted setup — production privacy
+                requires a separate Powers of Tau ceremony. Do not use with real funds.
+              </>
+            ) : (
+              <>
+                Core Privacy rails are not all healthy. Verify <code>NEXT_PUBLIC_PROGRAMS_DEPLOYED</code> and
+                <code>NEXT_PUBLIC_ZK_ARTIFACTS_READY</code> are set in <code>frontend/.env.local</code> (see
+                <code>frontend/.env.devnet.example</code>). Do not use with real funds.
+              </>
+            )}
           </span>
         </div>
       </section>
@@ -472,10 +505,24 @@ function Positions({
 
           <Panel title="Privacy rail status">
             <p className="muted" style={{ marginBottom: "12px", fontSize: "12px" }}>
-              Full Privacy mode cannot activate while any required rail is unavailable.
-              Statuses reflect env config; use scripts/check-umbra.mjs for Umbra health probes.
+              Core Privacy = the rails that ship a verifiable privacy property today. Full Privacy = Core
+              plus the pre-alpha external rails currently in integration. Statuses reflect env config and
+              upstream availability.
             </p>
-            {FULL_PRIVACY_RAILS.map((rail) => (
+
+            <div className="rail-section-header">
+              <span className="dot live" />
+              <span>Core Privacy — live on devnet</span>
+            </div>
+            {coreRails().map((rail) => (
+              <RailStatusRow key={rail.key} rail={rail} />
+            ))}
+
+            <div className="rail-section-header">
+              <span className="dot roadmap" />
+              <span>Full Privacy roadmap — pre-alpha</span>
+            </div>
+            {fullPrivacyOnlyRails().map((rail) => (
               <RailStatusRow key={rail.key} rail={rail} />
             ))}
           </Panel>
