@@ -48,6 +48,7 @@ import {
   submitDeposit,
   type SolanaWalletProvider,
 } from "../lib/solanaClient";
+import { useUiPrefs, useVaultSession, bytesToHex, hexToBytes } from "../lib/stores/uiStore";
 
 type Screen = "positions" | "deposit" | "withdraw" | "borrow" | "repay" | "history";
 
@@ -82,7 +83,25 @@ const nav = [
 ];
 
 export default function HomePage() {
-  const [screen, setScreen] = useState<Screen>("positions");
+  // Persisted UI prefs (zustand → localStorage): screen tab + withdraw mode +
+  // last connected address. Used to restore the session on refresh.
+  const screen = useUiPrefs((s) => s.activeScreen);
+  const setScreen = useUiPrefs((s) => s.setActiveScreen);
+  const setLastAddress = useUiPrefs((s) => s.setLastAddress);
+  const withdrawDestinationMode = useUiPrefs((s) => s.withdrawDestinationMode);
+  const setWithdrawDestinationMode = useUiPrefs((s) => s.setWithdrawDestinationMode);
+
+  // Vault session material (zustand → sessionStorage): cleared on tab close
+  // so the AES vault key has bounded lifetime even though it auto-unlocks
+  // on F5 refresh within the same tab.
+  const vaultMaterialHex = useVaultSession((s) => s.keyMaterialHex);
+  const vaultMaterialAddress = useVaultSession((s) => s.keyAddress);
+  const setVaultMaterial = useVaultSession((s) => s.setVaultMaterial);
+  const clearVaultMaterial = useVaultSession((s) => s.clearVaultMaterial);
+
+  // Runtime-only state — not persisted (security or serialization reasons):
+  // wallet provider is a runtime JS object; vaultKey is a non-extractable
+  // CryptoKey; notes/history are already encrypted in localStorage.
   const [wallet, setWallet] = useState<SolanaWalletProvider | null>(null);
   const [address, setAddress] = useState("");
   const [balance, setBalance] = useState<bigint | null>(null);
@@ -93,7 +112,6 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [hasPlaintext, setHasPlaintext] = useState(false);
   const [encryptStatus, setEncryptStatus] = useState<EncryptStatus | null>(null);
-  const [withdrawDestinationMode, setWithdrawDestinationMode] = useState<UmbraDestinationMode>("direct_stealth_address");
 
   const connected = Boolean(wallet?.publicKey && address);
   const vaultReady = Boolean(vaultKey);
@@ -114,7 +132,39 @@ export default function HomePage() {
   useEffect(() => {
     console.log("[ShieldLend] Page mounted — React hydration OK");
     const provider = getPhantomProvider();
-    if (provider) setWallet(provider);
+    if (!provider) return;
+    setWallet(provider);
+    // Silent auto-reconnect if Phantom previously authorized this site.
+    // `onlyIfTrusted: true` skips the popup; rejects without prompting if not trusted.
+    provider
+      .connect({ onlyIfTrusted: true })
+      .then(async (result) => {
+        const addr = result.publicKey.toBase58();
+        setAddress(addr);
+        setLastAddress(addr);
+        console.log("[ShieldLend] Auto-reconnected:", addr.slice(0, 6) + "…");
+        // Auto-unlock from sessionStorage if material exists for this address
+        if (vaultMaterialHex && vaultMaterialAddress === addr) {
+          try {
+            const material = hexToBytes(vaultMaterialHex);
+            const key = await deriveNoteKey(material, addr);
+            setVaultKey(key);
+            setNotes(await loadNotes(addr, key));
+            setHistory(await loadHistory(addr, key));
+            setHasPlaintext(hasPlaintextNotes(addr) || hasPlaintextHistoryRecords(addr));
+            console.log("[ShieldLend] Vault auto-unlocked from sessionStorage");
+            setMessage(`Welcome back — vault restored from session.`);
+          } catch (err) {
+            console.warn("[ShieldLend] Vault auto-unlock failed:", err);
+            clearVaultMaterial();
+          }
+        }
+        refreshAccount(addr, null).catch((err) => console.error("refreshAccount failed:", err));
+      })
+      .catch(() => {
+        // User hasn't authorized this site yet — that's fine, they can click Connect
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Belt-and-suspenders click handler: registers a vanilla addEventListener
@@ -169,6 +219,7 @@ export default function HomePage() {
       setWallet(provider);
       const nextAddress = result.publicKey.toBase58();
       setAddress(nextAddress);
+      setLastAddress(nextAddress);
       // Set the success message BEFORE refreshAccount so feedback is immediate.
       // refreshAccount makes a balance RPC that can take seconds; we don't want
       // the user staring at an empty notice while that resolves.
@@ -181,6 +232,14 @@ export default function HomePage() {
     }
   }
 
+  function lockVault() {
+    setVaultKey(null);
+    setNotes([]);
+    setHistory([]);
+    clearVaultMaterial();
+    setMessage("Vault locked. Session material cleared.");
+  }
+
   async function initializeVault() {
     if (!wallet?.publicKey || !wallet.signMessage) {
       setMessage("Wallet must support signMessage to derive the local encrypted note vault key.");
@@ -188,9 +247,14 @@ export default function HomePage() {
     }
     const prompt = new TextEncoder().encode("ShieldLend Solana note vault key v1");
     const signed = await wallet.signMessage(prompt, "utf8");
-    const key = await deriveNoteKey(signed.signature, wallet.publicKey.toBase58());
-    setVaultKey(key);
     const addr = wallet.publicKey.toBase58();
+    const key = await deriveNoteKey(signed.signature, addr);
+    setVaultKey(key);
+    // Cache the signature bytes in sessionStorage so we can re-derive the key
+    // after a page refresh without re-prompting the user. The CryptoKey itself
+    // is non-extractable; only the input material is stored, scoped to the
+    // wallet address that signed it. Cleared on tab close (sessionStorage).
+    setVaultMaterial(bytesToHex(signed.signature), addr);
     setNotes(await loadNotes(addr, key));
     setHistory(await loadHistory(addr, key));
     setHasPlaintext(hasPlaintextNotes(addr) || hasPlaintextHistoryRecords(addr));
@@ -310,7 +374,14 @@ export default function HomePage() {
           >
             {protocolMode === "full" ? "Full Privacy" : protocolMode === "core" ? "Core Privacy" : "Degraded"}
           </span>
-          <button className={`chip ${vaultReady ? "ok" : "danger"}`} onClick={initializeVault} disabled={!connected}>
+          <button
+            className={`chip ${vaultReady ? "ok" : "danger"}`}
+            onClick={vaultReady ? lockVault : initializeVault}
+            disabled={!connected}
+            title={vaultReady
+              ? "Click to lock the vault now. Vault auto-locks on tab close."
+              : "Sign a message to derive the AES-256-GCM note vault key (AES key is non-extractable)."}
+          >
             <LockKeyhole size={14} />
             {vaultReady ? "VAULT UNLOCKED" : "UNLOCK VAULT"}
           </button>
