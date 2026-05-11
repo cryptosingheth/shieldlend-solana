@@ -34,6 +34,12 @@ export interface EncryptProbeResult {
   sdkImportNote: string;
   networkKeys: EncryptNetworkKey[];
   selectedNetworkKeyHex?: string;
+  anchorIntegration: {
+    dependencyPattern: string;
+    compileStatus: "compile-wired-local-fork" | "blocked";
+    blocker: string;
+    onChainFheLive: false;
+  };
   liveCreateInput?: {
     requested: boolean;
     healthRatioBps: string;
@@ -287,6 +293,14 @@ export async function probeEncryptRail(options: {
       `${ENCRYPT_GRPC_IMPORT} in ${ENCRYPT_SDK_PACKAGE}@${ENCRYPT_SDK_VERSION} resolves to TypeScript source in node_modules; the adapter uses the same documented gRPC service directly via @grpc/grpc-js.`,
     networkKeys,
     selectedNetworkKeyHex: process.env.ENCRYPT_NETWORK_PUBLIC_KEY_HEX ?? networkKeys[0]?.publicKeyHex,
+    anchorIntegration: {
+      dependencyPattern:
+        "encrypt-types + encrypt-solana-dsl + encrypt-anchor from dwallet-labs/encrypt-pre-alpha with anchor-lang 0.32",
+      compileStatus: "compile-wired-local-fork",
+      blocker:
+        "Official upstream encrypt-anchor still expects solana_account_info 3.1.x AccountInfo while ShieldLend Anchor 0.32.1 supplies solana_account_info 2.3.x. ShieldLend now vendors a minimal Anchor 0.32-compatible encrypt-anchor fork and compile-wires a separate lending_pool CPI request/reveal path, but live on-chain Encrypt/FHE remains unproven.",
+      onChainFheLive: false,
+    },
     claimBoundary: ENCRYPT_PRE_ALPHA_DISCLAIMER,
   };
 

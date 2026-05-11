@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-11 (live/ika-anchor-cpi: IKA approve_ika_borrow_message CPI confirmed on devnet)
+Last reconciled: 2026-05-11 (IKA approve_ika_borrow_message CPI confirmed on devnet; Encrypt Anchor local compatibility fork compile-wired on live/encrypt-anchor 2026-05-09)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -14,7 +14,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
 | ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST); borrow proof path now confirmed on devnet | Production trusted setup is missing; repay on-chain flow and full private borrow/disbursement remain unverified end to end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; wSOL Umbra settlement adapter (Phase 2) confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed; IKA pre-alpha devnet DKG, on-chain dWallet creation, authority transfer, and `approve_ika_borrow_message` CPI all confirmed on devnet (2026-05-11); IKA gRPC presign/sign blocked by coordinator BCS schema mismatch | Anchor 0.32.1 workspace compatibility is present; IKA gRPC presign/sign flow blocked (coordinator BCS schema mismatch); ShieldLend-native Umbra payout, PER macros in programs, Private Payments private transfer via intended ephemeral/router RPC, and Encrypt/FHE on-chain health computation are not live |
+| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; wSOL Umbra settlement adapter (Phase 2) confirmed; Encrypt gRPC CreateInput confirmed; official Encrypt Anchor CPI probe reproduces the AccountInfo crate-family blocker; ShieldLend vendors a minimal Anchor 0.32-compatible `encrypt-anchor` fork and compile-wires a separate LendingPool request/reveal path; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed; IKA pre-alpha devnet DKG, on-chain dWallet creation, authority transfer, and `approve_ika_borrow_message` CPI all confirmed on devnet (2026-05-11); IKA gRPC presign/sign blocked by coordinator BCS schema mismatch | Anchor 0.32.1 workspace compatibility is present; IKA gRPC presign/sign flow blocked (coordinator BCS schema mismatch); ShieldLend-native Umbra payout, PER macros in programs, Private Payments private transfer via intended ephemeral/router RPC, and live on-chain Encrypt/FHE health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -32,6 +32,7 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `npm run build:frontend` | passed | Next build passes with existing dependency warning |
 | `cargo test --workspace` | passed on Anchor 0.32.1 | 47 Rust unit tests pass, including Groth16 verifier smoke and mutation tests |
 | `anchor build --no-idl` | passed on Anchor 0.32.1 | SBF build passes; still emits existing macro cfg warnings plus SBF post-processing syscall warnings |
+| `npm run check:encrypt-anchor` | pass with documented upstream blocker | Official upstream `encrypt-anchor` still fails at the CPI boundary because of `solana_account_info` 3.1.x vs 2.3.x; ShieldLend's local Anchor 0.32 compatibility fork compiles |
 | `anchor deploy` (nullifier_registry) | **deployed** | Devnet slot 460526750; program ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
 | `anchor deploy` (lending_pool) | **deployed** | Program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`; redeployed on devnet |
@@ -117,7 +118,7 @@ Artifact details:
 | Area | Implemented locally |
 |---|---|
 | `shielded_pool` | Fixed denominations, deposit queue, root history, zero-root rejection, withdrawal/disbursement queues, DEV/TEST Groth16 withdraw verifier wired (cross-field consistency guards), nullifier registry CPI scaffolding after verifier gate; `groth16_verifier` module with real vkey and smoke+wiring tests; proof account PDA pattern (`ProofData`, `store_withdraw_proof`, consumed/kind/authority guards) |
-| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, DEV/TEST Groth16 collateral+repay verifiers wired (cross-field consistency guards), fail-closed payment/FHE verifiers, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke+wiring tests; proof account PDA pattern (`ProofData` with `public_input_count`, `store_collateral_proof`, `store_repay_proof`, consumed/kind/authority guards) |
+| `lending_pool` | Interest model, loan PDA state, borrow/repay/liquidation skeleton, outstanding balance check, liquidation reveal binding checks, repay liquidation-state reset, DEV/TEST Groth16 collateral+repay verifiers wired (cross-field consistency guards), fail-closed payment verifier, legacy generic Encrypt verifier still fail-closed, separate compile-wired Encrypt CPI request/reveal path via local Anchor 0.32 fork, nullifier lock/unlock CPI scaffolding after verifier gates; `groth16_verifier` module with real vkeys and smoke+wiring tests; proof account PDA pattern (`ProofData` with `public_input_count`, `store_collateral_proof`, `store_repay_proof`, consumed/kind/authority guards) |
 | `nullifier_registry` | Authorized writer config, Active/Locked/Spent state machine, `spend` requires Locked, unit tests |
 | Frontend local security | AES-256-GCM note vault and encrypted history log |
 | Frontend circuit interface | Poseidon commitment/nullifier helpers, real-ring requirement, snarkjs fullProve calls using manifest paths |
@@ -130,7 +131,7 @@ Artifact details:
 | Borrow collateral proof verification | DEV/TEST Groth16 verifier wired; proof read from PDA; consumed/kind/authority guards |
 | Repay proof verification | DEV/TEST Groth16 verifier wired; proof read from PDA; consumed/kind/authority guards |
 | Private payment receipt verification | Fails closed with `PrivatePaymentVerifierNotWired` |
-| Encrypt liquidation reveal verification | Fails closed with `EncryptVerifierNotWired` |
+| Encrypt liquidation reveal verification | Legacy generic verifier still fails closed with `EncryptVerifierNotWired`; separate `request_liquidation_reveal_via_encrypt` / `verify_liquidation_reveal_via_encrypt` path compiles through the local Anchor 0.32 fork but is not proven live on devnet |
 | PER exit flushing | Fails closed with `PerAdapterNotWired` unless queue is empty |
 | Frontend proof generation | Has DEV/TEST browser artifacts; still requires real commitment ring provider for withdraw/collateral; synthetic decoys are rejected |
 
@@ -147,7 +148,7 @@ Artifact details:
 | Umbra mixer/UTXO path | SDK functions exposed; compatible prover not installed | No |
 | ShieldLend wSOL Umbra settlement adapter | Two-step post-withdraw adapter implemented: `scripts/devnet-wsol-umbra-roundtrip.mjs`. UI: Withdraw screen "wSOL via Umbra" mode with `WsolUmbraAdapterPanel` claim boundary. Phase 2 (wSOL wrap + Umbra deposit/withdraw) confirmed live. Phase 1 (C2H) failed with `0x0` in roundtrip script — use `SKIP_C2H=1` for demo; C2H confirmed separately via `devnet-fullround.mjs`. | Yes — post-withdraw simulation only; flush_exits fail-closed; Phase 1 C2H in roundtrip script failed |
 | ShieldLend native SOL payout via Umbra (protocol-level) | Not wired; flush_exits fail-closed; C2H native SOL route preserved | No — requires PER adapter + SPL ATA leg in shielded_pool |
-| Encrypt/FHE oracle or health computation | Not wired; pre-alpha endpoints/status scaffolding only | No |
+| Encrypt/FHE oracle or health computation | Client/gRPC CreateInput live; official upstream Anchor CPI probe blocked by AccountInfo crate-family mismatch; local compatibility fork compile-wires a separate LendingPool request/reveal path only | No |
 | On-chain Groth16 verification | DEV/TEST verifier confirmed on devnet; 198,502 CU; full withdraw round-trip passes; B7 stack frame resolved (C2G-A) | No — DEV/TEST trusted setup only; production ceremony required |
 | Production trusted setup | Missing; DEV/TEST local setup only | No |
 | Full private repayment | Not live | No |
@@ -171,6 +172,7 @@ Artifact details:
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
 | IKA gRPC presign/sign schema mismatch | `approve_ika_borrow_message` CPI confirmed on devnet. Remaining gap: `PresignForDWallet` gRPC call returns `invalid signed_request_data: unexpected end of input` (gRPC code 3). Root cause: our local BCS schema for `SignedRequestData { PresignForDWallet }` does not match the current IKA pre-alpha coordinator's expected schema (extra/missing fields or different field order). Cannot resolve without IKA pre-alpha Rust BCS source. |
 | PER not wired | No private batching or unified exit batching |
+| Encrypt Anchor upstream incompatibility | Current official `encrypt-anchor` uses `solana_account_info` 3.1.x at `EncryptContext`; ShieldLend Anchor 0.32.1 accounts use 2.3.x. ShieldLend vendors a local Anchor 0.32 compatibility fork to compile a separate request/reveal path, but upstream remains incompatible and no live devnet Encrypt decryption round-trip is proven. |
 
 See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file/line evidence.
 

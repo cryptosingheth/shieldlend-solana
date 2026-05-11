@@ -5,9 +5,13 @@ A zero-knowledge, privacy-preserving lending protocol design for Solana.
 Current local implementation is a pre-alpha scaffold. All three Anchor programs
 are deployed on devnet. On-chain Groth16 BN254 verification is confirmed for
 the withdraw path (DEV/TEST trusted setup only). Encrypt is wired as a
-pre-alpha client/gRPC probe; Umbra SDK adapter is installed and fail-closed in
-the frontend for supported SPL/Token-2022 exits. IKA, MagicBlock PER/Private
-Payments, and on-chain Encrypt/FHE health verification are not live.
+pre-alpha client/gRPC probe; official upstream `encrypt-anchor` is still
+blocked by a Solana `AccountInfo` crate-family mismatch, while ShieldLend now
+vendors a minimal Anchor 0.32 compatibility fork for a compile-wired
+LendingPool CPI request/reveal path. Umbra SDK adapter is installed and
+fail-closed in the frontend for supported SPL/Token-2022 exits. IKA,
+MagicBlock PER/Private Payments, and live on-chain Encrypt/FHE health
+verification are not live.
 
 Built for the **Colosseum Frontier Hackathon 2026**.
 
@@ -74,7 +78,7 @@ component addresses. These layers are not all live in the current local build:
 | DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
 | On-chain Groth16 verification (borrow/repay) | Borrow proof verified on devnet; repay not yet verified | `lending_pool::borrow` succeeded on devnet with a fresh collateral proof and active nullifier; repay path still not exercised end to end |
-| Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; Anchor 0.32.1 compatibility present; `encrypt-anchor` CPI not wired; on-chain FHE fail-closed |
+| Encrypt rail adapter | gRPC probe live; local CPI path compile-wired only | `CreateInput` live on pre-alpha devnet; official upstream `encrypt-anchor` blocked by `solana_account_info` 3.1.x vs 2.3.x mismatch; ShieldLend vendors a minimal Anchor 0.32 compatibility fork and compile-wires `request_liquidation_reveal_via_encrypt` / `verify_liquidation_reveal_via_encrypt`; on-chain FHE not proven live |
 | Umbra rail adapter | Funded devnet + wSOL adapter confirmed | wSOL deposit/withdraw: 7 devnet tx signatures; wSOL settlement adapter (`devnet-wsol-umbra-roundtrip.mjs`) + UI mode added; flush_exits fail-closed; native SOL → Umbra protocol-level not wired |
 | MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Anchor 0.32.1 compatibility present; Rust macros not yet wired; Private Payments URL Discord-gated |
 | IKA rail adapter | SDK/WASM probe confirmed; `lending_pool` compile-wired to IKA `approve_message` CPI from official pre-alpha source; real pre-alpha DKG + on-chain dWallet + CPI-authority transfer confirmed on devnet | Solana relay signing still not live: deployed devnet `lending_pool` does not yet expose `approve_ika_borrow_message`; direct wallet fallback labelled reduced privacy |
@@ -155,7 +159,7 @@ external docs.
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | Not wired | No |
 | Umbra SDK exits | Adapter installed, blocked for current native SOL C2H path | No — requires supported SPL/Token-2022 mint and live transaction smoke |
-| Encrypt/FHE oracle or health computation | Not wired | No |
+| Encrypt/FHE oracle or health computation | gRPC CreateInput live; official Anchor CPI blocked by AccountInfo crate-family mismatch | No |
 | On-chain Groth16 verification (withdraw) | Confirmed on devnet — DEV/TEST only | No — DEV/TEST trusted setup, not production |
 | On-chain Groth16 verification (borrow/repay) | Borrow path confirmed on devnet; repay path not yet run | Borrow: local proof + fresh nullifier + `lending_pool::borrow` confirmed. Repay remains unverified end to end. |
 | Production trusted setup | Missing | No |

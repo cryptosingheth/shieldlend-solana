@@ -9,6 +9,12 @@
 pub mod groth16_verifier;
 
 use anchor_lang::prelude::*;
+use encrypt_anchor::{
+    accounts::{self as encrypt_accounts, DecryptionRequestStatus},
+    EncryptContext, CPI_AUTHORITY_SEED as ENCRYPT_CPI_AUTHORITY_SEED,
+};
+use encrypt_solana_types::accounts as encrypt_account_data;
+use encrypt_types::encrypted::Bool;
 use ika_dwallet_anchor::{DWalletContext, CPI_AUTHORITY_SEED};
 use nullifier_registry::{
     self, cpi::accounts as registry_accounts, program::NullifierRegistry, NullifierAccount,
@@ -185,6 +191,50 @@ pub mod lending_pool {
         Ok(())
     }
 
+    pub fn request_liquidation_reveal_via_encrypt(
+        ctx: Context<RequestEncryptLiquidationReveal>,
+    ) -> Result<()> {
+        let loan = &mut ctx.accounts.loan;
+        require!(
+            loan.status == LoanStatus::Active,
+            LendingError::LoanNotActive
+        );
+
+        let ciphertext_handle = ctx.accounts.ciphertext.key().to_bytes();
+        require!(
+            ciphertext_handle != [0; 32],
+            LendingError::InvalidCiphertextHandle
+        );
+        require_keys_eq!(
+            ctx.accounts.caller_program.key(),
+            crate::ID,
+            LendingError::EncryptRevealVerificationFailed
+        );
+
+        let encrypt_ctx = build_encrypt_context(
+            ctx.accounts.encrypt_program.to_account_info(),
+            ctx.accounts.config.to_account_info(),
+            ctx.accounts.deposit.to_account_info(),
+            ctx.accounts.cpi_authority.to_account_info(),
+            ctx.accounts.caller_program.to_account_info(),
+            ctx.accounts.network_encryption_key.to_account_info(),
+            ctx.accounts.keeper.to_account_info(),
+            ctx.accounts.event_authority.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+            ctx.bumps.cpi_authority,
+        );
+
+        let digest = encrypt_ctx.request_decryption(
+            &ctx.accounts.request_acct.to_account_info(),
+            &ctx.accounts.ciphertext.to_account_info(),
+        )?;
+
+        loan.liq_ciphertext_handle = ciphertext_handle;
+        loan.is_liquidatable_handle = digest;
+        loan.pending_liquidation_reveal = true;
+        Ok(())
+    }
+
     pub fn verify_liquidation_reveal(
         ctx: Context<VerifyLiquidationReveal>,
         args: LiquidationRevealArgs,
@@ -196,17 +246,25 @@ pub mod lending_pool {
         validate_liquidation_reveal_args(ctx.accounts.loan.key(), &ctx.accounts.loan, &args)?;
         verify_encrypt_reveal(&args)?;
         let loan = &mut ctx.accounts.loan;
-        loan.confirmed_liquidatable = args.decrypted_liquidatable;
-        loan.pending_liquidation_reveal = false;
-        if args.decrypted_liquidatable {
-            loan.consecutive_breach_count = loan.consecutive_breach_count.saturating_add(1);
-            if loan.breach_first_slot == 0 {
-                loan.breach_first_slot = Clock::get()?.slot;
-            }
-        } else {
-            loan.consecutive_breach_count = 0;
-            loan.breach_first_slot = 0;
-        }
+        apply_liquidation_reveal_result(loan, args.decrypted_liquidatable, Clock::get()?.slot);
+        Ok(())
+    }
+
+    pub fn verify_liquidation_reveal_via_encrypt(
+        ctx: Context<VerifyEncryptLiquidationReveal>,
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.loan.pending_liquidation_reveal,
+            LendingError::LiquidationRevealNotPending
+        );
+
+        let decrypted_liquidatable = {
+            let request_data = ctx.accounts.request_acct.try_borrow_data()?;
+            decode_encrypt_liquidation_reveal(&ctx.accounts.loan, &request_data)?
+        };
+
+        let loan = &mut ctx.accounts.loan;
+        apply_liquidation_reveal_result(loan, decrypted_liquidatable, Clock::get()?.slot);
         Ok(())
     }
 
@@ -343,6 +401,24 @@ fn reset_liquidation_state_after_repay(loan: &mut LoanAccount) {
     loan.is_liquidatable_handle = [0; 32];
 }
 
+fn apply_liquidation_reveal_result(
+    loan: &mut LoanAccount,
+    decrypted_liquidatable: bool,
+    current_slot: u64,
+) {
+    loan.confirmed_liquidatable = decrypted_liquidatable;
+    loan.pending_liquidation_reveal = false;
+    if decrypted_liquidatable {
+        loan.consecutive_breach_count = loan.consecutive_breach_count.saturating_add(1);
+        if loan.breach_first_slot == 0 {
+            loan.breach_first_slot = current_slot;
+        }
+    } else {
+        loan.consecutive_breach_count = 0;
+        loan.breach_first_slot = 0;
+    }
+}
+
 fn validate_liquidation_reveal_args(
     expected_loan_pda: Pubkey,
     loan: &LoanAccount,
@@ -361,6 +437,63 @@ fn validate_liquidation_reveal_args(
         LendingError::InvalidProofSignalHash
     );
     Ok(())
+}
+
+fn build_encrypt_context<'info>(
+    encrypt_program: AccountInfo<'info>,
+    config: AccountInfo<'info>,
+    deposit: AccountInfo<'info>,
+    cpi_authority: AccountInfo<'info>,
+    caller_program: AccountInfo<'info>,
+    network_encryption_key: AccountInfo<'info>,
+    payer: AccountInfo<'info>,
+    event_authority: AccountInfo<'info>,
+    system_program: AccountInfo<'info>,
+    cpi_authority_bump: u8,
+) -> EncryptContext<'info> {
+    EncryptContext {
+        encrypt_program,
+        config,
+        deposit,
+        cpi_authority,
+        caller_program,
+        network_encryption_key,
+        payer,
+        event_authority,
+        system_program,
+        cpi_authority_bump,
+    }
+}
+
+fn decode_encrypt_liquidation_reveal(loan: &LoanAccount, request_data: &[u8]) -> Result<bool> {
+    require!(
+        loan.is_liquidatable_handle != [0; 32],
+        LendingError::EncryptRevealVerificationFailed
+    );
+
+    let ciphertext = encrypt_account_data::parse_decryption_ciphertext(request_data)
+        .ok_or(error!(LendingError::EncryptRevealVerificationFailed))?;
+    require!(
+        *ciphertext == loan.liq_ciphertext_handle,
+        LendingError::CiphertextHandleMismatch
+    );
+
+    match encrypt_accounts::decryption_status::<Bool>(request_data)
+        .map_err(|_| error!(LendingError::EncryptRevealVerificationFailed))?
+    {
+        DecryptionRequestStatus::Pending | DecryptionRequestStatus::InProgress { .. } => {
+            return err!(LendingError::EncryptDecryptionNotReady);
+        }
+        DecryptionRequestStatus::Complete { .. } => {}
+    }
+
+    let value = encrypt_accounts::read_decrypted_verified::<Bool>(
+        request_data,
+        &loan.is_liquidatable_handle,
+    )
+    .map_err(|_| error!(LendingError::EncryptRevealVerificationFailed))?;
+
+    Ok(*value)
 }
 
 fn validate_rate_model(kinks: &[u16; KINK_COUNT], rates: &[u16; KINK_COUNT]) -> Result<()> {
@@ -510,6 +643,10 @@ fn verify_private_payment_receipt(_args: &RepayArgs, _repayment_vault: Pubkey) -
 }
 
 fn verify_encrypt_reveal(_args: &LiquidationRevealArgs) -> Result<()> {
+    // Official encrypt-anchor cannot currently cross this Anchor 0.32.1 boundary:
+    // EncryptContext expects solana_account_info 3.1.x, while Anchor 0.32.1
+    // provides 2.3.x AccountInfo. Keep liquidation reveals fail-closed until
+    // a compatible Encrypt revision or fork is available.
     err!(LendingError::EncryptVerifierNotWired)
 }
 
@@ -654,6 +791,53 @@ pub struct VerifyLiquidationReveal<'info> {
         bump = loan.bump
     )]
     pub loan: Account<'info, LoanAccount>,
+}
+
+#[derive(Accounts)]
+pub struct RequestEncryptLiquidationReveal<'info> {
+    #[account(mut)]
+    pub keeper: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [b"loan", loan.collateral_nullifier_hash.as_ref()],
+        bump = loan.bump
+    )]
+    pub loan: Account<'info, LoanAccount>,
+    /// CHECK: Decryption request account created by the Encrypt program.
+    #[account(mut)]
+    pub request_acct: UncheckedAccount<'info>,
+    /// CHECK: Encrypt ciphertext account that represents the liquidatable boolean.
+    pub ciphertext: UncheckedAccount<'info>,
+    /// CHECK: Official Encrypt devnet program from the published docs/source.
+    pub encrypt_program: UncheckedAccount<'info>,
+    /// CHECK: Encrypt config account.
+    pub config: UncheckedAccount<'info>,
+    /// CHECK: Encrypt deposit account.
+    #[account(mut)]
+    pub deposit: UncheckedAccount<'info>,
+    /// CHECK: Encrypt CPI authority PDA for this program.
+    #[account(seeds = [ENCRYPT_CPI_AUTHORITY_SEED], bump)]
+    pub cpi_authority: UncheckedAccount<'info>,
+    /// CHECK: Current program id account, passed through to Encrypt as the caller.
+    pub caller_program: UncheckedAccount<'info>,
+    /// CHECK: Active Encrypt network encryption key account.
+    pub network_encryption_key: UncheckedAccount<'info>,
+    /// CHECK: Encrypt event authority account.
+    pub event_authority: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct VerifyEncryptLiquidationReveal<'info> {
+    pub encrypt_keeper: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [b"loan", loan.collateral_nullifier_hash.as_ref()],
+        bump = loan.bump
+    )]
+    pub loan: Account<'info, LoanAccount>,
+    /// CHECK: Completed Encrypt decryption request account.
+    pub request_acct: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -849,6 +1033,10 @@ pub enum LendingError {
     PrivatePaymentVerifierNotWired,
     #[msg("Encrypt FHE verifier is not wired yet")]
     EncryptVerifierNotWired,
+    #[msg("Encrypt decryption request is not complete yet")]
+    EncryptDecryptionNotReady,
+    #[msg("Encrypt decryption request failed verification")]
+    EncryptRevealVerificationFailed,
     #[msg("Ciphertext handle is invalid")]
     InvalidCiphertextHandle,
     #[msg("Ciphertext handle does not match the loan reveal request")]
@@ -965,6 +1153,32 @@ mod tests {
             consumed: false,
             bump: 255,
         }
+    }
+
+    fn build_encrypt_request_data_bool(
+        ciphertext_handle: [u8; 32],
+        ciphertext_digest: [u8; 32],
+        bytes_written: u32,
+        value: bool,
+    ) -> Vec<u8> {
+        let mut data =
+            vec![0u8; encrypt_account_data::DR_HEADER_END + bytes_written.max(1) as usize];
+        data[0] = 3;
+        data[1] = 1;
+        data[encrypt_account_data::DR_CIPHERTEXT..encrypt_account_data::DR_CIPHERTEXT + 32]
+            .copy_from_slice(&ciphertext_handle);
+        data[encrypt_account_data::DR_CIPHERTEXT_DIGEST
+            ..encrypt_account_data::DR_CIPHERTEXT_DIGEST + 32]
+            .copy_from_slice(&ciphertext_digest);
+        data[encrypt_account_data::DR_FHE_TYPE] = 0;
+        data[encrypt_account_data::DR_TOTAL_LEN..encrypt_account_data::DR_TOTAL_LEN + 4]
+            .copy_from_slice(&1u32.to_le_bytes());
+        data[encrypt_account_data::DR_BYTES_WRITTEN..encrypt_account_data::DR_BYTES_WRITTEN + 4]
+            .copy_from_slice(&bytes_written.to_le_bytes());
+        if bytes_written > 0 {
+            data[encrypt_account_data::DR_HEADER_END] = u8::from(value);
+        }
+        data
     }
 
     fn base_borrow_args() -> BorrowArgs {
@@ -1122,6 +1336,78 @@ mod tests {
         };
         assert!(verify_private_payment_receipt(&repay_args, Pubkey::new_unique()).is_err());
         assert!(verify_encrypt_reveal(&reveal_args).is_err());
+    }
+
+    #[test]
+    fn encrypt_liquidation_reveal_reads_verified_true() {
+        let mut loan = loan();
+        loan.liq_ciphertext_handle = [8; 32];
+        loan.is_liquidatable_handle = [9; 32];
+
+        let request_data = build_encrypt_request_data_bool(
+            loan.liq_ciphertext_handle,
+            loan.is_liquidatable_handle,
+            1,
+            true,
+        );
+
+        assert!(decode_encrypt_liquidation_reveal(&loan, &request_data).unwrap());
+    }
+
+    #[test]
+    fn encrypt_liquidation_reveal_reads_verified_false() {
+        let mut loan = loan();
+        loan.liq_ciphertext_handle = [8; 32];
+        loan.is_liquidatable_handle = [9; 32];
+
+        let request_data = build_encrypt_request_data_bool(
+            loan.liq_ciphertext_handle,
+            loan.is_liquidatable_handle,
+            1,
+            false,
+        );
+
+        assert!(!decode_encrypt_liquidation_reveal(&loan, &request_data).unwrap());
+    }
+
+    #[test]
+    fn encrypt_liquidation_reveal_rejects_digest_mismatch() {
+        let mut loan = loan();
+        loan.liq_ciphertext_handle = [8; 32];
+        loan.is_liquidatable_handle = [9; 32];
+
+        let request_data =
+            build_encrypt_request_data_bool(loan.liq_ciphertext_handle, [7; 32], 1, true);
+
+        assert!(decode_encrypt_liquidation_reveal(&loan, &request_data).is_err());
+    }
+
+    #[test]
+    fn encrypt_liquidation_reveal_rejects_pending_request() {
+        let mut loan = loan();
+        loan.liq_ciphertext_handle = [8; 32];
+        loan.is_liquidatable_handle = [9; 32];
+
+        let request_data = build_encrypt_request_data_bool(
+            loan.liq_ciphertext_handle,
+            loan.is_liquidatable_handle,
+            0,
+            true,
+        );
+
+        assert!(decode_encrypt_liquidation_reveal(&loan, &request_data).is_err());
+    }
+
+    #[test]
+    fn encrypt_liquidation_reveal_rejects_ciphertext_mismatch() {
+        let mut loan = loan();
+        loan.liq_ciphertext_handle = [8; 32];
+        loan.is_liquidatable_handle = [9; 32];
+
+        let request_data =
+            build_encrypt_request_data_bool([7; 32], loan.is_liquidatable_handle, 1, true);
+
+        assert!(decode_encrypt_liquidation_reveal(&loan, &request_data).is_err());
     }
 
     #[test]

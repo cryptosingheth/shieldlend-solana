@@ -200,6 +200,14 @@ UI must reflect degraded mode clearly.
 
 ---
 
+## Encrypt Anchor Compatibility Boundary
+
+**Decision**: Do not downgrade the ShieldLend Anchor workspace to chase current upstream `encrypt-anchor`. Keep Anchor `0.32.1`, vendor a minimal local compatibility fork for compile-only CPI wiring, and preserve honest claim boundaries until a real devnet Encrypt decryption round-trip is proven.
+**Why**: Current official `encrypt-anchor` resolves against `solana_account_info` 3.1.x while Anchor `0.32.1` programs use 2.3.x `AccountInfo`, so the upstream CPI boundary does not compile. A small local fork rebased onto `anchor-lang = "0.32.1"` compiles and lets LendingPool wire a minimal request/reveal path without destabilizing the rest of the workspace.
+**How to apply**: Keep `vendor/encrypt-anchor-anchor032` local to the repo, use it only for the isolated `lending_pool` Encrypt path, keep the legacy generic verifier fail-closed, and do not claim on-chain Encrypt/FHE is live until a real ciphertext + decryption-request account flow succeeds on devnet.
+
+---
+
 ## Program IDs (synced with Anchor keys)
 
 | Program | Program ID |
