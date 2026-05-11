@@ -25,6 +25,7 @@
     "smoke:ika": "node scripts/ika-live-sign-smoke.mjs",
     "smoke:ika-approval": "node scripts/ika-anchor-approval-smoke.mjs",
     "demo:status": "node scripts/demo-status.mjs",
+    "setup:devnet-wallet": "node scripts/setup-devnet-wallet.mjs",
     "test:programs": "cargo test --workspace",
     "test:anchor": "anchor test",
     "circuits:compile": "circom circuits/withdraw_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/collateral_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits && circom circuits/repay_ring.circom -l node_modules --r1cs --wasm --sym -o build/circuits"
