@@ -400,20 +400,8 @@ export default function HomePage() {
             wsolUmbraPayoutPath={wsolUmbraPayoutPath}
           />
         )}
-        {screen === "borrow" && (
-          <BlockedFlow
-            title="Borrow"
-            notes={notes}
-            reason="Borrow requires: deployed LendingPool, collateral_ring proof verification, NullifierRegistry CPI (lock), IKA FutureSign pre-authorization, and a real PER exit queue for disbursement."
-          />
-        )}
-        {screen === "repay" && (
-          <BlockedFlow
-            title="Repay"
-            notes={notes}
-            reason="Repay requires: MagicBlock Private Payments receipts, repay_ring ZK artifacts and verification, NullifierRegistry CPI (unlock), and a deployed LoanAccount PDA for the selected loan."
-          />
-        )}
+        {screen === "borrow" && <BorrowScreen notes={notes} />}
+        {screen === "repay" && <RepayScreen notes={notes} />}
         {screen === "history" && <HistoryScreen records={history} vaultReady={vaultReady} />}
 
         {/* Hidden file input for note import */}
@@ -952,14 +940,154 @@ function WsolUmbraAdapterPanel({ path }: { path: WsolUmbraPayoutPath }) {
   );
 }
 
-function BlockedFlow({ title, notes, reason }: { title: string; notes: StoredNote[]; reason: string }) {
+function BorrowScreen({ notes }: { notes: StoredNote[] }) {
+  const lendingPoolExplorerUrl =
+    "https://explorer.solana.com/address/J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn?cluster=devnet";
+  const approveTx1 = "m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF";
+  const approveTx2 = "3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2";
+
   return (
     <section className="stack">
-      <Hero title={title} subtitle="Intentionally blocked until on-chain and proof dependencies are real." />
-      <Panel title="Why this is not clickable yet">
-        <p>{reason}</p>
-        <p className="muted">Available notes in local vault: {notes.length}</p>
-      </Panel>
+      <Hero
+        title="Borrow"
+        subtitle="Collateral-ring proof + IKA approve_message CPI — backend confirmed end-to-end on devnet 2026-05-11."
+      />
+
+      <div
+        className="notice"
+        style={{
+          borderColor: "color-mix(in srgb, var(--success, #4ade80) 45%, var(--line))",
+          background: "color-mix(in srgb, var(--success, #4ade80) 6%, var(--surface-1))",
+        }}
+      >
+        <CheckCircle size={16} style={{ color: "var(--success, #4ade80)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Backend confirmed end-to-end on devnet</strong>
+          <span>
+            The full borrow path — <code>store_collateral_proof</code> → <code>lending_pool::borrow</code> →
+            <code>nullifier_registry::lock</code> CPI → IKA <code>approve_ika_borrow_message</code> CPI →
+            <code>MessageApproval</code> PDA — completed twice on Solana devnet earlier today via the
+            <code>ika-anchor-approval-smoke.mjs</code> harness.
+          </span>
+        </div>
+      </div>
+
+      <div className="grid two">
+        <Panel title="Confirmed devnet transactions">
+          <dl className="facts" style={{ fontSize: "13px" }}>
+            <dt>approve_ika_borrow_message tx 1</dt>
+            <dd>
+              <a
+                href={`https://explorer.solana.com/tx/${approveTx1}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ wordBreak: "break-all", color: "var(--privacy)" }}
+              >
+                {approveTx1.slice(0, 12)}…{approveTx1.slice(-8)}
+              </a>
+            </dd>
+            <dt>approve_ika_borrow_message tx 2</dt>
+            <dd>
+              <a
+                href={`https://explorer.solana.com/tx/${approveTx2}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ wordBreak: "break-all", color: "var(--privacy)" }}
+              >
+                {approveTx2.slice(0, 12)}…{approveTx2.slice(-8)}
+              </a>
+            </dd>
+            <dt>LendingPool program</dt>
+            <dd>
+              <a
+                href={lendingPoolExplorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--privacy)" }}
+              >
+                J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn
+              </a>
+            </dd>
+          </dl>
+          <button
+            style={{ marginTop: "16px", padding: "10px 14px" }}
+            onClick={() => window.open(lendingPoolExplorerUrl, "_blank", "noopener,noreferrer")}
+          >
+            Open lending_pool activity on Solana Explorer
+          </button>
+        </Panel>
+
+        <Panel title="What's wired vs roadmap">
+          <ul className="plain-list" style={{ fontSize: "13px", lineHeight: 1.6 }}>
+            <li>✅ <strong>store_collateral_proof</strong> — Groth16 collateral-ring verifier wired</li>
+            <li>✅ <strong>lending_pool::borrow</strong> — confirmed on devnet via IKA smoke</li>
+            <li>✅ <strong>nullifier_registry::lock</strong> — CPI invoked from borrow</li>
+            <li>✅ <strong>approve_ika_borrow_message</strong> — IKA approve_message CPI confirmed</li>
+            <li>🟡 IKA gRPC <strong>PresignForDWallet</strong> — pre-alpha BCS schema mismatch (upstream)</li>
+            <li>🟡 In-browser submit handler — scripted via <code>ika-anchor-approval-smoke.mjs</code>; UI binding follows</li>
+          </ul>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            Available notes in local vault: {notes.length}. To exercise the live borrow flow end-to-end today,
+            run <code>node scripts/ika-anchor-approval-smoke.mjs</code> on a devnet-funded wallet.
+          </p>
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function RepayScreen({ notes }: { notes: StoredNote[] }) {
+  return (
+    <section className="stack">
+      <Hero
+        title="Repay"
+        subtitle="Repayment settlement integration — partially live; private-transfer rail pending upstream."
+      />
+
+      <div
+        className="notice"
+        style={{
+          borderColor: "color-mix(in srgb, var(--amber) 55%, var(--line))",
+          background: "color-mix(in srgb, var(--amber) 7%, var(--surface-1))",
+        }}
+      >
+        <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>Pending MagicBlock Private Payments unblock</strong>
+          <span>
+            The repay path in <code>lending_pool::repay</code> calls <code>verify_private_payment_receipt</code> which
+            currently fail-closes. The fail-close is intentional until MagicBlock&apos;s Private Payments private-transfer
+            endpoint exposes a verifiable receipt format. Classification:
+            <code>magicblock_api_router_tee_limitation</code>. Tracked in <code>docs/MAGICBLOCK_PRIVATE_PAYMENTS.md</code>.
+          </span>
+        </div>
+      </div>
+
+      <div className="grid two">
+        <Panel title="What's already live for repay">
+          <ul className="plain-list" style={{ fontSize: "13px", lineHeight: 1.6 }}>
+            <li>✅ <strong>repay_ring</strong> ZK circuit compiled + verifier key</li>
+            <li>✅ <strong>verify_repay_proof</strong> — Groth16 BN254 verifier wired in lending_pool</li>
+            <li>✅ <strong>nullifier_registry::unlock</strong> — CPI invoked from repay</li>
+            <li>✅ MagicBlock Private Payments <strong>deposit + withdraw</strong> confirmed on devnet</li>
+            <li>🟡 Private Payments <strong>private-transfer</strong> — upstream router returns Blockhash not found</li>
+            <li>🟡 <strong>verify_private_payment_receipt</strong> — fail-closed until receipt format published</li>
+          </ul>
+        </Panel>
+
+        <Panel title="Unblock path">
+          <p style={{ fontSize: "13px" }}>
+            Once MagicBlock confirms the private-balance namespace credit and the canonical ephemeral-rollup
+            submit RPC, the receipt verification in <code>programs/lending_pool/src/lib.rs:641</code> can be
+            wired to the published verification key and the fail-close removed.
+          </p>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            Available notes in local vault: {notes.length}. The script
+            <code>scripts/magicblock-private-payments-live.mjs</code> exercises every reachable Private Payments
+            API surface and records exact upstream failure modes.
+          </p>
+        </Panel>
+      </div>
     </section>
   );
 }
