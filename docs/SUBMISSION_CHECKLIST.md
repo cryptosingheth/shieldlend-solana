@@ -144,7 +144,12 @@ Not allowed (must not claim):
 - [x] Private-transfer namespace retry deposit: `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed`
 - [x] Private-transfer namespace retry wSOL wrap: `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf`
 - [x] Private-transfer namespace retry `base -> ephemeral` top-up: `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9`
-- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by missing/sufficient private wSOL balance after deposit/top-up and router `Blockhash not found`
+- [x] 2026-05-11 deposit/withdraw run — wSOL wrap: `3H1Gthzf5P5zXLkfxUs1GvRNdaVjS9nBdojaE9mi4Qu4fS8rMyBL3dWWm1KpRNVWCv4GCV7Ca9T1z8HiSQt4t9Cd`
+- [x] 2026-05-11 deposit/withdraw run — deposit: `4nPf5MCPHrpssBH4dnRfzVvXYBTfsNqde1jCmNTSKn8G1A67wSqjHg1oRA5tbnuPRx7nfNJ5xa1oxPzEm61kGp1Z`
+- [x] 2026-05-11 deposit/withdraw run — withdraw: `2jdcAiFGZRqqCsdgH6jNLWxRAtE1noPsF3KVw45jStuc8PjbEfiHuP2wvVDYGL2TsdhUQUaPVJHDj71Y9aYkeKG3`
+- [x] 2026-05-11 private-transfer run — deposit: `C2FXHGmDSJG6nzbRH39vS6sntw1FpKYQTu221QuekhdLrKGJPPDzgi4JroEzjuRizWhWuQuRazq3ZNT8RMrb4Yr`
+- [x] 2026-05-11 private-transfer run — base→ephemeral top-up: `xrtkQrWS75Wz8t1pXK2yQAwnzJzTyMvgWHVubZFe1uaGZLxzrjurYymbkEvQojRAWLt6eyhPNVNjU9zbWv73rTw`
+- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked — 12 authenticated private-balance polls return `"balance":"0"` after deposit + top-up; router `Blockhash not found`; TEE/base Token Program `0x1`
 - Umbra native SOL ShieldLend payout
 - Encrypt on-chain FHE active
 
@@ -154,11 +159,12 @@ Not allowed (must not claim):
 
 - [x] `npm run typecheck:frontend` exits 0
 - [x] `npm run build:frontend` exits 0
-- [ ] `node scripts/demo-status.mjs` exits 0 and prints expected claim boundary
+- [x] `node scripts/demo-status.mjs` exits 0 and prints expected claim boundary
 - [ ] `node scripts/check-encrypt.mjs` exits 0
 - [ ] `node scripts/check-umbra.mjs` exits 0
 - [x] `node scripts/check-magicblock.mjs` exits 0
 - [x] `node scripts/magicblock-private-payments-live.mjs --dry-run` exits 0
+- [x] `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` submitted (2026-05-11)
 - [ ] `node scripts/check-ika.mjs` exits 0
 - [ ] All six demo video scenes recorded
 - [ ] All five screenshots captured

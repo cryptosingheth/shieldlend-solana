@@ -1,6 +1,6 @@
 # MagicBlock Private Payments Live SPL Flow
 
-Last checked: 2026-05-10
+Last checked: 2026-05-11
 
 ## Scope
 
@@ -75,6 +75,36 @@ The script covers:
 - `POST /v1/spl/transfer` with `visibility=public`
 - `POST /v1/spl/transfer` with `visibility=private`
 - `POST /v1/spl/withdraw`
+
+## 2026-05-11 Confirmation Run
+
+Re-ran all safe checks. No change in behavior.
+
+`--live-deposit-withdraw`:
+
+| Step | Signature |
+|---|---|
+| wSOL wrap | `3H1Gthzf5P5zXLkfxUs1GvRNdaVjS9nBdojaE9mi4Qu4fS8rMyBL3dWWm1KpRNVWCv4GCV7Ca9T1z8HiSQt4t9Cd` |
+| MagicBlock deposit | `4nPf5MCPHrpssBH4dnRfzVvXYBTfsNqde1jCmNTSKn8G1A67wSqjHg1oRA5tbnuPRx7nfNJ5xa1oxPzEm61kGp1Z` |
+| MagicBlock withdraw | `2jdcAiFGZRqqCsdgH6jNLWxRAtE1noPsF3KVw45jStuc8PjbEfiHuP2wvVDYGL2TsdhUQUaPVJHDj71Y9aYkeKG3` |
+
+`--live-private-transfer`:
+
+| Step | Signature |
+|---|---|
+| Deposit before transfer | `C2FXHGmDSJG6nzbRH39vS6sntw1FpKYQTu221QuekhdLrKGJPPDzgi4JroEzjuRizWhWuQuRazq3ZNT8RMrb4Yr` |
+| wSOL wrap for base→ephemeral top-up | `5VSKZu5vsTEE3nrxNAqcnAU5DzhRBLV95SjDomwV4QzQviJZFkvF8c8SRfBXaJKsHCgztaAnsRp46wSnA9NPDpVr` |
+| base→ephemeral top-up | `xrtkQrWS75Wz8t1pXK2yQAwnzJzTyMvgWHVubZFe1uaGZLxzrjurYymbkEvQojRAWLt6eyhPNVNjU9zbWv73rTw` |
+
+12 authenticated `/v1/spl/private-balance` polls (6 after deposit, 6 after top-up) all returned `"balance":"0","location":"base"`. Classification: `magicblock_api_router_tee_limitation` — unchanged.
+
+Other checks:
+- `node scripts/check-magicblock.mjs` — PASS; TEE/router/API reachable; TDX attestation warn unchanged
+- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS
+- `cargo test --workspace` — PASS, 47 tests
+- `anchor build --no-idl` — PASS (requires Solana tools in PATH: `PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"`)
 
 ## 2026-05-10 Funded Private-Transfer Results
 

@@ -2,9 +2,11 @@
 
 ## Task Objective
 
-Continue `live/magicblock-private-payments` and harden MagicBlock Private Payments private transfer after a prior TEE execution failure with Token Program `0x1` InsufficientFunds.
+Submission-clean pass: re-run all safe checks, confirm claim boundary accuracy, add 2026-05-11 evidence, remove false claims if any found.
 
-## Current Status
+## Current Status (updated 2026-05-11)
+
+Submission-clean pass complete. No false claims found. Docs updated with 2026-05-11 confirmation run signatures.
 
 MagicBlock Private Payments remains partially live:
 
@@ -19,13 +21,13 @@ MagicBlock Private Payments remains partially live:
 
 | File | Status |
 |---|---|
-| `scripts/magicblock-private-payments-live.mjs` | Hardened private-transfer mode with wSOL prep, balance snapshots, deposit-credit polling, transfer-route diagnostics, base-to-ephemeral top-up retry, and blocker classification |
-| `scripts/demo-status.mjs` | Updated claim boundary text for MagicBlock private transfer |
-| `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md` | Updated 2026-05-10 live funded private-transfer findings |
-| `docs/HACKATHON.md` | Updated MagicBlock status, claim boundary, and blocker table |
-| `docs/IMPLEMENTATION_STATUS.md` | Updated implementation ledger, signatures, and safe wording |
-| `docs/SUBMISSION_CHECKLIST.md` | Updated limitations, evidence table, and latest signatures |
-| `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md`, `.ai/TASK_LOG.md`, `.ai/DECISIONS.md` | Updated shared memory |
+| `scripts/magicblock-private-payments-live.mjs` | Hardened private-transfer mode (prior sessions) |
+| `scripts/demo-status.mjs` | Updated claim boundary text for MagicBlock private transfer (prior sessions) |
+| `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md` | Updated: date 2026-05-11, new 2026-05-11 confirmation run section with signatures |
+| `docs/HACKATHON.md` | Verified accurate — no changes needed |
+| `docs/IMPLEMENTATION_STATUS.md` | Verified accurate — no changes needed |
+| `docs/SUBMISSION_CHECKLIST.md` | Added 2026-05-11 deposit/withdraw and private-transfer signatures; ticked confirmed passes |
+| `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md` | Updated for 2026-05-11 session |
 
 ## Live Endpoint Results
 
@@ -43,26 +45,23 @@ MagicBlock Private Payments remains partially live:
 
 ## Devnet Signatures
 
-Latest deposit/withdraw run:
+2026-05-11 deposit/withdraw run:
 
 | Step | Signature |
 |---|---|
-| wSOL wrap + SyncNative | `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1` |
-| MagicBlock deposit | `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF` |
-| MagicBlock withdraw | `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn` |
+| wSOL wrap | `3H1Gthzf5P5zXLkfxUs1GvRNdaVjS9nBdojaE9mi4Qu4fS8rMyBL3dWWm1KpRNVWCv4GCV7Ca9T1z8HiSQt4t9Cd` |
+| MagicBlock deposit | `4nPf5MCPHrpssBH4dnRfzVvXYBTfsNqde1jCmNTSKn8G1A67wSqjHg1oRA5tbnuPRx7nfNJ5xa1oxPzEm61kGp1Z` |
+| MagicBlock withdraw | `2jdcAiFGZRqqCsdgH6jNLWxRAtE1noPsF3KVw45jStuc8PjbEfiHuP2wvVDYGL2TsdhUQUaPVJHDj71Y9aYkeKG3` |
 
-Funded private-transfer run:
+2026-05-11 private-transfer run:
 
 | Step | Signature |
 |---|---|
-| MagicBlock deposit before private transfer | `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ` |
-| Retry wSOL wrap + SyncNative | `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX` |
-| Retry MagicBlock deposit before private transfer | `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs` |
-| Namespace retry MagicBlock deposit | `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed` |
-| Namespace retry wSOL wrap + SyncNative | `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf` |
-| Namespace retry `base -> ephemeral` top-up | `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9` |
+| Deposit before private transfer | `C2FXHGmDSJG6nzbRH39vS6sntw1FpKYQTu221QuekhdLrKGJPPDzgi4JroEzjuRizWhWuQuRazq3ZNT8RMrb4Yr` |
+| wSOL wrap for base→ephemeral top-up | `5VSKZu5vsTEE3nrxNAqcnAU5DzhRBLV95SjDomwV4QzQviJZFkvF8c8SRfBXaJKsHCgztaAnsRp46wSnA9NPDpVr` |
+| base→ephemeral top-up | `xrtkQrWS75Wz8t1pXK2yQAwnzJzTyMvgWHVubZFe1uaGZLxzrjurYymbkEvQojRAWLt6eyhPNVNjU9zbWv73rTw` |
 
-No private-transfer signature was produced in the 2026-05-10 funded run.
+No private-transfer signature produced. 12 authenticated private-balance polls (6 after deposit, 6 after top-up) all returned `"balance":"0","location":"base"`.
 
 ## Private Transfer Classification
 
