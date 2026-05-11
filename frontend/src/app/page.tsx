@@ -770,7 +770,27 @@ function Deposit({
   const disabled = busy || !connected || !vaultReady;
   return (
     <section className="stack">
-      <Hero title="Deposit" subtitle="Creates a real local note and attempts a real ShieldedPool transaction. Fails at assertProgramDeployed until programs are on-chain." />
+      <Hero title="Deposit" subtitle="Two paths: a local-only crypto-vault test (no on-chain tx, no SOL locked) or a real Phantom-signed ShieldedPool deposit on devnet." />
+
+      {/* Stuck-deposit warning — most important for demo safety */}
+      <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--amber) 55%, var(--line))", background: "color-mix(in srgb, var(--amber) 9%, var(--surface-1))" }}>
+        <AlertTriangle size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ display: "block", marginBottom: "4px" }}>
+            ⚠ &ldquo;Submit deposit&rdquo; locks SOL into the shielded pool with no withdraw path today
+          </strong>
+          <span>
+            Real deposits land in the on-chain <code>shielded_pool</code> PDA. The in-UI withdraw submit
+            handler is roadmap (next sprint), and the protocol enforces a K=16 anonymity-set requirement
+            on the Merkle tree before any individual withdraw proof can be generated. So today, any SOL
+            you deposit via &ldquo;Submit deposit&rdquo; cannot be recovered from the UI — and the existing
+            <code> scripts/devnet-fullround.mjs</code> uses hardcoded DEV/TEST smoke vectors, not your
+            note&apos;s secret. <strong>For demo recording, use &ldquo;Create local note only&rdquo; (no on-chain tx,
+            no SOL locked).</strong> Only click &ldquo;Submit deposit&rdquo; with devnet SOL you are willing to leave
+            in the pool.
+          </span>
+        </div>
+      </div>
 
       {/* Signer warning — always shown */}
       <div className="notice" style={{ borderColor: "color-mix(in srgb, var(--danger) 40%, var(--line))", background: "color-mix(in srgb, var(--danger) 10%, var(--surface-1))" }}>
@@ -794,11 +814,21 @@ function Deposit({
               <div className="choice" key={denom.label}>
                 <strong>{denom.label}</strong>
                 <span>Commitment amount: {denom.lamports.toString()} lamports</span>
-                <button disabled={disabled} onClick={() => onDeposit(denom.lamports)}>
-                  Submit deposit
+                {/* Safe path FIRST: no on-chain tx, no SOL locked. */}
+                <button
+                  disabled={busy || !connected || !vaultReady}
+                  onClick={() => onCreateLocalNote(denom.lamports)}
+                  title="Generates the commitment in-browser and stores an encrypted note locally. No Solana transaction. No SOL locked. Safe for demo recording."
+                >
+                  ✓ Create local note only (safe)
                 </button>
-                <button disabled={busy || !connected || !vaultReady} onClick={() => onCreateLocalNote(denom.lamports)}>
-                  Create local note only
+                {/* Real on-chain deposit — locks SOL with no withdraw path today. */}
+                <button
+                  disabled={disabled}
+                  onClick={() => onDeposit(denom.lamports)}
+                  title="Submits a real Phantom-signed Solana devnet transaction to shielded_pool::deposit. Locks SOL in the pool PDA with no UI withdraw path today (see warning above). Only click with devnet SOL you can lose."
+                >
+                  ⚠ Submit deposit (locks SOL — no withdraw path today)
                 </button>
               </div>
             ))}
