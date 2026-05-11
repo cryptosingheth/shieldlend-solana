@@ -948,3 +948,90 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 **Claim boundary**: Accurate: real IKA devnet DKG, on-chain dWallet creation, authority transfer confirmed. Not accurate: live approval / relay signing until `lending_pool` redeployed and CPI step succeeds.
 
 2026-05-11T08:04:48Z | IKA approval CPI confirmed on devnet | approve_ika_borrow_message × 2 | tx1: m5trvfdGc2...WBF | tx2: 3AHThchU8E...bk2 | remaining: gRPC presign BCS mismatch (category b)
+
+- Confirmed: MagicBlock Private Payments public API deposit/withdraw are live on devnet.
+- Confirmed: auth/login and unsigned tx request flow.
+- Confirmed: private-transfer tx can be submitted through base devnet after local blockhash refresh.
+- Not confirmed: private transfer through the intended ephemeral/router RPC path.
+- Not confirmed: MagicBlock PER Rust macros in Anchor programs.
+
+## 2026-05-10 — MagicBlock Private Payments Private Balance Hardening
+
+**Branch**: `live/magicblock-private-payments`
+
+**Objective**: Continue after the prior private-transfer attempt reached TEE execution but failed with Token Program `0x1` InsufficientFunds, and determine whether MagicBlock deposit credits the private balance required by transfer.
+
+### Changes
+
+- Hardened `scripts/magicblock-private-payments-live.mjs` so `--live-private-transfer` now performs:
+  - SOL -> wSOL preparation when needed
+  - challenge/login auth
+  - wSOL mint initialized check/init
+  - MagicBlock wSOL deposit
+  - public/private balance polling after deposit
+  - private transfer attempt with the same owner/mint/amount context
+- Added report fields: `balanceSnapshots`, `depositCreditChecks`, and `privateTransferBlockerClassification`.
+- Updated MagicBlock docs, hackathon status, implementation status, submission checklist, demo status, current task, session handoff, and decisions.
+
+### Live Findings
+
+- `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` submitted:
+  - wSOL wrap + SyncNative: `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1`
+  - deposit: `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF`
+  - withdraw: `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn`
+- `node scripts/magicblock-private-payments-live.mjs --live-private-transfer` submitted the pre-transfer deposit:
+  - deposit: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
+- Retry:
+  - wSOL wrap + SyncNative: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
+  - deposit: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
+  - result unchanged: private-balance remained `balance: "0"` and transfer failed with Token Program `0x1` InsufficientFunds
+- After deposit, six authenticated `/v1/spl/private-balance` polls returned `balance: "0"` and `location: "base"`.
+- Private transfer attempts failed: router/ephemeral `Blockhash not found`; TEE `custom program error: 0x1`; base fallback Token Program `Error: insufficient funds`.
+
+### Classification
+
+Superseded by namespace retry below. Blocker initially appeared as `our_balance_account_setup_issue`.
+
+### Validations
+
+- `node scripts/check-magicblock.mjs` — PASS with network access; TEE/router/API reachable; TDX attestation still warns
+- `node scripts/magicblock-private-payments-live.mjs --dry-run` — PASS
+- `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` — PASS
+- `node scripts/magicblock-private-payments-live.mjs --live-private-transfer` — PARTIAL/BLOCKED as above
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS with existing `web-worker`/ffjavascript warning
+- `cargo test --workspace` — PASS, 47 tests
+- `anchor build --no-idl` — PASS with existing Anchor CLI/version and cfg/syscall warnings
+
+### Claim Boundary
+
+- Confirmed: API/auth/builders/mint check/deposit/withdraw live on devnet.
+- Confirmed: funded private-transfer harness now reaches the real insufficient-balance failure.
+- Not confirmed: private transfer through intended ephemeral/router path.
+- Not confirmed: MagicBlock PER Rust macros in Anchor programs or deployed.
+
+## 2026-05-10 — MagicBlock Private Payments Namespace Retry
+
+### Changes
+
+- Added `/v1/spl/transfer` route diagnostics for all private balance combinations:
+  - `base -> base`
+  - `base -> ephemeral`
+  - `ephemeral -> base`
+  - `ephemeral -> ephemeral`
+- Added live `base -> ephemeral` top-up fallback after deposit if `/v1/spl/private-balance` does not show sufficient private balance.
+- Updated classification so a submitted `base -> ephemeral` top-up that still does not surface usable private balance is treated as `magicblock_api_router_tee_limitation`, not local balance preparation.
+
+### Latest Evidence
+
+- Dry-run route builders: all four combinations accepted.
+- Live namespace retry signatures:
+  - deposit: `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed`
+  - wSOL wrap: `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf`
+  - `base -> ephemeral` top-up: `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9`
+- After the submitted top-up, six authenticated `/v1/spl/private-balance` polls still returned `balance: "0"` and `location: "base"`.
+- Private transfer stayed blocked: router/ephemeral `Blockhash not found`; TEE/base Token Program `0x1` / `Error: insufficient funds`.
+
+### Classification
+
+`magicblock_api_router_tee_limitation`: the public API accepts and submits the documented `base -> ephemeral` namespace route, but the public balance APIs still do not expose a usable private/ephemeral wSOL balance for the subsequent private transfer.

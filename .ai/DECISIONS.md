@@ -135,6 +135,10 @@ transfer amount and graph. Degraded mode does not claim repayment privacy.
 **How to apply**: UI must show "Degraded" mode when Private Payments rail is unavailable.
 Never claim repayment amount privacy without it.
 
+## Needs confirmation
+
+- 2026-05-10 MagicBlock Private Payments funded private-transfer run: `/v1/spl/deposit` submitted for wSOL, but authenticated `/v1/spl/private-balance` for the same owner/mint returned `balance: "0"` and `location: "base"` after six attempts; transfer then failed with Token Program `0x1` InsufficientFunds. Confirm the required private-balance namespace/account context with MagicBlock before claiming private transfer live.
+
 ---
 
 ## Borrow Amount Visibility
@@ -409,3 +413,11 @@ Do not attempt to land the current ABI in a devnet transaction — it will be re
 **Decision**: Treat IKA live-state creation and `lending_pool` deployment readiness as separate boundaries.
 **Why**: `scripts/ika-anchor-approval-smoke.mjs` proved that public IKA pre-alpha TLS gRPC + Solana devnet are usable enough to create a real dWallet and transfer its authority to the LendingPool CPI PDA. The remaining blocker is our deployment gap: the devnet `lending_pool` program predates `approve_ika_borrow_message` and fails with Anchor `InstructionFallbackNotFound` (`0x65`).
 **How to apply**: It is accurate to claim source-backed IKA CPI capability plus real devnet dWallet setup/authority transfer. It is not accurate to claim live IKA approval or relay signing until `lending_pool` is rebuilt and redeployed, then `node scripts/ika-anchor-approval-smoke.mjs` succeeds past the CPI approval step.
+
+---
+
+## MagicBlock Private Payments Namespace Boundary (2026-05-10)
+
+**Decision**: Do not claim MagicBlock Private Payments private transfer live until a real `ephemeral -> ephemeral` transfer signature succeeds and `/v1/spl/private-balance` or equivalent evidence shows usable private/ephemeral wSOL credit.
+**Why**: `/v1/spl/deposit` and the documented `base -> ephemeral` transfer route both submit on devnet for the same owner/mint, but authenticated private-balance polling still returns `location: "base"` and `balance: "0"` after the funds leave the public ATA. The actual private transfer then fails with router `Blockhash not found` and Token Program `0x1` InsufficientFunds on TEE/base attempts.
+**How to apply**: Keep deposit/withdraw claimed as live, keep private transfer marked blocked as `magicblock_api_router_tee_limitation`, and ask MagicBlock which private-balance namespace/account context or private-router API is required.

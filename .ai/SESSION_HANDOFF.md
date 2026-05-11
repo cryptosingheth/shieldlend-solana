@@ -2,10 +2,11 @@
 
 ## Task Objective
 
-Merge IKA Anchor CPI approval hardening (`live/ika-anchor-cpi`) and Encrypt Anchor Option B demo rail (`live/encrypt-anchor`) into `convergence/privacy-rails-integration`.
+Merge IKA Anchor CPI approval hardening (`live/ika-anchor-cpi`), Encrypt Anchor Option B demo rail (`live/encrypt-anchor`), and MagicBlock Private Payments final diagnostics (`live/magicblock-private-payments`) into `convergence/privacy-rails-integration`.
 
 - **IKA**: `approve_ika_borrow_message` CPI confirmed on devnet. Remaining gap: gRPC presign BCS schema mismatch (category b — cannot resolve without IKA pre-alpha Rust source).
 - **Encrypt**: Option B (`vendor/encrypt-anchor-anchor032`) compile-wires `request_liquidation_reveal_via_encrypt` / `verify_liquidation_reveal_via_encrypt`. gRPC CreateInput live. No on-chain FHE proven.
+- **MagicBlock**: Private Payments public API live; deposit/withdraw confirmed; private-transfer harness exercises funded path + `base -> ephemeral` top-up; blocked by `magicblock_api_router_tee_limitation`.
 
 ---
 
@@ -25,12 +26,41 @@ Full validation suite passed on `live/encrypt-anchor` at commit `7a2118b feat: h
 | `npm run check:encrypt-anchor -- --live` | PASS — upstream blocked confirmed; local fork compiles |
 | `node scripts/encrypt-health-smoke.mjs --live` | PASS — 3 ciphertext handles returned |
 
+---
+
+## Session Outcome — MagicBlock Private Payments (2026-05-11, live/magicblock-private-payments)
+
+| File | Change |
+|---|---|
+| `scripts/magicblock-private-payments-live.mjs` | Hardened private-transfer mode |
+| `scripts/demo-status.mjs` | Updated claim boundary text for MagicBlock private transfer |
+| `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md` | Updated: date 2026-05-11, new 2026-05-11 confirmation run section with signatures |
+| `docs/HACKATHON.md` | Verified accurate — no changes needed |
+| `docs/IMPLEMENTATION_STATUS.md` | Verified accurate — no changes needed |
+| `docs/SUBMISSION_CHECKLIST.md` | Added 2026-05-11 deposit/withdraw and private-transfer signatures; ticked confirmed passes |
+| `.ai/CURRENT_TASK.md`, `.ai/SESSION_HANDOFF.md` | Updated for 2026-05-11 session |
+
+---
+
 Encrypt devnet state (2026-05-10):
 - 2 active network keys: disc=2 `f00f3465...` (real), disc=7 `5555...` (sentinel)
 - Latest health_ratio ciphertext: `TEKonURJhM41WBgKhgJYfyHzmnpnQ3tdgJBSnS62zRi`
 - Latest health-smoke inputs: collateral `AfVVxyXvMcd5Gia36rRjFUbhwdx7GsDMty6XTuDGQ2Hw`, debt `GarhsLbtNa5EKB4GvUac7fZvAidTW3MaSyxFjK5a7q6F`, threshold `2wF4v3ZhXCN1vbisMGsngiDTPUUfSJuQiixNstC97MtD`
 
 Do not claim on-chain Encrypt/FHE health verification. The current state is client/gRPC live plus a reproducible upstream Anchor CPI blocker and a local compile-wired compatibility fork. No live Encrypt decryption round-trip through LendingPool is proven.
+
+MagicBlock Private Payments API endpoints (live as of 2026-05-11):
+- `GET /health` -> `200 {"status":"ok"}`
+- `GET /v1/spl/is-mint-initialized?mint=So11111111111111111111111111111111111111112&cluster=devnet` -> `200 initialized=true`
+- `GET /v1/spl/challenge?pubkey=<wallet>&cluster=devnet` -> `200`
+- `POST /v1/spl/login` -> `200` (bearer token redacted)
+- `GET /v1/spl/balance` -> `200`
+- `GET /v1/spl/private-balance` -> `200`, but after deposit and after submitted `base -> ephemeral` top-up it returns `location: "base"` and `balance: "0"` for the same owner/mint
+- `POST /v1/spl/deposit` -> `200` unsigned tx; live submit succeeded
+- `POST /v1/spl/transfer` public -> `200` unsigned tx, `sendTo=base`
+- `POST /v1/spl/transfer` private -> `200` unsigned tx, `sendTo=ephemeral`; submit remains blocked
+- `POST /v1/spl/withdraw` -> `200` unsigned tx; live submit succeeded
+- `GET /v1/mcp` -> `404 {"error":{"code":"NOT_FOUND","message":"Route not found"}}`
 
 ---
 
@@ -143,14 +173,55 @@ Devnet signatures (MagicBlock Private Payments, 2026-05-09):
 
 ---
 
+## MagicBlock 2026-05-11 Devnet Signatures
+
+Deposit/withdraw confirmation run:
+
+| Step | Signature |
+|---|---|
+| wSOL wrap | `3H1Gthzf5P5zXLkfxUs1GvRNdaVjS9nBdojaE9mi4Qu4fS8rMyBL3dWWm1KpRNVWCv4GCV7Ca9T1z8HiSQt4t9Cd` |
+| MagicBlock deposit | `4nPf5MCPHrpssBH4dnRfzVvXYBTfsNqde1jCmNTSKn8G1A67wSqjHg1oRA5tbnuPRx7nfNJ5xa1oxPzEm61kGp1Z` |
+| MagicBlock withdraw | `2jdcAiFGZRqqCsdgH6jNLWxRAtE1noPsF3KVw45jStuc8PjbEfiHuP2wvVDYGL2TsdhUQUaPVJHDj71Y9aYkeKG3` |
+
+Private-transfer diagnostic run:
+
+| Step | Signature |
+|---|---|
+| Deposit before private transfer | `C2FXHGmDSJG6nzbRH39vS6sntw1FpKYQTu221QuekhdLrKGJPPDzgi4JroEzjuRizWhWuQuRazq3ZNT8RMrb4Yr` |
+| wSOL wrap for base→ephemeral top-up | `5VSKZu5vsTEE3nrxNAqcnAU5DzhRBLV95SjDomwV4QzQviJZFkvF8c8SRfBXaJKsHCgztaAnsRp46wSnA9NPDpVr` |
+| base→ephemeral top-up | `xrtkQrWS75Wz8t1pXK2yQAwnzJzTyMvgWHVubZFe1uaGZLxzrjurYymbkEvQojRAWLt6eyhPNVNjU9zbWv73rTw` |
+
+No private-transfer signature produced. 12 authenticated private-balance polls (6 after deposit, 6 after top-up) all returned `"balance":"0","location":"base"`.
+
+## Private Transfer Classification
+
+The current blocker is classified as `magicblock_api_router_tee_limitation`:
+
+- The script holds/wraps 1000000 base units of wSOL before deposit.
+- Deposit signs/submits successfully.
+- Six post-deposit authenticated private-balance polls return `balance: "0"` and `location: "base"`.
+- The script probes all private `/v1/spl/transfer` route combinations; `base -> ephemeral` is accepted.
+- The submitted `base -> ephemeral` top-up also consumes public wSOL, but six private-balance polls still return `balance: "0"` and `location: "base"`.
+- Private transfer then fails: router/ephemeral `Blockhash not found`; TEE `custom program error: 0x1`; base fallback Token Program `Error: insufficient funds`.
+
+---
+
 ## Final Status: PARTIAL
 
 - **LIVE**: `approve_ika_borrow_message` CPI confirmed on devnet (two tx signatures)
 - **LIVE**: Encrypt gRPC CreateInput live; local Anchor 0.32 fork compile-wires request/reveal path in `lending_pool`
+- **LIVE**: MagicBlock Private Payments public API; deposit/withdraw confirmed on devnet
 - **BLOCKED (b)**: IKA gRPC `PresignForDWallet` BCS schema mismatch with pre-alpha coordinator
 - **BLOCKED**: Encrypt on-chain FHE — upstream AccountInfo crate-family mismatch; local fork compile-wired only
+- **BLOCKED**: MagicBlock Private Payments private transfer — neither deposit nor `base -> ephemeral` top-up exposes usable private wSOL balance; transfer reaches Token Program `0x1` InsufficientFunds
 
----
+MagicBlock live state (2026-05-11):
+- Private Payments public API is live/reachable.
+- wSOL mint queue is initialized on MagicBlock devnet API.
+- Challenge/login bearer auth works for the local devnet wallet.
+- Unsigned transaction builders work for deposit, withdraw, public transfer, and private transfer.
+- wSOL deposit and withdraw were signed locally and submitted on devnet.
+- The private-transfer harness now exercises a funded path plus submitted `base -> ephemeral` top-up and reaches a real insufficient-private-balance failure.
 
 ## Do Not Claim
 
@@ -163,6 +234,10 @@ Devnet signatures (MagicBlock Private Payments, 2026-05-09):
 - Umbra native SOL payout
 - Encrypt on-chain FHE active
 - C2H confirmed by roundtrip script (Phase 1 FAILED with `0x0`)
+- Full MagicBlock Private Payments private transfer live end-to-end through the intended ephemeral/router path
+- ShieldLend repay settlement is MagicBlock-bound
+- MagicBlock PER Rust macros are wired into Anchor programs or deployed
+- TDX attestation is verified
 
 ---
 
@@ -172,5 +247,8 @@ Devnet signatures (MagicBlock Private Payments, 2026-05-09):
 2. Create PR against `main`.
 3. Fill C2H devnet tx signatures into `docs/SUBMISSION_CHECKLIST.md`.
 4. Record demo scenes (especially Scene 5/6 for IKA and Scene 7 for Encrypt).
+5. Ask MagicBlock which private-balance namespace/account context should be credited by deposit and `base -> ephemeral`.
+6. Ask MagicBlock which RPC should accept `sendTo=ephemeral` transactions and how the returned blockhash should validate.
+7. Only after a successful private-transfer signature exists, wire receipt/signature binding into ShieldLend repay settlement.
 
 Safe to `/clear` after this handoff.

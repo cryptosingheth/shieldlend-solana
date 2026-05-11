@@ -38,7 +38,7 @@ if (branchResult.status !== 0) {
 } else {
   const branch = branchResult.stdout.trim();
   ok(`branch: ${branch}`);
-  const VALID_BRANCHES = ['convergence/privacy-rails-integration', 'live/encrypt-anchor'];
+  const VALID_BRANCHES = ['convergence/privacy-rails-integration', 'live/encrypt-anchor', 'live/magicblock-private-payments', 'live/ika-anchor-cpi'];
   if (!VALID_BRANCHES.includes(branch)) {
     warn(`expected one of ${VALID_BRANCHES.join(', ')} — got ${branch}`);
   }
@@ -178,6 +178,7 @@ ok('Encrypt Anchor CPI Option B: COMPILE-WIRED — vendor/encrypt-anchor-anchor0
 ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
+warn('MagicBlock private transfer: blocked — deposit and submitted base→ephemeral top-up do not expose usable private wSOL before Token Program 0x1');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
 ok('IKA Anchor CPI: approve_ika_borrow_message CPI CONFIRMED on devnet (2026-05-11)');
 ok('  approval tx 1: m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF');
@@ -201,6 +202,7 @@ console.log(`
   ✓ MagicBlock TEE RPC + Router RPC HTTP 200 on devnet
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
+  ✓ MagicBlock private-transfer harness now runs SOL→wSOL, login, mint check, deposit, balance polling, route probing, base→ephemeral top-up, then transfer attempt
   ✓ IKA SDK/WASM loaded; capability probe passed; blockers source-documented
   ✓ IKA Anchor CPI compile-wired in lending_pool against official pre-alpha approve_message ABI
   ✓ IKA approve_ika_borrow_message CPI confirmed on devnet — two approval tx signatures on record
@@ -211,7 +213,7 @@ console.log(`
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
   ✗ IKA relay signing active end-to-end (approval CPI confirmed; gRPC presign/sign blocked by IKA pre-alpha coordinator BCS schema mismatch; IKA pre-alpha is single mock signer, not production MPC)
-  ✗ MagicBlock Private Payments private transfer via intended ephemeral/router path (ephemeral submit blocked; base devnet fallback only)
+  ✗ MagicBlock Private Payments private transfer end-to-end live (deposit/top-up do not expose usable private balance; funded path reaches Token Program 0x1 InsufficientFunds; router returns Blockhash not found)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)
   ✗ Umbra native SOL ShieldLend payout (C2H exits direct stealth_address; no wSOL bridge)

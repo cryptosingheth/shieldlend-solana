@@ -95,7 +95,7 @@ These are implementation gaps, not design gaps:
 
 3. **MagicBlock PER Rust macros not in Anchor programs** — the workspace now uses Anchor 0.32.1, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not wired into ShieldLend programs. The TypeScript PER SDK builders are verified but no on-chain PER transaction is submitted.
 
-4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. Private transfer builder returns 200. Local blockhash refresh lets the tx submit through base devnet, but the intended ephemeral/router path still fails with `Blockhash not found`; TEE rejects writable accounts.
+4. **MagicBlock Private Payments partially live** — Public API health/challenge/login/mint/balance/builders work. wSOL deposit and withdraw submitted on devnet. The private-transfer harness now runs SOL -> wSOL, login, mint check, deposit, balance polling, transfer namespace probing, and a submitted `base -> ephemeral` top-up retry. After deposit and after the top-up route, authenticated private-balance polling still does not show sufficient private wSOL credit for the same owner/mint, and transfer execution fails with Token Program `0x1` InsufficientFunds; router also still fails with `Blockhash not found`.
 
 5. **MagicBlock TDX attestation challenge mismatch** — SDK 0.8.8 challenge format does not match current devnet TEE expected format. TEE RPC itself responds HTTP 200. Attestation verification is not claimed.
 
@@ -119,7 +119,7 @@ Allowed claims (confirmed by devnet evidence):
 | MagicBlock TEE + Router RPC HTTP 200 | `check-magicblock.mjs` output |
 | MagicBlock PER SDK builders verified | 13/13 SDK functions, 17/17 sidecar tests |
 | MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |
-| MagicBlock Private Payments private-transfer base-RPC fallback | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; not a claim that ephemeral/router private transfer is live |
+| MagicBlock Private Payments funded private-transfer diagnosis | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; classified as MagicBlock API/router/TEE limitation because deposit and the submitted `base -> ephemeral` route do not expose usable private wSOL balance before Token Program `0x1` |
 | IKA SDK/WASM confirmed with source-backed blockers | `check-ika.mjs` output |
 | IKA Anchor CPI compile-wired + devnet DKG/dWallet transfer confirmed | `check:ika-cpi` + `smoke:ika-approval` output |
 | IKA `approve_ika_borrow_message` CPI CONFIRMED on devnet (2026-05-11) | `smoke:ika-approval`; two approval tx signatures on record; `MessageApproval` PDAs created on-chain |
@@ -144,8 +144,21 @@ Not allowed (must not claim):
 - [x] wSOL wrap: `2q5FC6r6HpR2FmKt9nfB1ZjHEYEgAszzBCe73NVxiCeyoYDhd3dePdHVLuJetsWmbWYW2svstPNUpjEf9ZwPPhuP`
 - [x] MagicBlock deposit: `UtqpXCERPPZoP1HNPXzj1Frmh7MtqXGiE66GMnpZvvrziNQL1YrWVzFfShYB4EU4HAnofmdeJXNhjb1C96XPFct`
 - [x] MagicBlock withdraw: `4FXm5NYmEf9gTXdGWGUiHB7BzEEXTaAB1WW6GhDS6QN4XKmEtH9Cw9hkRBAsqxHST2M9En39MTwfbLqNV5c9WRpP`
-- [x] MagicBlock private-transfer base-RPC fallback after blockhash refresh: `2BA9bAEk78cxfDHDqDDHaGs6CsbYdSXn17hGEV7DHitWm873CNSecigThUvqwJEa9oX6q8btGKfPAmrC2MnvtV1s`
-- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked by router `Blockhash not found`; TEE rejects writable accounts
+- [x] Latest wSOL wrap + SyncNative: `Z9YyUK7y7iUwkKQo73chxngq9V2X45Q6Emrv6KRJoKj2roZjibH6nWnSruB8kPf3X4ZnXqFb6ehCjZQviQMFVM1`
+- [x] Latest MagicBlock deposit/withdraw check deposit: `28hBK6aKZzYoZ5uYynu2QkYG5sLJ7zWAiEacTodfFN22cvCcb4Meu57xEcEeFLFJwqBUL1yGLn9Mn2R5wdE3LgZF`
+- [x] Latest MagicBlock deposit/withdraw check withdraw: `5SiFVzahhkmQaD8uM4qhWWgTBhKDjcEccm6ui7L4ryAtZJiygZGnUQ1fNDuP9K9w9eFe5rUtyibR3hoc96hQHBBn`
+- [x] Funded private-transfer check deposit: `51eRJbsp8mDMGRcacCmwtf6BV84Mgo5V28D6GRLygBqbrmnbXQHL3CPNJEM9E7JPBS5wCRGAHDcWxi3frCQRsiFZ`
+- [x] Funded private-transfer retry wSOL wrap: `2hCZ9opwH4L9mhgGV6rsQSRP7R6QGn7ddhpVKirLUg5Q2Daj9awvHBPoAEi8EhtYpgqykBzA9ZEdETR2xV4KttBX`
+- [x] Funded private-transfer retry deposit: `4kiDc7ZgQ4XU3KMGqHK4VodAorK9BTtGbfLrVi9Rhi5dBpcfqGTh7GVTwPjDf6WpPjHTBcgZ1eokjNc2i2u3JdDs`
+- [x] Private-transfer namespace retry deposit: `3PZH1cguYCd9QUb5Rdvb72So59UbNrfriYbrUdZyGf1YvEm7WgCyHKLbxrZdbx1zFEwZWuMMXdzuxJbXzh8ry7ed`
+- [x] Private-transfer namespace retry wSOL wrap: `XRAyJP9aKLU9pBetQPAjxn276xWMEtsrEBXKJBDKg6cUQyftxz1rvhai5L2mnbBpKBpj5ePenKVSUMo5NEAfwRf`
+- [x] Private-transfer namespace retry `base -> ephemeral` top-up: `34r7RQe2Acea6VCn3TLLCQJYUB6VjBPukWqt63c7uQEEkYWbSwgwrSaJNLVg74HLAuW9jrRn2fPkL81LtDogRHL9`
+- [x] 2026-05-11 deposit/withdraw run — wSOL wrap: `3H1Gthzf5P5zXLkfxUs1GvRNdaVjS9nBdojaE9mi4Qu4fS8rMyBL3dWWm1KpRNVWCv4GCV7Ca9T1z8HiSQt4t9Cd`
+- [x] 2026-05-11 deposit/withdraw run — deposit: `4nPf5MCPHrpssBH4dnRfzVvXYBTfsNqde1jCmNTSKn8G1A67wSqjHg1oRA5tbnuPRx7nfNJ5xa1oxPzEm61kGp1Z`
+- [x] 2026-05-11 deposit/withdraw run — withdraw: `2jdcAiFGZRqqCsdgH6jNLWxRAtE1noPsF3KVw45jStuc8PjbEfiHuP2wvVDYGL2TsdhUQUaPVJHDj71Y9aYkeKG3`
+- [x] 2026-05-11 private-transfer run — deposit: `C2FXHGmDSJG6nzbRH39vS6sntw1FpKYQTu221QuekhdLrKGJPPDzgi4JroEzjuRizWhWuQuRazq3ZNT8RMrb4Yr`
+- [x] 2026-05-11 private-transfer run — base→ephemeral top-up: `xrtkQrWS75Wz8t1pXK2yQAwnzJzTyMvgWHVubZFe1uaGZLxzrjurYymbkEvQojRAWLt6eyhPNVNjU9zbWv73rTw`
+- [ ] MagicBlock private transfer through ephemeral/router RPC: blocked — 12 authenticated private-balance polls return `"balance":"0"` after deposit + top-up; router `Blockhash not found`; TEE/base Token Program `0x1`
 - Umbra native SOL ShieldLend payout
 - Encrypt on-chain FHE active
 
@@ -155,11 +168,12 @@ Not allowed (must not claim):
 
 - [x] `npm run typecheck:frontend` exits 0
 - [x] `npm run build:frontend` exits 0
-- [ ] `node scripts/demo-status.mjs` exits 0 and prints expected claim boundary
+- [x] `node scripts/demo-status.mjs` exits 0 and prints expected claim boundary
 - [ ] `node scripts/check-encrypt.mjs` exits 0
 - [ ] `node scripts/check-umbra.mjs` exits 0
 - [x] `node scripts/check-magicblock.mjs` exits 0
 - [x] `node scripts/magicblock-private-payments-live.mjs --dry-run` exits 0
+- [x] `node scripts/magicblock-private-payments-live.mjs --live-deposit-withdraw` submitted (2026-05-11)
 - [ ] `node scripts/check-ika.mjs` exits 0
 - [ ] All six demo video scenes recorded
 - [ ] All five screenshots captured

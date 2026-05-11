@@ -12,7 +12,9 @@
  *   node scripts/magicblock-private-payments-live.mjs --live-private-transfer
  *
  * The live path signs locally with the Solana CLI devnet wallet and submits
- * only unsigned transactions returned by the public MagicBlock API.
+ * only unsigned transactions returned by the public MagicBlock API. The
+ * private-transfer mode deliberately funds the private balance before transfer:
+ * SOL -> wSOL, login, mint check/init, deposit, balance verification, transfer.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -62,6 +64,7 @@ if (selectedModes.length !== 1) {
 const isLiveMode = mode !== "dry-run";
 const runDepositWithdraw = mode === "live" || mode === "live-deposit-withdraw";
 const runPrivateTransfer = mode === "live" || mode === "live-private-transfer";
+const runPrivateTransferFunding = runPrivateTransfer;
 
 function argValue(name, fallback = "") {
   const prefix = `${name}=`;
@@ -150,6 +153,10 @@ function explorer(signature) {
   return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getAssociatedTokenAddressSync(mint, owner) {
   return PublicKey.findProgramAddressSync(
     [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
@@ -196,6 +203,151 @@ async function tokenBalance(connection, owner, mint) {
     });
   }
   return { total, accounts };
+}
+
+function maybeBigInt(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return BigInt(value);
+  }
+  return null;
+}
+
+function collectBalanceCandidates(value, path = "$", candidates = []) {
+  if (value === null || value === undefined) return candidates;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectBalanceCandidates(item, `${path}[${index}]`, candidates));
+    return candidates;
+  }
+  if (typeof value !== "object") return candidates;
+
+  const tokenAmount = value.tokenAmount;
+  if (tokenAmount && typeof tokenAmount === "object") {
+    const tokenAmountValue = maybeBigInt(tokenAmount.amount);
+    if (tokenAmountValue !== null) {
+      candidates.push({
+        path: `${path}.tokenAmount.amount`,
+        amount: tokenAmountValue.toString(),
+      });
+    }
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (["decimals", "slot", "lastValidBlockHeight", "instructionCount"].includes(key)) {
+      continue;
+    }
+    const direct = maybeBigInt(nested);
+    if (
+      direct !== null &&
+      /(^|_)(amount|balance|total|available|baseUnits|rawAmount|privateBalance|publicBalance)$/i.test(key)
+    ) {
+      candidates.push({ path: `${path}.${key}`, amount: direct.toString() });
+    }
+    collectBalanceCandidates(nested, `${path}.${key}`, candidates);
+  }
+  return candidates;
+}
+
+function bestBalanceAmount(payload) {
+  const candidates = collectBalanceCandidates(payload);
+  if (candidates.length === 0) return { amount: null, candidates };
+  const direct = candidates.find((candidate) =>
+    /\.(amount|balance|total|available|privateBalance|publicBalance)$/i.test(candidate.path)
+  );
+  return {
+    amount: direct?.amount ?? candidates[0].amount,
+    candidates,
+  };
+}
+
+async function getMagicBlockBalanceSnapshot(report, label, owner, mintAddress, bearerToken) {
+  const publicBalance = await apiGet(
+    report,
+    appendQuery("/v1/spl/balance", {
+      address: owner,
+      mint: mintAddress,
+      cluster: CLUSTER,
+    })
+  );
+  const privateBalance = bearerToken
+    ? await apiGet(
+        report,
+        appendQuery("/v1/spl/private-balance", {
+          address: owner,
+          mint: mintAddress,
+          cluster: CLUSTER,
+        }),
+        { bearerToken }
+      )
+    : null;
+
+  const publicParsed = bestBalanceAmount(publicBalance.response);
+  const privateParsed = privateBalance
+    ? bestBalanceAmount(privateBalance.response)
+    : { amount: null, candidates: [] };
+  const snapshot = {
+    label,
+    public: {
+      ok: publicBalance.ok,
+      status: publicBalance.status,
+      parsedAmountBaseUnits: publicParsed.amount,
+      parsedCandidates: publicParsed.candidates,
+      response: publicBalance.response,
+    },
+    private: privateBalance
+      ? {
+          ok: privateBalance.ok,
+          status: privateBalance.status,
+          parsedAmountBaseUnits: privateParsed.amount,
+          parsedCandidates: privateParsed.candidates,
+          response: privateBalance.response,
+        }
+      : null,
+  };
+  report.balanceSnapshots.push(snapshot);
+  return snapshot;
+}
+
+async function waitForPrivateBalanceAtLeast(
+  report,
+  owner,
+  mintAddress,
+  bearerToken,
+  minimumBaseUnits,
+  label
+) {
+  const maxAttempts = Number(env("MAGICBLOCK_PRIVATE_BALANCE_POLL_ATTEMPTS", "6"));
+  const delayMs = Number(env("MAGICBLOCK_PRIVATE_BALANCE_POLL_DELAY_MS", "2500"));
+  let lastSnapshot = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastSnapshot = await getMagicBlockBalanceSnapshot(
+      report,
+      `${label}-attempt-${attempt}`,
+      owner,
+      mintAddress,
+      bearerToken
+    );
+    const parsed = maybeBigInt(lastSnapshot.private?.parsedAmountBaseUnits);
+    if (parsed !== null && parsed >= minimumBaseUnits) {
+      return {
+        credited: true,
+        parsedPrivateBalance: parsed.toString(),
+        attempts: attempt,
+        snapshot: lastSnapshot,
+      };
+    }
+    if (attempt < maxAttempts) await sleep(delayMs);
+  }
+
+  return {
+    credited: false,
+    parsedPrivateBalance: lastSnapshot?.private?.parsedAmountBaseUnits ?? null,
+    attempts: maxAttempts,
+    snapshot: lastSnapshot,
+  };
 }
 
 async function ensureWsol(connection, wallet, mint, amountBaseUnits) {
@@ -255,6 +407,39 @@ function summarizeBuild(payload) {
       typeof payload.transactionBase64 === "string"
         ? payload.transactionBase64.length
         : undefined,
+  };
+}
+
+function transferBody({
+  owner,
+  recipient,
+  mintAddress,
+  amount,
+  visibility,
+  fromBalance,
+  toBalance,
+  memo,
+  clientRefId = "1",
+}) {
+  return {
+    from: owner,
+    to: recipient,
+    mint: mintAddress,
+    amount: Number(amount),
+    visibility,
+    fromBalance,
+    toBalance,
+    cluster: CLUSTER,
+    initIfMissing: true,
+    initAtasIfMissing: true,
+    initVaultIfMissing: false,
+    memo,
+    minDelayMs: "0",
+    maxDelayMs: "0",
+    clientRefId,
+    split: 1,
+    gasless: false,
+    legacy: true,
   };
 }
 
@@ -455,6 +640,221 @@ async function tryPrivateTransferSubmit(report, connectionByTarget, wallet, buil
   return false;
 }
 
+async function requestTransferRouteDiagnostics(
+  report,
+  owner,
+  recipient,
+  mintAddress,
+  amountBaseUnits,
+  bearerToken
+) {
+  const routes = [
+    ["base", "base"],
+    ["base", "ephemeral"],
+    ["ephemeral", "base"],
+    ["ephemeral", "ephemeral"],
+  ];
+  const diagnostics = [];
+
+  for (const [fromBalance, toBalance] of routes) {
+    const body = transferBody({
+      owner,
+      recipient,
+      mintAddress,
+      amount: amountBaseUnits,
+      visibility: "private",
+      fromBalance,
+      toBalance,
+      memo: `ShieldLend MagicBlock route check ${fromBalance}->${toBalance}`,
+      clientRefId: String(diagnostics.length + 10),
+    });
+    const result = await apiPost(
+      report,
+      "/v1/spl/transfer",
+      body,
+      bearerToken ? { bearerToken } : {}
+    );
+    const raw = result.response;
+    const summary = summarizeBuild(raw);
+    result.response = summary;
+    diagnostics.push({
+      visibility: "private",
+      fromBalance,
+      toBalance,
+      ok: result.ok,
+      status: result.status,
+      sendTo: summary?.sendTo ?? null,
+      recentBlockhash: summary?.recentBlockhash ?? null,
+      lastValidBlockHeight: summary?.lastValidBlockHeight ?? null,
+      instructionCount: summary?.instructionCount ?? null,
+      requiredSigners: summary?.requiredSigners ?? null,
+      validator: summary?.validator ?? null,
+      error: result.ok ? "" : result.responseText,
+      build: raw,
+    });
+  }
+
+  report.transferRouteDiagnostics.push(...diagnostics);
+  return diagnostics;
+}
+
+async function tryBaseToEphemeralTopUp(
+  report,
+  connectionByTarget,
+  baseConnection,
+  wallet,
+  owner,
+  recipient,
+  mint,
+  mintAddress,
+  amountBaseUnits,
+  bearerToken
+) {
+  const before = [...report.depositCreditChecks].reverse()[0] ?? null;
+  if (before?.credited) return null;
+
+  report.tokenTopUpPreparation = await ensureWsol(baseConnection, wallet, mint, amountBaseUnits);
+  for (const signature of report.tokenTopUpPreparation.signatures ?? []) {
+    report.txSignatures.push({
+      label: "wrap-wsol-for-base-to-ephemeral-top-up",
+      signature,
+      sendTo: "base",
+      explorer: explorer(signature),
+    });
+  }
+
+  const body = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: amountBaseUnits,
+    visibility: "private",
+    fromBalance: "base",
+    toBalance: "ephemeral",
+    memo: "ShieldLend MagicBlock base-to-ephemeral top-up",
+    clientRefId: "77",
+  });
+  const route = await apiPost(
+    report,
+    "/v1/spl/transfer",
+    body,
+    bearerToken ? { bearerToken } : {}
+  );
+  const build = route.response;
+  route.response = summarizeBuild(route.response);
+  const attempt = {
+    route: "base->ephemeral",
+    requested: body,
+    build: route.response,
+    submitted: false,
+    signature: "",
+    error: "",
+    creditCheck: null,
+  };
+
+  if (!route.ok) {
+    attempt.error = `builder HTTP ${route.status}: ${route.responseText}`;
+    report.privateBalanceTopUpAttempts.push(attempt);
+    return attempt;
+  }
+
+  try {
+    const signature = await signAndSendBuild(
+      report,
+      connectionByTarget,
+      wallet,
+      "base-to-ephemeral-top-up",
+      build,
+      { target: build.sendTo }
+    );
+    attempt.submitted = true;
+    attempt.signature = signature;
+    attempt.creditCheck = await waitForPrivateBalanceAtLeast(
+      report,
+      owner,
+      mintAddress,
+      bearerToken,
+      amountBaseUnits,
+      "after-base-to-ephemeral-top-up"
+    );
+  } catch (error) {
+    attempt.error = error instanceof Error ? error.message : String(error);
+  }
+
+  report.privateBalanceTopUpAttempts.push(attempt);
+  return attempt;
+}
+
+function classifyPrivateTransferBlocker(report, amountBaseUnits) {
+  if (report.privateTransferSubmitAttempts.some((attempt) => attempt.status === "submitted")) {
+    return {
+      category: "none",
+      detail: "A private-transfer transaction submitted. Confirm whether the accepting RPC is the intended MagicBlock private route before making stronger privacy claims.",
+    };
+  }
+
+  const errors = report.privateTransferSubmitAttempts
+    .map((attempt) => attempt.error || attempt.status || "")
+    .join(" | ");
+  const latestDepositCheck = [...report.depositCreditChecks].reverse()[0] ?? null;
+  const latestTopUpAttempt = [...report.privateBalanceTopUpAttempts].reverse()[0] ?? null;
+  const latestTopUpCheck = latestTopUpAttempt?.creditCheck ?? null;
+  const parsedPrivateBalance = maybeBigInt(latestDepositCheck?.parsedPrivateBalance);
+  const parsedTopUpPrivateBalance = maybeBigInt(latestTopUpCheck?.parsedPrivateBalance);
+  const hasTokenInsufficientFunds =
+    /InsufficientFunds|insufficient funds|custom program error: 0x1|0x1/i.test(errors);
+
+  if (hasTokenInsufficientFunds) {
+    if (parsedTopUpPrivateBalance !== null && parsedTopUpPrivateBalance >= amountBaseUnits) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "Base->ephemeral top-up reported enough private wSOL, but transfer execution still returned Token Program 0x1 InsufficientFunds.",
+      };
+    }
+    if (parsedPrivateBalance !== null && parsedPrivateBalance >= amountBaseUnits) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "MagicBlock private-balance API reported enough deposited wSOL, but TEE/token execution still returned Token Program 0x1 InsufficientFunds.",
+      };
+    }
+    if (latestTopUpAttempt?.submitted && latestTopUpCheck?.credited === false) {
+      return {
+        category: "magicblock_api_router_tee_limitation",
+        detail:
+          "Public API accepted and submitted the documented base->ephemeral private transfer route for the same owner/mint, but /v1/spl/private-balance still returned no usable ephemeral credit and the actual ephemeral transfer failed with Token Program 0x1 InsufficientFunds.",
+      };
+    }
+    return {
+      category: "our_balance_account_setup_issue",
+      detail:
+        "Private transfer reached token execution with insufficient private wSOL. Neither /v1/spl/deposit nor the documented base->ephemeral transfer route produced a parseable/sufficient private-balance credit for the same owner/mint context.",
+    };
+  }
+
+  if (/Blockhash not found|cannot be written|writable account|blockhash/i.test(errors)) {
+    return {
+      category: "magicblock_api_router_tee_limitation",
+      detail:
+        "The funded private-transfer transaction is still blocked by MagicBlock router/TEE submission semantics, not by local wSOL wrapping or account preparation.",
+    };
+  }
+
+  if (latestDepositCheck && latestDepositCheck.credited === false) {
+    return {
+      category: "our_balance_account_setup_issue",
+      detail:
+        "Deposit submitted, but the private-balance endpoint did not show sufficient credit before transfer.",
+    };
+  }
+
+  return {
+    category: "unknown",
+    detail: errors || "No private-transfer submit attempts were recorded.",
+  };
+}
+
 async function main() {
   const keypairPath = walletPath();
   const wallet = readKeypair(keypairPath);
@@ -515,6 +915,12 @@ async function main() {
     txSignatures: [],
     blockhashDiagnostics: [],
     privateTransferSubmitAttempts: [],
+    balanceSnapshots: [],
+    depositCreditChecks: [],
+    privateBalanceTopUpAttempts: [],
+    tokenTopUpPreparation: null,
+    transferRouteDiagnostics: [],
+    privateTransferBlockerClassification: null,
     tokenPreparation: null,
     dryRunNotice:
       mode === "dry-run"
@@ -538,12 +944,7 @@ async function main() {
 
   await apiGet(report, "/v1/mcp");
 
-  const balancePath = appendQuery("/v1/spl/balance", {
-    address: owner,
-    mint: mintAddress,
-    cluster: CLUSTER,
-  });
-  await apiGet(report, balancePath);
+  await getMagicBlockBalanceSnapshot(report, "initial-public-balance", owner, mintAddress, "");
 
   const mintStatusPath = appendQuery("/v1/spl/is-mint-initialized", {
     mint: mintAddress,
@@ -590,15 +991,7 @@ async function main() {
     bearerToken = login.response.token;
     login.response = { token: "<redacted>" };
     report.liveStatus.challengeLogin = "ok";
-    await apiGet(
-      report,
-      appendQuery("/v1/spl/private-balance", {
-        address: owner,
-        mint: mintAddress,
-        cluster: CLUSTER,
-      }),
-      { bearerToken }
-    );
+    await getMagicBlockBalanceSnapshot(report, "after-login", owner, mintAddress, bearerToken);
   } else {
     report.liveStatus.challengeLogin = challenge.ok
       ? "challenge-ok; login skipped in dry-run"
@@ -615,41 +1008,26 @@ async function main() {
     initAtasIfMissing: true,
     idempotent: true,
   };
-  const publicTransferBody = {
-    from: owner,
-    to: recipient,
-    mint: mintAddress,
-    amount: 1,
+  const publicTransferBody = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: 1n,
     visibility: "public",
     fromBalance: "base",
     toBalance: "base",
-    cluster: CLUSTER,
-    initIfMissing: true,
-    initAtasIfMissing: true,
-    initVaultIfMissing: false,
     memo: "ShieldLend MagicBlock public builder check",
-    legacy: true,
-  };
-  const privateTransferBody = {
-    from: owner,
-    to: recipient,
-    mint: mintAddress,
-    amount: Number(amountBaseUnits),
+  });
+  const privateTransferBody = transferBody({
+    owner,
+    recipient,
+    mintAddress,
+    amount: amountBaseUnits,
     visibility: "private",
     fromBalance: "ephemeral",
     toBalance: "ephemeral",
-    cluster: CLUSTER,
-    initIfMissing: true,
-    initAtasIfMissing: true,
-    initVaultIfMissing: false,
     memo: "ShieldLend MagicBlock private live check",
-    minDelayMs: "0",
-    maxDelayMs: "0",
-    clientRefId: "1",
-    split: 1,
-    gasless: false,
-    legacy: true,
-  };
+  });
   const withdrawBody = {
     owner,
     mint: mintAddress,
@@ -683,6 +1061,15 @@ async function main() {
     ? "unsigned-builder-ok"
     : `blocked HTTP ${privateTransfer.status}`;
 
+  await requestTransferRouteDiagnostics(
+    report,
+    owner,
+    recipient,
+    mintAddress,
+    amountBaseUnits,
+    bearerToken
+  );
+
   const withdraw = await apiPost(report, "/v1/spl/withdraw", withdrawBody);
   const withdrawBuild = withdraw.response;
   withdraw.response = summarizeBuild(withdraw.response);
@@ -690,7 +1077,7 @@ async function main() {
 
   if (isLiveMode) {
     const mint = new PublicKey(mintAddress);
-    if (runDepositWithdraw && !mintInitialized) {
+    if ((runDepositWithdraw || runPrivateTransferFunding) && !mintInitialized) {
       const initMint = await apiPost(report, "/v1/spl/initialize-mint", {
         owner,
         mint: mintAddress,
@@ -709,7 +1096,7 @@ async function main() {
     }
 
     if (
-      runDepositWithdraw &&
+      (runDepositWithdraw || runPrivateTransferFunding) &&
       mintAddress === WSOL_MINT &&
       env("MAGICBLOCK_AUTO_WRAP_WSOL", "true") !== "false"
     ) {
@@ -724,7 +1111,7 @@ async function main() {
       }
     }
 
-    if (runDepositWithdraw) {
+    if (runDepositWithdraw || runPrivateTransferFunding) {
       const liveDeposit = await apiPost(report, "/v1/spl/deposit", depositBody);
       const liveDepositBuild = liveDeposit.response;
       liveDeposit.response = summarizeBuild(liveDeposit.response);
@@ -737,6 +1124,38 @@ async function main() {
         liveDepositBuild
       );
       report.liveStatus.deposit = "submitted";
+
+      const creditCheck = await waitForPrivateBalanceAtLeast(
+        report,
+        owner,
+        mintAddress,
+        bearerToken,
+        amountBaseUnits,
+        "after-deposit"
+      );
+      report.depositCreditChecks.push(creditCheck);
+
+      if (runPrivateTransfer && !creditCheck.credited) {
+        const topUpAttempt = await tryBaseToEphemeralTopUp(
+          report,
+          connectionByTarget,
+          baseConnection,
+          wallet,
+          owner,
+          recipient,
+          mint,
+          mintAddress,
+          amountBaseUnits,
+          bearerToken
+        );
+        if (topUpAttempt?.creditCheck?.credited) {
+          report.liveStatus.deposit = "submitted; base-to-ephemeral-top-up-credited";
+        } else if (topUpAttempt) {
+          report.liveStatus.deposit = `submitted; base-to-ephemeral-top-up-blocked: ${
+            topUpAttempt.error || "private balance still not credited"
+          }`;
+        }
+      }
     }
 
     if (runPrivateTransfer) {
@@ -763,8 +1182,16 @@ async function main() {
                 .map((attempt) => `${attempt.target}: ${attempt.error || attempt.status}`)
                 .join(" | ")
             }`;
+        report.privateTransferBlockerClassification = classifyPrivateTransferBlocker(
+          report,
+          amountBaseUnits
+        );
       } else {
         report.liveStatus.privateTransfer = `blocked HTTP ${livePrivateTransfer.status}`;
+        report.privateTransferBlockerClassification = {
+          category: "magicblock_api_router_tee_limitation",
+          detail: `Private transfer builder returned HTTP ${livePrivateTransfer.status}.`,
+        };
       }
     }
 
@@ -783,15 +1210,7 @@ async function main() {
       report.liveStatus.withdraw = "submitted";
     }
 
-    await apiGet(
-      report,
-      appendQuery("/v1/spl/private-balance", {
-        address: owner,
-        mint: mintAddress,
-        cluster: CLUSTER,
-      }),
-      { bearerToken }
-    );
+    await getMagicBlockBalanceSnapshot(report, "final", owner, mintAddress, bearerToken);
   }
 
   const blocked = report.endpointsHit.filter((entry) => !entry.ok);
