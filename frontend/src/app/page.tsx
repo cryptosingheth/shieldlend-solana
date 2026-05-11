@@ -112,8 +112,25 @@ export default function HomePage() {
   }, [address, vaultKey]);
 
   useEffect(() => {
+    console.log("[ShieldLend] Page mounted — React hydration OK");
     const provider = getPhantomProvider();
     if (provider) setWallet(provider);
+  }, []);
+
+  // Belt-and-suspenders click handler: registers a vanilla addEventListener
+  // on the Connect button so the wallet flow fires even if React's synthetic
+  // event system has any issue. The React onClick is still primary; this is
+  // a safety net.
+  useEffect(() => {
+    const btn = document.getElementById("connect-phantom-btn");
+    if (!btn) return;
+    const handler = () => {
+      console.log("[ShieldLend] Connect button clicked (DOM listener)");
+      void connectWallet();
+    };
+    btn.addEventListener("click", handler);
+    return () => btn.removeEventListener("click", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -132,8 +149,12 @@ export default function HomePage() {
   }, []);
 
   async function connectWallet() {
+    console.log("[ShieldLend] connectWallet() invoked");
     setMessage("");
     const provider = getPhantomProvider();
+    console.log("[ShieldLend] provider:", provider ? "found" : "null",
+      "window.phantom:", typeof window !== "undefined" && Boolean((window as Window).phantom),
+      "window.solana:", typeof window !== "undefined" && Boolean((window as Window).solana));
     if (!provider) {
       const hasLegacy = typeof window !== "undefined" && Boolean((window as Window).solana);
       const hasPhantomNs = typeof window !== "undefined" && Boolean((window as Window).phantom);
@@ -293,7 +314,7 @@ export default function HomePage() {
             <LockKeyhole size={14} />
             {vaultReady ? "VAULT UNLOCKED" : "UNLOCK VAULT"}
           </button>
-          <button className="chip" onClick={connectWallet}>
+          <button id="connect-phantom-btn" className="chip" onClick={connectWallet}>
             <Wallet size={14} />
             {connected ? shortHash(address) : "Connect Phantom"}
           </button>
