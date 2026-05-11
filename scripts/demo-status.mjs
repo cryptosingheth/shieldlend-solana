@@ -173,7 +173,10 @@ ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
-ok('IKA Anchor CPI: local approve_message path present; redeployed lending_pool ID configured; latest approval smoke blocked before approval call by Solana RPC fetch failure');
+ok('IKA Anchor CPI: approve_ika_borrow_message CPI CONFIRMED on devnet (2026-05-11)');
+ok('  approval tx 1: m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF');
+ok('  approval tx 2: 3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2');
+ok('  MessageApproval PDAs created on-chain; IKA gRPC presign/sign blocked by coordinator BCS schema mismatch');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
 
@@ -191,13 +194,14 @@ console.log(`
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
   ✓ IKA SDK/WASM loaded; capability probe passed; blockers source-documented
   ✓ IKA Anchor CPI compile-wired in lending_pool against official pre-alpha approve_message ABI
+  ✓ IKA approve_ika_borrow_message CPI confirmed on devnet — two approval tx signatures on record
   ✓ All four rail adapters in frontend/src/lib/privacyRails/
   ✓ Frontend privacy status panel shows live rail statuses
 
   NOT ALLOWED (do not claim):
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
-  ✗ IKA relay signing active (redeployed lending_pool ID is configured, but the latest approval smoke stopped at Solana RPC fetch failure before any approval tx landed)
+  ✗ IKA relay signing active end-to-end (approval CPI confirmed; gRPC presign/sign blocked by IKA pre-alpha coordinator BCS schema mismatch; IKA pre-alpha is single mock signer, not production MPC)
   ✗ MagicBlock Private Payments private transfer via intended ephemeral/router path (ephemeral submit blocked; base devnet fallback only)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)

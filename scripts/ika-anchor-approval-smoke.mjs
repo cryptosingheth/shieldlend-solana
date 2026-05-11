@@ -40,7 +40,10 @@ const circomlibjs = require("circomlibjs");
 const { keccak_256 } = require("@noble/hashes/sha3");
 const bs58 = require("bs58");
 
-const RPC_URL = process.env.RPC_URL ?? "https://api.devnet.solana.com";
+const RPC_URL =
+  process.env.SOLANA_RPC_URL ??
+  process.env.RPC_URL ??
+  "https://api.devnet.solana.com";
 const GRPC_URL =
   process.env.IKA_GRPC_URL ?? "pre-alpha-dev-1.ika.ika-network.net:443";
 
@@ -159,6 +162,18 @@ function fail(code, msg, extra = {}) {
     console.error(JSON.stringify(extra, null, 2));
   }
   process.exit(1);
+}
+
+async function withRetry(fn, label, retries = 4, delayMs = 2500) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === retries - 1) throw err;
+      warn(`${label} attempt ${attempt + 1} failed (${String(err.message ?? err).slice(0, 120)}); retrying in ${delayMs}ms`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
 }
 
 function disc(name) {
@@ -431,7 +446,9 @@ async function send(
 ) {
   const tx = new Transaction().add(...ixs);
   tx.feePayer = wallet.publicKey;
-  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  tx.recentBlockhash = (
+    await withRetry(() => connection.getLatestBlockhash(), "getLatestBlockhash")
+  ).blockhash;
   try {
     const sig = await sendAndConfirmTransaction(
       connection,
@@ -646,6 +663,58 @@ async function ensureWalletAuthorizedForRegister(connection, wallet) {
   };
 }
 
+async function ensureRegistryWriterAuthorized(connection, wallet) {
+  const [registryConfig] = pda(
+    [Buffer.from("registry-config")],
+    NULLIFIER_REGISTRY_PROGRAM_ID
+  );
+  const [registryWriter] = pda([REGISTRY_WRITER_SEED], LENDING_POOL_PROGRAM_ID);
+
+  const registryInfo = await withRetry(
+    () => connection.getAccountInfo(registryConfig),
+    "getAccountInfo(registryConfig)"
+  );
+  if (!registryInfo) {
+    fail("MISSING_REGISTRY_CONFIG", "nullifier registry config is missing", {
+      registryConfig: registryConfig.toBase58(),
+    });
+  }
+
+  const parsed = parseRegistryConfig(registryInfo);
+  const alreadyAuthorized = parsed.authorizedPrograms.some((pubkey) =>
+    pubkey.equals(registryWriter)
+  );
+  if (alreadyAuthorized) {
+    ok(`registry_writer PDA already authorized: ${registryWriter.toBase58()}`);
+    return;
+  }
+
+  info(`adding registry_writer PDA to nullifier_registry authorized list`);
+  info(`  registry_writer: ${registryWriter.toBase58()}`);
+  const updatedPrograms = [...parsed.authorizedPrograms, registryWriter];
+
+  await send(
+    connection,
+    wallet,
+    [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 80_000 }),
+      new TransactionInstruction({
+        programId: NULLIFIER_REGISTRY_PROGRAM_ID,
+        keys: [
+          { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
+          { pubkey: registryConfig, isSigner: false, isWritable: true },
+        ],
+        data: Buffer.concat([
+          disc("update_authorized_programs"),
+          serializePubkeyVec(updatedPrograms),
+        ]),
+      }),
+    ],
+    "nullifier_registry::update_authorized_programs(+registry_writer)"
+  );
+  ok(`registry_writer PDA authorized: ${registryWriter.toBase58()}`);
+}
+
 async function restoreAuthorizedPrograms(connection, wallet, registryConfig, originalAuthorizedPrograms) {
   info("restoring original nullifier_registry authorized_programs");
   await send(
@@ -815,6 +884,7 @@ async function generateCollateralProof() {
 }
 
 async function createFreshLoan(connection, wallet, proofBundle) {
+  await ensureRegistryWriterAuthorized(connection, wallet);
   const interestModel = await ensureInterestModel(connection, wallet);
   const [registryConfig] = pda(
     [Buffer.from("registry-config")],
@@ -973,8 +1043,10 @@ async function setupIkaDwallet(connection, wallet) {
   const types = defineBcsTypes();
   const senderPubkeyBytes = wallet.publicKey.toBytes();
 
+  const sessionNonce = randomBytes(32);
+  info(`DKG session nonce: ${sessionNonce.toString("hex")}`);
   const dkgRequest = types.SignedRequestData.serialize({
-    session_identifier_preimage: Array.from(new Uint8Array(32)),
+    session_identifier_preimage: Array.from(sessionNonce),
     epoch: 1n,
     chain_id: { Solana: true },
     intended_chain_sender: Array.from(senderPubkeyBytes),
@@ -1020,8 +1092,9 @@ async function setupIkaDwallet(connection, wallet) {
       { response: dkgResponse }
     );
   }
+  const rawDkgAttestation = dkgResponse.Attestation;
   const dkgPayload = types.VersionedDWalletDataAttestation.parse(
-    new Uint8Array(dkgResponse.Attestation.attestation_data)
+    new Uint8Array(rawDkgAttestation.attestation_data)
   );
   if (!dkgPayload.V1) {
     fail(
@@ -1075,44 +1148,61 @@ async function setupIkaDwallet(connection, wallet) {
     );
   }
 
-  const transferData = Buffer.alloc(33);
-  transferData[0] = IKA_TRANSFER_OWNERSHIP_IX;
-  cpiAuthority.toBuffer().copy(transferData, 1);
+  if (currentAuthority.equals(cpiAuthority)) {
+    ok(`IKA dWallet authority already set to LendingPool CPI PDA; skipping transfer`);
+  } else if (currentAuthority.equals(wallet.publicKey)) {
+    const transferData = Buffer.alloc(33);
+    transferData[0] = IKA_TRANSFER_OWNERSHIP_IX;
+    cpiAuthority.toBuffer().copy(transferData, 1);
 
-  await send(
-    connection,
-    wallet,
-    [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 160_000 }),
-      new TransactionInstruction({
-        programId: IKA_PROGRAM_ID,
-        keys: [
-          { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
-          { pubkey: dwalletPda, isSigner: false, isWritable: true },
-        ],
-        data: transferData,
-      }),
-    ],
-    "ika::TransferOwnership"
-  );
+    await send(
+      connection,
+      wallet,
+      [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 160_000 }),
+        new TransactionInstruction({
+          programId: IKA_PROGRAM_ID,
+          keys: [
+            { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
+            { pubkey: dwalletPda, isSigner: false, isWritable: true },
+          ],
+          data: transferData,
+        }),
+      ],
+      "ika::TransferOwnership"
+    );
 
-  const transferredData = await waitForAccount(
-    connection,
-    dwalletPda,
-    (data) => new PublicKey(data.slice(2, 34)).equals(cpiAuthority),
-    15000
-  );
-  if (!transferredData) {
+    const transferredData = await waitForAccount(
+      connection,
+      dwalletPda,
+      (data) => new PublicKey(data.slice(2, 34)).equals(cpiAuthority),
+      15000
+    );
+    if (!transferredData) {
+      fail(
+        "IKA_AUTHORITY_TRANSFER_MISSING",
+        "dWallet authority transfer transaction landed but the account does not show LendingPool CPI authority ownership",
+        {
+          dwalletPda: dwalletPda.toBase58(),
+          expectedAuthority: cpiAuthority.toBase58(),
+        }
+      );
+    }
+    ok(`IKA dWallet authority transferred to LendingPool CPI PDA: ${cpiAuthority.toBase58()}`);
+  } else {
     fail(
-      "IKA_AUTHORITY_TRANSFER_MISSING",
-      "dWallet authority transfer transaction landed but the account does not show LendingPool CPI authority ownership",
+      "IKA_DWALLET_FOREIGN_AUTHORITY",
+      "IKA pre-alpha coordinator created dWallet with an authority that is neither our wallet nor the CPI PDA. This is a known pre-alpha coordinator issue where dWallets may be assigned with the coordinator's own key as the initial authority.",
       {
         dwalletPda: dwalletPda.toBase58(),
-        expectedAuthority: cpiAuthority.toBase58(),
+        currentAuthority: currentAuthority.toBase58(),
+        expectedAuthority: wallet.publicKey.toBase58(),
+        cpiAuthority: cpiAuthority.toBase58(),
+        blockerKind: "ika_coordinator_grpc",
+        mitigation: "Re-run; the coordinator is non-deterministic and may return a usable dWallet on retry.",
       }
     );
   }
-  ok(`IKA dWallet authority transferred to LendingPool CPI PDA: ${cpiAuthority.toBase58()}`);
 
   return {
     client,
@@ -1121,6 +1211,7 @@ async function setupIkaDwallet(connection, wallet) {
     dwalletPda,
     dwalletPublicKeyBytes: publicKeyBytes,
     dwalletAddr,
+    rawDkgAttestation,
     cpiAuthority,
     cpiAuthorityBump,
   };
@@ -1233,18 +1324,26 @@ async function attemptApproveAndSign(connection, wallet, loan, ikaSetup) {
 
   const presignRequest = ikaSetup.types.SignedRequestData.serialize({
     session_identifier_preimage: Array.from(ikaSetup.dwalletAddr),
-    epoch: 1n,
+    epoch: ikaSetup.rawDkgAttestation.epoch,
     chain_id: { Solana: true },
     intended_chain_sender: Array.from(wallet.publicKey.toBytes()),
     request: {
       PresignForDWallet: {
-        dwallet_network_encryption_public_key: Array.from(new Uint8Array(32)),
-        dwallet_public_key: Array.from(ikaSetup.dwalletAddr),
+        dwallet_network_encryption_public_key: Array.from(
+          new Uint8Array(ikaSetup.rawDkgAttestation.network_pubkey)
+        ),
+        dwallet_public_key: Array.from(ikaSetup.dwalletPublicKeyBytes),
         dwallet_attestation: {
-          attestation_data: Array.from(new Uint8Array(32)),
-          network_signature: Array.from(new Uint8Array(64)),
-          network_pubkey: Array.from(new Uint8Array(32)),
-          epoch: 1n,
+          attestation_data: Array.from(
+            new Uint8Array(ikaSetup.rawDkgAttestation.attestation_data)
+          ),
+          network_signature: Array.from(
+            new Uint8Array(ikaSetup.rawDkgAttestation.network_signature)
+          ),
+          network_pubkey: Array.from(
+            new Uint8Array(ikaSetup.rawDkgAttestation.network_pubkey)
+          ),
+          epoch: ikaSetup.rawDkgAttestation.epoch,
         },
         curve: { Curve25519: true },
         signature_algorithm: { EdDSA: true },
@@ -1407,8 +1506,12 @@ async function main() {
   console.log("");
 
   const wallet = loadWallet();
+  info(`RPC endpoint: ${RPC_URL}`);
   const connection = new Connection(RPC_URL, "confirmed");
-  const balance = await connection.getBalance(wallet.publicKey);
+  const balance = await withRetry(
+    () => connection.getBalance(wallet.publicKey),
+    "getBalance"
+  );
   ok(`wallet: ${wallet.publicKey.toBase58()}`);
   ok(`balance: ${(balance / 1e9).toFixed(9)} SOL`);
   if (balance < 1_000_000_000) {
