@@ -948,3 +948,4 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 **Claim boundary**:
 - Accurate: real IKA pre-alpha devnet DKG, on-chain dWallet creation, and authority transfer to ShieldLend CPI authority.
 - Not accurate: live IKA approval / relay signing from ShieldLend until `lending_pool` is redeployed and the CPI step succeeds.
+2026-05-11T08:04:48Z | IKA approval CPI confirmed on devnet | approve_ika_borrow_message × 2 | tx1: m5trvfdGc2...WBF | tx2: 3AHThchU8E...bk2 | remaining: gRPC presign BCS mismatch (category b)
