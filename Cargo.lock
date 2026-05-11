@@ -1078,6 +1078,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ika-dwallet-anchor"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+]
+
+[[package]]
 name = "im"
 version = "15.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1161,6 +1168,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "groth16-solana",
+ "ika-dwallet-anchor",
  "nullifier_registry",
 ]
 

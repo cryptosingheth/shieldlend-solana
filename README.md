@@ -73,11 +73,11 @@ component addresses. These layers are not all live in the current local build:
 | `repay_ring.circom` | Compiles | Browser WASM + DEV/TEST zkey + vkey generated and hashed |
 | DEV/TEST `.zkey` / `_vkey.json` | Generated | DEV/TEST only — not a production trusted setup |
 | On-chain Groth16 verification (withdraw) | **Confirmed on devnet** | DEV/TEST trusted setup; 198,502 CU; full round-trip passed |
-| On-chain Groth16 verification (borrow/repay) | Not yet verified | Verifier wired in program; end-to-end devnet test not run |
+| On-chain Groth16 verification (borrow/repay) | Borrow proof verified on devnet; repay not yet verified | `lending_pool::borrow` succeeded on devnet with a fresh collateral proof and active nullifier; repay path still not exercised end to end |
 | Encrypt rail adapter | gRPC probe live | `CreateInput` ciphertext `5VZ8BhpS…CA6y` returned; Anchor 0.32.1 compatibility present; `encrypt-anchor` CPI not wired; on-chain FHE fail-closed |
 | Umbra rail adapter | Funded devnet + wSOL adapter confirmed | wSOL deposit/withdraw: 7 devnet tx signatures; wSOL settlement adapter (`devnet-wsol-umbra-roundtrip.mjs`) + UI mode added; flush_exits fail-closed; native SOL → Umbra protocol-level not wired |
 | MagicBlock rail adapter | TEE + Router HTTP 200 | PER SDK builders verified (13/13); Anchor 0.32.1 compatibility present; Rust macros not yet wired; Private Payments URL Discord-gated |
-| IKA rail adapter | SDK/WASM probe confirmed | Solana relay signing blocked: no `ika-dwallet-anchor` CPI; direct wallet fallback labelled reduced privacy |
+| IKA rail adapter | SDK/WASM probe confirmed; `lending_pool` compile-wired to IKA `approve_message` CPI from official pre-alpha source; real pre-alpha DKG + on-chain dWallet + CPI-authority transfer confirmed on devnet | Solana relay signing still not live: deployed devnet `lending_pool` does not yet expose `approve_ika_borrow_message`; direct wallet fallback labelled reduced privacy |
 | Local note/history vault | Implemented | AES-256-GCM + HKDF, wallet-derived key |
 
 ---
@@ -149,15 +149,15 @@ external docs.
 | Withdraw/borrow/repay nullifier CPI paths | Scaffolded after fail-closed verifier gates | Not end-to-end |
 | Circuit constraints | Compiled to R1CS/WASM | Not live proofs |
 | Browser WASM artifacts | Generated and hashed | WASM only |
-| IKA relay signer privacy | Not wired | No |
-| IKA FutureSign | Not wired | No |
+| IKA relay signer privacy | Compile-wired in local `lending_pool`; devnet DKG + dWallet transfer to the CPI authority PDA confirmed | No — deployed devnet `lending_pool` binary predates `approve_ika_borrow_message`, so no live approval tx landed |
+| IKA FutureSign | Local approval instruction gated by `future_sign_authorized`; fresh devnet loan creation confirmed | No — approval CPI cannot execute until `lending_pool` is redeployed |
 | MagicBlock PER batching | Not wired | No |
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | Not wired | No |
 | Umbra SDK exits | Adapter installed, blocked for current native SOL C2H path | No — requires supported SPL/Token-2022 mint and live transaction smoke |
 | Encrypt/FHE oracle or health computation | Not wired | No |
 | On-chain Groth16 verification (withdraw) | Confirmed on devnet — DEV/TEST only | No — DEV/TEST trusted setup, not production |
-| On-chain Groth16 verification (borrow/repay) | Wired in program; devnet end-to-end not yet run | No |
+| On-chain Groth16 verification (borrow/repay) | Borrow path confirmed on devnet; repay path not yet run | Borrow: local proof + fresh nullifier + `lending_pool::borrow` confirmed. Repay remains unverified end to end. |
 | Production trusted setup | Missing | No |
 | Full private repayment | Not live | No |
 | Full private withdraw flow | Devnet round-trip confirmed — DEV/TEST only | No — DEV/TEST only; privacy rails not wired |
@@ -317,7 +317,7 @@ requires a multi-sig governance vote with time-lock to activate.
 - MagicBlock PER macros — `#[ephemeral]`, `#[delegate]`, `#[commit]` (planned)
 - MagicBlock VRF SDK (planned)
 - MagicBlock Private Payments / Private SPL token API (planned)
-- IKA dWallet Anchor CPI — `ika-dwallet-anchor` (planned; real adapter first, labeled fallback only if unavailable)
+- IKA dWallet Anchor CPI — `ika-dwallet-anchor` source-equivalent local crate for Anchor 0.32.1; `lending_pool::approve_ika_borrow_message` compile-wired; real devnet DKG + on-chain dWallet + CPI-authority transfer confirmed; live approval blocked by stale devnet `lending_pool` deployment
 - Encrypt FHE Anchor integration — `encrypt-anchor` (planned; real adapter first, labeled fallback only if unavailable)
 - Poseidon hash (matching circuits)
 
@@ -445,7 +445,7 @@ mainnet availability.
 
 | Protocol | Current repo status | External/devnet status note | Production path |
 |---|---|---|---|
-| IKA dWallet | SDK/status scaffolding only; relay not wired | Pre-alpha / gated devnet | IKA Solana mainnet |
+| IKA dWallet | SDK/status scaffolding + LendingPool `approve_message` CPI compile wiring; relay not live | Pre-alpha / gated devnet; single mock signer; external dWallet/message accounts required | IKA Solana mainnet or stable Solana pre-alpha flow with confirmed approval tx |
 | Encrypt FHE | Client/gRPC adapter live; program-side FHE health fails closed | Pre-alpha docs disclaim production encryption guarantees and may store plaintext/public data | Encrypt mainnet + Anchor-compatible program integration |
 | MagicBlock PER + Private Payments | Not wired; Private Payments URL absent by default | Devnet access required | MagicBlock PER/private payments mainnet |
 | groth16-solana | Not added/wired in programs | Target verifier path | BN254 syscalls live since Solana 1.18.x |

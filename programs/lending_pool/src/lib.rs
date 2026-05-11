@@ -9,18 +9,21 @@
 pub mod groth16_verifier;
 
 use anchor_lang::prelude::*;
+use ika_dwallet_anchor::{DWalletContext, CPI_AUTHORITY_SEED};
 use nullifier_registry::{
     self, cpi::accounts as registry_accounts, program::NullifierRegistry, NullifierAccount,
     RegistryConfig,
 };
 
-declare_id!("HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7");
+declare_id!("J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn");
 
 pub const KINK_COUNT: usize = 11;
 pub const BPS_DENOMINATOR: u128 = 10_000;
 pub const SLOTS_PER_YEAR: u128 = 78_840_000;
 pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
 pub const PROOF_DATA_SEED: &[u8] = b"proof-data";
+pub const IKA_DWALLET_PROGRAM_ID: Pubkey =
+    anchor_lang::pubkey!("87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY");
 
 #[program]
 pub mod lending_pool {
@@ -222,6 +225,50 @@ pub mod lending_pool {
         loan.status = LoanStatus::Liquidated;
         Ok(())
     }
+
+    /// Approve an IKA dWallet message for a borrow/liquidation authority flow.
+    ///
+    /// This is compile-wired CPI scaffolding for IKA pre-alpha Solana. It does
+    /// not create the dWallet, derive the MessageApproval PDA, or complete a
+    /// signature. Callers must provide real IKA accounts owned by the deployed
+    /// IKA dWallet program. The instruction fails closed if the loan has not
+    /// already passed ShieldLend borrow checks and opted into FutureSign.
+    pub fn approve_ika_borrow_message(
+        ctx: Context<ApproveIkaBorrowMessage>,
+        args: IkaApproveMessageArgs,
+    ) -> Result<()> {
+        validate_ika_approval_args(&args)?;
+        require!(
+            ctx.accounts.loan.status == LoanStatus::Active,
+            LendingError::LoanNotActive
+        );
+        require!(
+            ctx.accounts.loan.future_sign_authorized,
+            LendingError::FutureSignMissing
+        );
+
+        let dwallet_ctx = DWalletContext {
+            dwallet_program: ctx.accounts.dwallet_program.to_account_info(),
+            cpi_authority: ctx.accounts.cpi_authority.to_account_info(),
+            caller_program: ctx.accounts.program.to_account_info(),
+            cpi_authority_bump: ctx.bumps.cpi_authority,
+        };
+
+        dwallet_ctx.approve_message(
+            &ctx.accounts.coordinator.to_account_info(),
+            &ctx.accounts.message_approval.to_account_info(),
+            &ctx.accounts.dwallet.to_account_info(),
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            args.message_digest,
+            args.message_metadata_digest,
+            args.user_pubkey,
+            args.signature_scheme,
+            args.message_approval_bump,
+        )?;
+
+        Ok(())
+    }
 }
 
 fn validate_borrow_args(args: &BorrowArgs, interest_model: &InterestRateModel) -> Result<()> {
@@ -241,6 +288,18 @@ fn validate_borrow_args(args: &BorrowArgs, interest_model: &InterestRateModel) -
     require!(
         args.collateral_nullifier_hash != [0; 32],
         LendingError::InvalidNullifierHash
+    );
+    Ok(())
+}
+
+fn validate_ika_approval_args(args: &IkaApproveMessageArgs) -> Result<()> {
+    require!(
+        args.message_digest != [0; 32],
+        LendingError::InvalidIkaMessageDigest
+    );
+    require!(
+        args.user_pubkey != [0; 32],
+        LendingError::InvalidIkaUserPubkey
     );
     Ok(())
 }
@@ -608,6 +667,34 @@ pub struct Liquidate<'info> {
     pub loan: Account<'info, LoanAccount>,
 }
 
+#[derive(Accounts)]
+pub struct ApproveIkaBorrowMessage<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        seeds = [b"loan", loan.collateral_nullifier_hash.as_ref()],
+        bump = loan.bump
+    )]
+    pub loan: Account<'info, LoanAccount>,
+    /// CHECK: IKA DWalletCoordinator PDA for the active epoch.
+    pub coordinator: UncheckedAccount<'info>,
+    /// CHECK: IKA MessageApproval PDA. Created by the IKA dWallet program.
+    #[account(mut)]
+    pub message_approval: UncheckedAccount<'info>,
+    /// CHECK: IKA dWallet account. The dWallet authority must be this program's CPI authority PDA.
+    pub dwallet: UncheckedAccount<'info>,
+    /// CHECK: This lending_pool executable account is required by IKA's CPI authority verification.
+    #[account(executable, address = crate::ID)]
+    pub program: UncheckedAccount<'info>,
+    /// CHECK: IKA CPI authority PDA derived from lending_pool with seed b"__ika_cpi_authority".
+    #[account(seeds = [CPI_AUTHORITY_SEED], bump)]
+    pub cpi_authority: UncheckedAccount<'info>,
+    /// CHECK: Official IKA pre-alpha dWallet program.
+    #[account(address = IKA_DWALLET_PROGRAM_ID)]
+    pub dwallet_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[account]
 pub struct InterestRateModel {
     pub authority: Pubkey,
@@ -721,6 +808,15 @@ pub struct LiquidationRevealArgs {
     pub proof_hash: [u8; 32],
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct IkaApproveMessageArgs {
+    pub message_digest: [u8; 32],
+    pub message_metadata_digest: [u8; 32],
+    pub user_pubkey: [u8; 32],
+    pub signature_scheme: u16,
+    pub message_approval_bump: u8,
+}
+
 #[error_code]
 pub enum LendingError {
     #[msg("Amount must be greater than zero")]
@@ -775,6 +871,10 @@ pub enum LendingError {
     ProofAccountConsumed,
     #[msg("Proof account is for the wrong circuit")]
     WrongProofKind,
+    #[msg("IKA message digest is invalid")]
+    InvalidIkaMessageDigest,
+    #[msg("IKA user public key is invalid")]
+    InvalidIkaUserPubkey,
 }
 
 #[cfg(test)]
@@ -938,6 +1038,26 @@ mod tests {
 
         args.interest_rate_bps = u64::from(model.rate_at_kink[KINK_COUNT - 1]) + 1;
         assert!(validate_borrow_args(&args, &model).is_err());
+    }
+
+    #[test]
+    fn ika_approval_args_reject_zero_message_or_user_key() {
+        let mut args = IkaApproveMessageArgs {
+            message_digest: [1; 32],
+            message_metadata_digest: [0; 32],
+            user_pubkey: [2; 32],
+            signature_scheme: 0,
+            message_approval_bump: 255,
+        };
+
+        assert!(validate_ika_approval_args(&args).is_ok());
+
+        args.message_digest = [0; 32];
+        assert!(validate_ika_approval_args(&args).is_err());
+        args.message_digest = [1; 32];
+
+        args.user_pubkey = [0; 32];
+        assert!(validate_ika_approval_args(&args).is_err());
     }
 
     #[test]

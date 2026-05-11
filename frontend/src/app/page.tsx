@@ -563,7 +563,7 @@ function WhatWorksTodayPanel() {
             <li>Umbra funded devnet wSOL encrypted-balance deposit/withdraw confirmed via SDK 4.0.0</li>
             <li>Encrypt pre-alpha gRPC CreateInput confirmed — live network key + ciphertext returned</li>
             <li>MagicBlock SDK installed; TEE RPC + Router RPC HTTP 200; PER sidecar instruction builders confirmed</li>
-            <li>IKA SDK probe confirmed — capability matrix and exact Solana blockers documented with source evidence</li>
+            <li>IKA SDK probe confirmed; IKA approve_message Anchor CPI compile-wired in LendingPool from official pre-alpha source</li>
             <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key); history encryption</li>
           </ul>
         </div>
@@ -573,13 +573,13 @@ function WhatWorksTodayPanel() {
             <li>Umbra SDK adapter — fail-closed for native SOL exits; wSOL/SPL bridge needed for ShieldLend payout routing</li>
             <li>Encrypt gRPC — client/probe only; program-side FHE fail-closed (Anchor 0.32 not upgraded)</li>
             <li>MagicBlock PER sidecar — TypeScript only; Rust macros blocked on Anchor 0.32.1; on-chain PER tx not submitted</li>
-            <li>IKA adapter — SDK probe + signer context builder; direct wallet fallback labelled reduced privacy</li>
+            <li>IKA adapter — SDK probe + compile-level CPI status; direct wallet fallback labelled reduced privacy</li>
             <li>Withdraw / Borrow / Repay UI — intentionally blocked until full rail dependencies are live</li>
           </ul>
           <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Not live — do not claim</p>
           <ul className="plain-list" style={{ fontSize: "13px", color: "var(--fg-2)" }}>
             <li>Production trusted setup — DEV/TEST ptau only; no production ceremony</li>
-            <li>IKA relay signing — mock signer (pre-alpha); ika-dwallet-anchor CPI not wired in Anchor programs</li>
+            <li>IKA relay signing — mock signer (pre-alpha); no real devnet approve_message tx submitted</li>
             <li>MagicBlock Private Payments — URL not configured; TDX attestation challenge mismatch (SDK 0.8.8 delta)</li>
             <li>Encrypt on-chain FHE health computation — verifier fail-closed; no encrypted oracle</li>
             <li>Umbra ShieldLend payout routing — native SOL C2H path remains direct stealth_address</li>
@@ -616,8 +616,9 @@ function Deposit({
           <strong style={{ display: "block", marginBottom: "4px" }}>Signer mode: direct_wallet (reduced privacy)</strong>
           <span>
             IKA dWallet relay is not active. Your Phantom wallet public key is the on-chain signer for every
-            deposit. IKA pre-alpha SDK is available but uses a single mock signer (not real MPC), and the
-            ika-dwallet-anchor Solana CPI is not wired in the Anchor programs. The claim
+            deposit. IKA pre-alpha SDK is available but uses a single mock signer (not real MPC), and
+            LendingPool only has compile-level approve_message CPI wiring until real IKA dWallet accounts
+            are supplied and a devnet CPI transaction succeeds. The claim
             &ldquo;depositor wallet hidden&rdquo; is false in this mode. Do not deposit real funds expecting privacy.
           </span>
         </div>

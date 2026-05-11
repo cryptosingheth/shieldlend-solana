@@ -85,7 +85,7 @@ section('Deployed Program IDs (from Anchor.toml)');
 const EXPECTED_PROGRAMS = {
   nullifier_registry: 'E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF',
   shielded_pool:      '9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE',
-  lending_pool:       'HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7',
+  lending_pool:       'J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn',
 };
 
 const anchorTomlPath = resolve(root, 'Anchor.toml');
@@ -114,6 +114,7 @@ const RAIL_SCRIPTS = [
   { name: 'check-umbra.mjs',      rail: 'Umbra',      runCmd: 'npm run check:umbra' },
   { name: 'check-magicblock.mjs', rail: 'MagicBlock', runCmd: 'npm run check:magicblock' },
   { name: 'check-ika.mjs',        rail: 'IKA',        runCmd: 'npm run check:ika' },
+  { name: 'ika-anchor-cpi-diagnostic.mjs', rail: 'IKA CPI', runCmd: 'npm run check:ika-cpi' },
   {
     name: 'devnet-fullround.mjs',
     rail: 'C2H',
@@ -139,6 +140,7 @@ if (LIVE) {
     { script: 'check-umbra.mjs',      label: 'Umbra SDK' },
     { script: 'check-magicblock.mjs', label: 'MagicBlock SDK' },
     { script: 'check-ika.mjs',        label: 'IKA SDK' },
+    { script: 'ika-anchor-cpi-diagnostic.mjs', label: 'IKA Anchor CPI' },
   ];
 
   for (const { script, label } of liveChecks) {
@@ -171,6 +173,10 @@ ok('MagicBlock TEE RPC: HTTP 200 — devnet-tee.magicblock.app');
 ok('MagicBlock Router RPC: HTTP 200 — devnet-router.magicblock.app');
 ok('MagicBlock Private Payments API: health/challenge/builders live; wSOL deposit/withdraw submitted');
 ok('IKA SDK/WASM: loaded; capability probe passed; blockers source-documented');
+ok('IKA Anchor CPI: approve_ika_borrow_message CPI CONFIRMED on devnet (2026-05-11)');
+ok('  approval tx 1: m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF');
+ok('  approval tx 2: 3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2');
+ok('  MessageApproval PDAs created on-chain; IKA gRPC presign/sign blocked by coordinator BCS schema mismatch');
 
 // ── Claim boundary ───────────────────────────────────────────────────────────
 
@@ -187,13 +193,15 @@ console.log(`
   ✓ MagicBlock PER SDK builders verified: 13/13 SDK functions, 17/17 sidecar tests
   ✓ MagicBlock Private Payments API live for auth/builders; wSOL deposit/withdraw submitted
   ✓ IKA SDK/WASM loaded; capability probe passed; blockers source-documented
+  ✓ IKA Anchor CPI compile-wired in lending_pool against official pre-alpha approve_message ABI
+  ✓ IKA approve_ika_borrow_message CPI confirmed on devnet — two approval tx signatures on record
   ✓ All four rail adapters in frontend/src/lib/privacyRails/
   ✓ Frontend privacy status panel shows live rail statuses
 
   NOT ALLOWED (do not claim):
   ✗ Production ZK trusted setup (DEV/TEST pot14 only)
   ✗ Production privacy guarantee
-  ✗ IKA relay signing active (no ika-dwallet-anchor CPI; direct wallet fallback)
+  ✗ IKA relay signing active end-to-end (approval CPI confirmed; gRPC presign/sign blocked by IKA pre-alpha coordinator BCS schema mismatch; IKA pre-alpha is single mock signer, not production MPC)
   ✗ MagicBlock Private Payments private transfer via intended ephemeral/router path (ephemeral submit blocked; base devnet fallback only)
   ✗ MagicBlock PER Rust macros in Anchor programs (Anchor 0.32.1 compatibility present; macros not wired)
   ✗ MagicBlock TDX attestation verified (challenge format mismatch with SDK 0.8.8)

@@ -25,7 +25,7 @@ pub const REGISTRY_WRITER_SEED: &[u8] = b"registry-writer";
 pub const LENDING_POOL_AUTHORITY_SEED: &[u8] = b"lending-pool-authority";
 pub const PROOF_DATA_SEED: &[u8] = b"proof-data";
 pub const LENDING_POOL_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7");
+    anchor_lang::pubkey!("J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn");
 
 #[program]
 pub mod shielded_pool {

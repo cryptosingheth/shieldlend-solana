@@ -111,7 +111,7 @@ function section(title) {
 // ─── PDA derivation helpers (mirrors sidecar/src/accounts.ts) ────────────────
 
 const SHIELDED_POOL = new PublicKey("9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE");
-const LENDING_POOL = new PublicKey("HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7");
+const LENDING_POOL = new PublicKey("J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn");
 
 function deriveDepositIntentPda(owner, nonce) {
   const seed = Buffer.from("deposit-intent");

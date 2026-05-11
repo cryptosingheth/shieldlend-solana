@@ -1,6 +1,6 @@
 # ShieldLend Solana Implementation Status
 
-Last reconciled: 2026-05-08 (upgrade/anchor-032-privacy-rails: Anchor 0.32.1 upgrade)
+Last reconciled: 2026-05-11 (live/ika-anchor-cpi: IKA approve_ika_borrow_message CPI confirmed on devnet)
 
 This is the canonical implementation ledger for the local repository. It
 separates target architecture from implemented code, generated artifacts,
@@ -12,9 +12,9 @@ fail-closed scaffolding, missing integrations, and deployment status.
 |---|---|---|
 | Anchor programs | Local workspace upgraded to Anchor `0.32.1`; compiles to SBF with `anchor build --no-idl`; all three program IDs preserved | Upgraded binaries were not redeployed in this task; `anchor build --no-idl` still emits SBF syscall warnings that must be runtime-validated before redeploy |
 | Program IDs | `Anchor.toml`, all three `declare_id!` values, frontend `PROGRAM_IDS`, and ShieldedPool's internal lending-pool PDA constant are synced with `anchor keys list` and confirmed by devnet deployment | All IDs verified on devnet |
-| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST) | Production trusted setup is missing; borrow/repay on-chain flows not yet exercised end-to-end |
+| ZK circuits | `withdraw_ring`, `collateral_ring`, and `repay_ring` compile; DEV/TEST WASM, zkey, and vkey generated; on-chain Groth16 withdraw verification confirmed on devnet (DEV/TEST); borrow proof path now confirmed on devnet | Production trusted setup is missing; repay on-chain flow and full private borrow/disbursement remain unverified end to end |
 | Frontend | Typechecks and builds; synced program IDs are exposed through `contracts.ts`; note/history vault encryption exists; privacy rail health is gated by env flags | Devnet execution is blocked by undeployed programs and missing external rails |
-| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; wSOL Umbra settlement adapter (Phase 2) confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed | Anchor 0.32.1 workspace compatibility is present; IKA relay signing, ShieldLend-native Umbra payout, PER macros in programs, Private Payments private transfer via intended ephemeral/router RPC, and Encrypt/FHE on-chain health computation are not live |
+| External privacy rails | Umbra SDK funded wSOL deposit/withdraw confirmed; wSOL Umbra settlement adapter (Phase 2) confirmed; Encrypt gRPC CreateInput confirmed; MagicBlock TEE RPC reachable + TypeScript PER adapter live; MagicBlock Private Payments API + wSOL deposit/withdraw live on devnet; MagicBlock private-transfer tx submits only via base devnet after local blockhash refresh; IKA SDK/capability probe confirmed; IKA pre-alpha devnet DKG, on-chain dWallet creation, authority transfer, and `approve_ika_borrow_message` CPI all confirmed on devnet (2026-05-11); IKA gRPC presign/sign blocked by coordinator BCS schema mismatch | Anchor 0.32.1 workspace compatibility is present; IKA gRPC presign/sign flow blocked (coordinator BCS schema mismatch); ShieldLend-native Umbra payout, PER macros in programs, Private Payments private transfer via intended ephemeral/router RPC, and Encrypt/FHE on-chain health computation are not live |
 | Deployment | All three programs deployed to devnet; `initialize` confirmed; full round-trip (deposit → flush_epoch → store_proof → withdraw with on-chain Groth16 verification) confirmed on devnet | DEV/TEST trusted setup only; not production-ready |
 
 ## Verification Snapshot
@@ -34,18 +34,20 @@ fail-closed scaffolding, missing integrations, and deployment status.
 | `anchor build --no-idl` | passed on Anchor 0.32.1 | SBF build passes; still emits existing macro cfg warnings plus SBF post-processing syscall warnings |
 | `anchor deploy` (nullifier_registry) | **deployed** | Devnet slot 460526750; program ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `anchor deploy` (shielded_pool) | **deployed** | Devnet slot 460526822; program ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `anchor deploy` (lending_pool) | **deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill |
+| `anchor deploy` (lending_pool) | **deployed** | Program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`; redeployed on devnet |
 | `node scripts/devnet-smoke.mjs` | **confirmed** | store_withdraw_proof tx on devnet; sig 66Bmcz54... |
 | `npm run check:umbra` | **confirmed** | SDK/package/program check passed; devnet indexer and relayer health returned 200 |
 | `npm run smoke:umbra` | **confirmed** | SDK client init + devnet user query passed; no token action submitted |
 | `npm run smoke:umbra-funded` | **confirmed** | wSOL wrap + Umbra encrypted-balance deposit + Umbra withdrawal passed on devnet |
+| `npm run check:ika-cpi` | **confirmed local diagnostic** | Reports official IKA CPI constants, compile-level `lending_pool` wiring, derived CPI authority PDA, and the account/state shape for a real approval attempt |
+| `node scripts/ika-anchor-approval-smoke.mjs` | **CONFIRMED on devnet (2026-05-11)** | Full flow: collateral proof + register + borrow + IKA DKG + dWallet on-chain + authority transfer + `approve_ika_borrow_message` CPI + `MessageApproval` PDA created. Approval tx 1: `m5trvfdGc2...WBF`; tx 2: `3AHThchU8E...bk2`. gRPC presign/sign step fails with `PresignForDWallet: unexpected end of input` — IKA coordinator BCS schema mismatch. |
 
 ## Program IDs
 
 | Program | Anchor ID source | Current ID | Status |
 |---|---|---|---|
 | `shielded_pool` | `Anchor.toml`, `programs/shielded_pool/src/lib.rs` | `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` | Synced |
-| `lending_pool` | `Anchor.toml`, `programs/lending_pool/src/lib.rs` | `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` | Synced |
+| `lending_pool` | `Anchor.toml`, `programs/lending_pool/src/lib.rs` | `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn` | Synced |
 | `nullifier_registry` | `Anchor.toml`, `programs/nullifier_registry/src/lib.rs` | `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` | Synced |
 
 Additional synced references:
@@ -66,7 +68,7 @@ Additional synced references:
 | Full `anchor build` with IDL | Not revalidated in this task | Upgrade validation used the requested `anchor build --no-idl` path |
 | `nullifier_registry` devnet deploy | **Deployed** | Slot 460526750; ID `E42nSmqvSCuC1EWbmzYqsdLHimBMeuZyir5dB5gE24rF` |
 | `shielded_pool` devnet deploy | **Deployed + upgraded** | Initial slot 460526822; upgraded (Vec capacity fix); ID `9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE` |
-| `lending_pool` devnet deploy | **Deployed** | Program ID `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7`; deployed after wallet refill (C2G-B) |
+| `lending_pool` devnet deploy | **Deployed** | Program ID `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`; redeployed on devnet |
 | `store_withdraw_proof` smoke tx | **Confirmed** | `scripts/devnet-smoke.mjs`; sig `66Bmcz54...`; devnet |
 | `shielded_pool::initialize` | **Confirmed** | sig `QMVjEr1d...`; pool state PDA created; devnet |
 | `shielded_pool` Vec-capacity upgrade | **Deployed** | MAX_EPOCH_COMMITMENTS/MAX_EXIT_QUEUE 128→8; SPACE 14500→1900 bytes |
@@ -136,8 +138,8 @@ Artifact details:
 
 | Privacy property or rail | Current status | Live claim allowed? |
 |---|---|---|
-| IKA relay signer privacy | Not wired | No |
-| IKA FutureSign liquidation consent | Not wired; borrower-supplied flag exists | No |
+| IKA relay signer privacy | `lending_pool::approve_ika_borrow_message` CPI CONFIRMED on devnet (2026-05-11). Full flow: DKG → dWallet on-chain → authority transfer to CPI PDA → `approve_ika_borrow_message` CPI → `MessageApproval` PDA created. Approval tx 1: `m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF`. Approval tx 2: `3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2`. | IKA pre-alpha is a single mock signer, not production MPC; gRPC presign/sign blocked by coordinator BCS schema mismatch (`PresignForDWallet: unexpected end of input`) |
+| IKA FutureSign liquidation consent | Fresh devnet loan creation confirmed with `future_sign_authorized=true`; approval CPI confirmed on devnet (2026-05-11) | gRPC sign flow not fully exercised; IKA pre-alpha mock signer only |
 | MagicBlock PER batching | TypeScript adapter wired; TEE RPC live (HTTP 200); workspace now on Anchor 0.32.1 | No — Rust-side account delegation macros are still not wired |
 | MagicBlock VRF dummies | Not wired | No |
 | MagicBlock Private Payments | Public API wired; health/challenge/login/mint/balance/builders verified; wSOL deposit and withdraw submitted on devnet; private-transfer tx submits only through base devnet after local blockhash refresh | Partial — deposit/withdraw live, intended ephemeral/router private-transfer submit still blocked; ShieldLend repayment binding not wired |
@@ -167,7 +169,7 @@ Artifact details:
 | MagicBlock PER macros not wired | Anchor 0.32.1 compatibility is present in the workspace, but `#[ephemeral]`, `#[delegate]`, and `#[commit]` are not in ShieldLend programs yet. Wire separately and re-run C2H after any program-side change. |
 | ShieldLend native SOL -> Umbra token settlement (protocol-level) | flush_exits fail-closed (PER not wired); wSOL adapter (`devnet-wsol-umbra-roundtrip.mjs`) is a post-withdraw simulation, not on-chain program routing |
 | Umbra NEXT_PUBLIC_UMBRA_ENABLED not set | Stealth exits remain fail-closed in the frontend |
-| IKA relay not wired | User wallet remains the signer for frontend transactions |
+| IKA gRPC presign/sign schema mismatch | `approve_ika_borrow_message` CPI confirmed on devnet. Remaining gap: `PresignForDWallet` gRPC call returns `invalid signed_request_data: unexpected end of input` (gRPC code 3). Root cause: our local BCS schema for `SignedRequestData { PresignForDWallet }` does not match the current IKA pre-alpha coordinator's expected schema (extra/missing fields or different field order). Cannot resolve without IKA pre-alpha Rust BCS source. |
 | PER not wired | No private batching or unified exit batching |
 
 See `audit-reports/ONCHAIN_VERIFIER_BLOCKERS.md` for full C2C analysis with file/line evidence.

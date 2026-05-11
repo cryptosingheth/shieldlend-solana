@@ -155,7 +155,7 @@ Navigate to the Privacy Status panel (slide-over or status page). It shows the l
 | Umbra | Yellow — funded devnet wSOL confirmed; native SOL payout bridge needed |
 | Encrypt | Yellow — gRPC probe confirmed; on-chain FHE fail-closed |
 | MagicBlock | Yellow — TEE + Router HTTP 200; Private Payments deposit/withdraw live; private-transfer base-RPC fallback submitted after blockhash refresh; ephemeral/router private transfer and Rust macros blocked |
-| IKA | Yellow — SDK/WASM probe confirmed; Solana relay signing blocked |
+| IKA | Yellow — SDK/WASM probe confirmed; Anchor CPI compile-wired; no live devnet approval tx |
 
 Yellow statuses are expected and honest. Do not attempt to make them green by hiding blockers.
 

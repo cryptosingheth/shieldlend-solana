@@ -7,7 +7,7 @@ import process from "node:process";
 const ENCRYPT_GRPC_DEFAULT = "pre-alpha-dev-1.encrypt.ika-network.net:443";
 const ENCRYPT_RPC_DEFAULT = "https://api.devnet.solana.com";
 const ENCRYPT_PROGRAM_ID = "4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8";
-const LENDING_POOL_PROGRAM_ID = "HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7";
+const LENDING_POOL_PROGRAM_ID = "J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn";
 const SDK_PACKAGE_PATH = "node_modules/@encrypt.xyz/pre-alpha-solana-client/package.json";
 
 function normalizeGrpcTarget(input) {

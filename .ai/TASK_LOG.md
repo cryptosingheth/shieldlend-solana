@@ -883,3 +883,69 @@ Implemented as a "post-withdraw Umbra settlement adapter" (not native protocol-l
 **Validations**: typecheck PASS; build PASS; `cargo test` PASS; `check-magicblock.mjs` PASS; `magicblock-private-payments-live.mjs --dry-run` PASS.
 
 **Claim boundary**: Private Payments public API deposit/withdraw are live on devnet. Private transfer via intended ephemeral/router RPC is NOT confirmed.
+
+---
+
+## 2026-05-09 — IKA Anchor CPI Compile Wiring
+
+**Branch**: `live/ika-anchor-cpi`
+
+**Objective**: Replace the stale "IKA Solana signing blocked by SDK architecture" status with the most accurate implementation possible from official IKA Solana pre-alpha Anchor docs/source.
+
+**Official source findings**:
+- `ika-dwallet-anchor` exists in `dwallet-labs/ika-pre-alpha`.
+- Pre-alpha Solana program ID: `87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY`.
+- CPI authority PDA seed: `b"__ika_cpi_authority"`.
+- `DWalletContext::approve_message(...)` builds instruction discriminator `8` with coordinator, MessageApproval, dWallet, caller program, CPI authority, payer, system program, message digest, metadata digest, user pubkey, signature scheme, and MessageApproval bump.
+- Official crate/docs target Anchor v1 / `anchor-lang = "1"`, while ShieldLend is Anchor 0.32.1.
+
+**Implementation**:
+- Added local source-equivalent `crates/ika-dwallet-anchor` crate using ShieldLend's workspace `anchor-lang = "0.32.1"`.
+- Added `ika-dwallet-anchor` dependency to `programs/lending_pool`.
+- Added `lending_pool::approve_ika_borrow_message` with active-loan and `future_sign_authorized` guards, official IKA program ID check, official CPI authority seed, and `DWalletContext::approve_message` call.
+- Added `scripts/ika-anchor-cpi-diagnostic.mjs` and updated IKA probes/status/UI/docs to distinguish compile-wired CPI from live relay signing.
+
+**Blocked live tx**:
+- No real devnet `approve_message` transaction was submitted.
+- Required external state was not available: IKA coordinator PDA, dWallet account controlled by the LendingPool CPI authority PDA, writable MessageApproval PDA, active ShieldLend loan with `future_sign_authorized=true`, message digest, and user pubkey.
+- IKA pre-alpha still uses a single mock signer; do not claim production MPC or production privacy.
+
+**Validations**:
+- `npm install` — PASS (installed locked workspace dependencies)
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --workspace` — PASS (48 tests)
+- `anchor build --no-idl` — PASS with existing Anchor cfg and SBF syscall warnings
+- `npm run typecheck:frontend` — PASS
+- `npm run build:frontend` — PASS with existing `ffjavascript` dynamic worker warning
+- `npm run demo:status` — PASS; branch warning only because this task branch is `live/ika-anchor-cpi`
+- `npm run check:ika` — PASS; reports CPI compile-wired and no live tx
+- `npm run check:ika-cpi` — PASS; reports missing external IKA state
+- `node scripts/ika-live-sign-smoke.mjs` — PASS; local-only, reports SDK/Sui limits and compile-level CPI status
+
+**Claim boundary**: IKA Anchor CPI is compile-wired in `lending_pool`. IKA relay signing is not live, no IKA devnet approval tx signature exists, and direct wallet remains reduced privacy.
+
+---
+
+## 2026-05-09 — IKA devnet approval smoke reached deployment blocker
+
+**Branch**: `live/ika-anchor-cpi`
+
+**What the new smoke proved**:
+- `scripts/ika-anchor-approval-smoke.mjs` generated a fresh collateral proof from the checked-in DEV/TEST artifacts.
+- The script temporarily authorized the local wallet in `nullifier_registry`, registered a fresh nullifier, then restored the original authorized-program list.
+- `lending_pool::borrow` succeeded on devnet with a fresh loan PDA and `future_sign_authorized=true`.
+- IKA TLS gRPC DKG succeeded against `pre-alpha-dev-1.ika.ika-network.net:443`.
+- The resulting IKA dWallet PDA was committed on Solana devnet and its authority was transferred to the LendingPool CPI authority PDA.
+
+**What is still blocked**:
+- The approval CPI did not land because deployed devnet `lending_pool` program `HLtWrvLyc2SE3ERWHaEdY4RG84GxFfHv3Qf4NzJPxaF7` returned Anchor `InstructionFallbackNotFound` (`0x65`) for `approve_ika_borrow_message`.
+- 2026-05-10: traced `scripts/ika-anchor-approval-smoke.mjs` to a local fallback `process.env.LENDING_POOL_PROGRAM_ID ?? "<hardcoded id>"`; it does not read `Anchor.toml`.
+- 2026-05-10: user-provided redeploy ID `J2yn42PLSiRvGEj24Uj2q4QeGHZa1sgbzSfoLK81qn` failed `new PublicKey(...)`. Derived the actual deploy-artifact pubkey from `target/deploy/lending_pool-keypair.json` via `solana address -k`: `J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`.
+- 2026-05-10: updated active runtime/config/demo/status surfaces to the redeployed `lending_pool` ID, including `Anchor.toml`, program `declare_id!`, `shielded_pool` cross-program constant, frontend runtime constants, and package-exposed devnet scripts.
+- 2026-05-10: reran `node scripts/ika-anchor-approval-smoke.mjs`; output now prints `Lending  : J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn`, but the run stops earlier at Solana RPC `getBalance` fetch failure before any approval attempt.
+- This is now a deployment blocker on our side, not a missing-IKA-state blocker.
+
+**Claim boundary**:
+- Accurate: real IKA pre-alpha devnet DKG, on-chain dWallet creation, and authority transfer to ShieldLend CPI authority.
+- Not accurate: live IKA approval / relay signing from ShieldLend until `lending_pool` is redeployed and the CPI step succeeds.
+2026-05-11T08:04:48Z | IKA approval CPI confirmed on devnet | approve_ika_borrow_message × 2 | tx1: m5trvfdGc2...WBF | tx2: 3AHThchU8E...bk2 | remaining: gRPC presign BCS mismatch (category b)

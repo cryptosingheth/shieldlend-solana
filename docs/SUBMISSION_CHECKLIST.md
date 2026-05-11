@@ -121,12 +121,20 @@ Allowed claims (confirmed by devnet evidence):
 | MagicBlock Private Payments wSOL deposit/withdraw on devnet | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; tx signatures below |
 | MagicBlock Private Payments private-transfer base-RPC fallback | `docs/MAGICBLOCK_PRIVATE_PAYMENTS.md`; not a claim that ephemeral/router private transfer is live |
 | IKA SDK/WASM confirmed with source-backed blockers | `check-ika.mjs` output |
+| IKA Anchor CPI compile-wired + devnet DKG/dWallet transfer confirmed | `check:ika-cpi` + `smoke:ika-approval` output |
+| IKA `approve_ika_borrow_message` CPI CONFIRMED on devnet (2026-05-11) | `smoke:ika-approval`; two approval tx signatures on record; `MessageApproval` PDAs created on-chain |
+
+### IKA Approval Devnet Signatures
+
+- [x] `approve_ika_borrow_message` tx 1: `m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF`
+- [x] `approve_ika_borrow_message` tx 2: `3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2`
+- [ ] IKA gRPC presign/sign: blocked by `PresignForDWallet: unexpected end of input` (coordinator BCS schema mismatch)
 
 Not allowed (must not claim):
 
 - Production ZK trusted setup
 - Production privacy
-- IKA relay signing active
+- IKA relay signing active end-to-end (approval CPI confirmed on devnet; gRPC presign/sign blocked by IKA pre-alpha coordinator BCS schema mismatch; IKA pre-alpha is single mock signer, not production MPC)
 - MagicBlock Private Payments private transfer through the intended ephemeral/router path
 - MagicBlock PER macros in Anchor programs
 - MagicBlock TDX attestation verified
