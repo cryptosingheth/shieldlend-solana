@@ -1,20 +1,32 @@
-export type ProtocolMode = "full" | "degraded" | "emergency";
+export type ProtocolMode = "full" | "core" | "degraded" | "emergency";
+export type RailTier = "core" | "full";
 export type { SignerMode } from "./privacyRails/ika";
 
 export interface RailStatus {
-  key: "programs_deployed" | "zk_artifacts" | "groth16" | "ika" | "per" | "vrf" | "private_payments" | "encrypt" | "umbra";
+  key: "programs_deployed" | "zk_artifacts" | "groth16" | "nullifier_registry" | "ika" | "per" | "vrf" | "private_payments" | "encrypt" | "umbra";
   name: string;
   role: string;
   healthy: boolean;
+  tier: RailTier;
   requiredForFullPrivacy: boolean;
 }
 
+// Core Privacy = the four rails that are real on devnet today and produce a
+// verifiable privacy property without any pre-alpha external integration:
+//   1. Programs deployed (devnet IDs in Anchor.toml)
+//   2. ZK artifacts (DEV/TEST wasm/zkey/vkey for 3 circuits)
+//   3. On-chain Groth16 BN254 verifier (198,502 CU C2H round-trip confirmed)
+//   4. NullifierRegistry (Active/Locked/Spent state machine + CPIs)
+//
+// Full Privacy = Core + the five pre-alpha external rails (IKA, PER, VRF,
+// Private Payments, Encrypt) and the Umbra address-layer privacy rail.
 export const FULL_PRIVACY_RAILS: RailStatus[] = [
   {
     key: "programs_deployed",
     name: "Programs deployed",
-    role: "ShieldedPool / LendingPool / NullifierRegistry on devnet",
+    role: "ShieldedPool / LendingPool / NullifierRegistry on Solana devnet",
     healthy: Boolean(process.env.NEXT_PUBLIC_PROGRAMS_DEPLOYED),
+    tier: "core",
     requiredForFullPrivacy: true,
   },
   {
@@ -22,68 +34,94 @@ export const FULL_PRIVACY_RAILS: RailStatus[] = [
     name: "ZK artifacts",
     role: "withdraw_ring / collateral_ring / repay_ring — .wasm + .zkey + _vkey.json",
     healthy: Boolean(process.env.NEXT_PUBLIC_ZK_ARTIFACTS_READY),
+    tier: "core",
     requiredForFullPrivacy: true,
   },
   {
     key: "groth16",
     name: "groth16-solana verifier",
-    role: "On-chain Groth16 proof verification (BN254 syscalls)",
-    healthy: false,
+    role: "On-chain Groth16 BN254 verification confirmed on devnet (198,502 CU; DEV/TEST trusted setup)",
+    healthy: true,
+    tier: "core",
+    requiredForFullPrivacy: true,
+  },
+  {
+    key: "nullifier_registry",
+    name: "Nullifier registry",
+    role: "Active/Locked/Spent state machine + CPI from withdraw, borrow, repay",
+    healthy: Boolean(process.env.NEXT_PUBLIC_PROGRAMS_DEPLOYED),
+    tier: "core",
     requiredForFullPrivacy: true,
   },
   {
     key: "ika",
     name: "IKA dWallet relay",
-    role: "Relay authorization (pre-alpha / mock signer) — approve_message CPI compile-wired in lending_pool; no live devnet approval tx confirmed",
+    role: "approve_message CPI confirmed on devnet 2026-05-11; gRPC presign/sign still blocked by pre-alpha BCS schema mismatch (upstream)",
     healthy: false,
+    tier: "full",
     requiredForFullPrivacy: true,
   },
   {
     key: "per",
     name: "MagicBlock PER",
-    role: "Private execution lane — deposit batching and exit batching inside TDX enclave",
-    // TEE RPC is reachable (devnet-tee.magicblock.app HTTP 200 confirmed).
-    // Attestation: challenge-encoding mismatch vs SDK 0.8.8 (minor TEE API delta).
-    // Rust macros (#[ephemeral], #[delegate], #[commit]) blocked on Anchor 0.32.1.
-    // Set NEXT_PUBLIC_PER_ENABLED=true only after Anchor upgrade + macro wiring.
+    role: "Private execution lane — TEE RPC reachable, Rust macros not yet wired in shielded_pool",
     healthy: Boolean(process.env.NEXT_PUBLIC_PER_ENABLED),
+    tier: "full",
     requiredForFullPrivacy: true,
   },
   {
     key: "vrf",
     name: "MagicBlock VRF",
-    role: "Publicly verifiable dummy commitment entropy",
+    role: "Publicly verifiable dummy commitment entropy — interface accepts vrf_randomness_hash, SDK call not wired",
     healthy: false,
+    tier: "full",
     requiredForFullPrivacy: true,
   },
   {
     key: "private_payments",
     name: "MagicBlock Private Payments",
-    role: "Private repayment settlement receipts",
+    role: "Private repayment settlement — deposit/withdraw live on devnet; private-transfer blocked by upstream API",
     healthy: Boolean(process.env.NEXT_PUBLIC_MAGICBLOCK_PRIVATE_PAYMENTS_URL),
+    tier: "full",
     requiredForFullPrivacy: true,
   },
   {
     key: "encrypt",
     name: "Encrypt FHE",
-    role: "Encrypted oracle health-factor computation and liquidation reveal",
+    role: "gRPC CreateInput live; on-chain decryption verify pending Encrypt threshold callback (upstream pre-alpha)",
     healthy: process.env.NEXT_PUBLIC_ENCRYPT_ENABLED === "true",
+    tier: "full",
     requiredForFullPrivacy: true,
   },
   {
     key: "umbra",
     name: "Umbra SDK",
-    role: "SPL/Token-2022 encrypted balances and mixer receiver path for exits",
+    role: "SPL/Token-2022 stealth-address output rail — funded wSOL devnet round-trip confirmed (7 tx)",
     healthy: process.env.NEXT_PUBLIC_UMBRA_ENABLED === "true" &&
       Boolean(process.env.NEXT_PUBLIC_UMBRA_PROGRAM_ID) &&
       Boolean(process.env.NEXT_PUBLIC_UMBRA_INDEXER_URL),
+    tier: "full",
     requiredForFullPrivacy: true,
   },
 ];
 
+export function coreRails(rails: RailStatus[] = FULL_PRIVACY_RAILS): RailStatus[] {
+  return rails.filter((r) => r.tier === "core");
+}
+
+export function fullPrivacyOnlyRails(rails: RailStatus[] = FULL_PRIVACY_RAILS): RailStatus[] {
+  return rails.filter((r) => r.tier === "full");
+}
+
+export function coreReady(rails: RailStatus[] = FULL_PRIVACY_RAILS): boolean {
+  return coreRails(rails).every((r) => r.healthy);
+}
+
 export function modeFromRails(rails: RailStatus[]): ProtocolMode {
-  if (rails.some((rail) => !rail.healthy && rail.requiredForFullPrivacy)) return "degraded";
-  return "full";
+  const allHealthy = rails.every((r) => r.healthy || !r.requiredForFullPrivacy);
+  if (allHealthy) return "full";
+  if (coreReady(rails)) return "core";
+  return "degraded";
 }
 
 export interface ExternalReceipt {
