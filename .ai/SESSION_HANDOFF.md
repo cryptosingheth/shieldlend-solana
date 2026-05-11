@@ -4,7 +4,36 @@
 
 Implement the Encrypt Anchor/on-chain path as far as genuinely possible on `live/encrypt-anchor` without faking FHE or on-chain decryption.
 
-## Current Session Update — 2026-05-09
+## Current Session Update — 2026-05-10
+
+### Encrypt Option B hardening — commit `7a2118b`
+
+Full validation suite passed on `live/encrypt-anchor`:
+
+| Check | Result |
+|---|---|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --workspace` | PASS — 52 tests |
+| `anchor build --no-idl` | PASS (SBF warnings only) |
+| `npm run typecheck:frontend` | PASS |
+| `npm run build:frontend` | PASS |
+| `npm run demo:status` | PASS — all ok (branch warn fixed) |
+| `npm run check:encrypt -- --live` | PASS — ciphertext `TEKonURJhM41WBgKhgJYfyHzmnpnQ3tdgJBSnS62zRi` |
+| `npm run check:encrypt-anchor -- --live` | PASS — upstream blocked confirmed; local fork compiles |
+| `node scripts/encrypt-health-smoke.mjs --live` | PASS — 3 ciphertext handles returned |
+
+Changes in this session:
+- `scripts/demo-status.mjs`: accept `live/encrypt-anchor` branch; update ciphertext IDs; label Option B
+- `docs/ENCRYPT_LIVE_HARDENING.md`: add Option B table; record 2 active network keys; update IDs
+
+Encrypt devnet state (2026-05-10):
+- 2 active network keys: disc=2 `f00f3465...` (real), disc=7 `5555...` (sentinel)
+- Latest health_ratio ciphertext: `TEKonURJhM41WBgKhgJYfyHzmnpnQ3tdgJBSnS62zRi`
+- Latest health-smoke (3 inputs): collateral `AfVVxyXvMcd5Gia36rRjFUbhwdx7GsDMty6XTuDGQ2Hw`, debt `GarhsLbtNa5EKB4GvUac7fZvAidTW3MaSyxFjK5a7q6F`, threshold `2wF4v3ZhXCN1vbisMGsngiDTPUUfSJuQiixNstC97MtD`
+
+Safe to `/clear`.
+
+## Previous Session Update — 2026-05-09
 
 ### Encrypt Anchor/on-chain feasibility
 

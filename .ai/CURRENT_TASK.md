@@ -1,6 +1,12 @@
 # Current Task
 
-## Status: Encrypt Anchor compatibility boundary on `live/encrypt-anchor` — gRPC live, upstream Anchor CPI blocked, local Anchor 0.32 fork compile-wired.
+## Status: COMPLETE — Encrypt Option B hardened on `live/encrypt-anchor` — commit `7a2118b feat: harden encrypt anchor demo rail`.
+
+All validations passed. Commit is clean. Safe to `/clear`.
+
+Allowed claim: Encrypt pre-alpha gRPC CreateInput works live and returns ciphertext handles for modeled ShieldLend health/risk values. Option B (vendor/encrypt-anchor-anchor032) compile-wires the CPI path. No on-chain FHE is live.
+
+## Previous Status: Encrypt Anchor compatibility boundary on `live/encrypt-anchor` — gRPC live, upstream Anchor CPI blocked, local Anchor 0.32 fork compile-wired.
 
 ### Encrypt Anchor Feasibility (2026-05-09)
 
