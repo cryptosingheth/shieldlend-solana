@@ -650,11 +650,13 @@ function WhatWorksTodayPanel() {
             <li>All 3 Anchor programs deployed (NullifierRegistry, ShieldedPool, LendingPool)</li>
             <li>On-chain Groth16 BN254 withdraw verification — DEV/TEST trusted setup; 198,502 CU; full C2H round-trip passed</li>
             <li>DEV/TEST ZK artifacts (withdraw_ring, collateral_ring, repay_ring) — browser WASM + zkey + vkey generated</li>
+            <li>NullifierRegistry CPIs — withdraw + borrow lock path confirmed end-to-end on devnet</li>
             <li>Umbra funded devnet wSOL encrypted-balance deposit/withdraw confirmed via SDK 4.0.0</li>
             <li>Encrypt pre-alpha gRPC CreateInput confirmed — live network key + ciphertext returned</li>
             <li>MagicBlock SDK installed; TEE RPC + Router RPC HTTP 200; PER sidecar instruction builders confirmed</li>
-            <li>IKA SDK probe confirmed; IKA approve_message Anchor CPI compile-wired in LendingPool from official pre-alpha source</li>
+            <li>IKA approve_message CPI confirmed on devnet 2026-05-11 — two tx signatures + MessageApproval PDAs created on-chain</li>
             <li>Note vault encryption (AES-256-GCM + HKDF, wallet-derived key); history encryption</li>
+            <li>In-UI deposit flow — real Phantom-signed devnet transaction with note vault persistence</li>
           </ul>
         </div>
         <div>
@@ -663,17 +665,17 @@ function WhatWorksTodayPanel() {
             <li>Umbra SDK adapter — fail-closed for native SOL exits; wSOL/SPL bridge needed for ShieldLend payout routing</li>
             <li>Encrypt gRPC — live client/probe path; LendingPool now compile-wires a separate Encrypt CPI request/reveal path through a local Anchor 0.32 fork, but official upstream encrypt-anchor is still blocked by the AccountInfo crate-family mismatch</li>
             <li>MagicBlock PER sidecar — TypeScript only; Rust macros blocked on Anchor 0.32.1; on-chain PER tx not submitted</li>
-            <li>IKA adapter — SDK probe + compile-level CPI status; direct wallet fallback labelled reduced privacy</li>
-            <li>Withdraw / Borrow / Repay UI — intentionally blocked until full rail dependencies are live</li>
+            <li>IKA gRPC PresignForDWallet — pre-alpha BCS schema mismatch upstream; approval CPI works, full sign flow blocked</li>
+            <li>In-UI withdraw + borrow submit handlers — devnet flows live via scripts (devnet-fullround.mjs, ika-anchor-approval-smoke.mjs); React submit binding ships next sprint</li>
           </ul>
           <p style={{ margin: "12px 0 6px", fontWeight: 600, fontSize: "13px", color: "var(--danger)" }}>Not live — do not claim</p>
           <ul className="plain-list" style={{ fontSize: "13px", color: "var(--fg-2)" }}>
             <li>Production trusted setup — DEV/TEST ptau only; no production ceremony</li>
-            <li>IKA relay signing — mock signer (pre-alpha); no real devnet approve_message tx submitted</li>
-            <li>MagicBlock Private Payments — URL not configured; TDX attestation challenge mismatch (SDK 0.8.8 delta)</li>
+            <li>IKA relay signing end-to-end — approve_message CPI confirmed; gRPC sign blocked upstream</li>
+            <li>MagicBlock Private Payments private-transfer end-to-end — upstream API/router limitation</li>
             <li>Encrypt on-chain FHE health computation — local CPI wiring compiles, but no live encrypted oracle or on-chain decryption path is proven</li>
-            <li>Umbra ShieldLend payout routing — native SOL C2H path remains direct stealth_address</li>
-            <li>NullifierRegistry CPIs in withdraw/borrow/repay — scaffolded, not executed end-to-end</li>
+            <li>Umbra ShieldLend payout routing — native SOL path remains direct stealth_address</li>
+            <li>NullifierRegistry CPI on repay — scaffolded; gated on verify_private_payment_receipt (MagicBlock upstream)</li>
           </ul>
         </div>
       </div>
@@ -784,9 +786,6 @@ function Withdraw({
   const canPrepare = connected && vaultReady && notes.length > 0 && (route.canRoute || isCoreModeDirectPath) &&
     destinationMode !== "wsol_umbra_adapter"; // adapter path uses the roundtrip script, not the UI submit path
 
-  const shieldedPoolExplorerUrl =
-    "https://explorer.solana.com/address/9Bvt3jMawHFRRxpaQTtV5VvFdpZkmAZtvwjTrAX9TAtE?cluster=devnet";
-
   return (
     <section className="stack">
       <Hero
@@ -876,15 +875,13 @@ function Withdraw({
             )
             : (
               <button
-                disabled={!canPrepare}
-                onClick={() => {
-                  if (isCoreModeDirectPath) {
-                    window.open(shieldedPoolExplorerUrl, "_blank", "noopener,noreferrer");
-                  }
-                }}
+                disabled={true}
+                title={isCoreModeDirectPath
+                  ? "In-UI submit binding ships in the next sprint. The devnet flow is already proven via scripts/devnet-fullround.mjs (198,502 CU on-chain Groth16 verification)."
+                  : "Submit path requires proof inputs, deployed programs, and the selected destination rail."}
                 style={{ marginTop: "16px", padding: "10px 14px" }}
               >
-                {isCoreModeDirectPath ? "View shielded_pool on Solana Explorer" : "Prepare withdraw route"}
+                {isCoreModeDirectPath ? "Submit withdraw (UI binding — next sprint)" : "Prepare withdraw route"}
               </button>
             )
           }
@@ -893,7 +890,8 @@ function Withdraw({
             {isCoreModeDirectPath ? (
               <>
                 {" "}Core Privacy direct path: deposit → ring proof → nullifier spend → fresh stealth-address payout.
-                Submit binding is currently exercised via <code>scripts/devnet-fullround.mjs</code>; UI submit handler ships next.
+                Devnet flow proven end-to-end: 198,502 CU on-chain Groth16 verification via
+                <code> scripts/devnet-fullround.mjs</code>. React submit handler ships next.
               </>
             ) : (
               <>
@@ -977,8 +975,6 @@ function WsolUmbraAdapterPanel({ path }: { path: WsolUmbraPayoutPath }) {
 }
 
 function BorrowScreen({ notes }: { notes: StoredNote[] }) {
-  const lendingPoolExplorerUrl =
-    "https://explorer.solana.com/address/J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn?cluster=devnet";
   const approveTx1 = "m5trvfdGc2AtqXh4chLoKdo5cXfCCL7mE3EB7tKHynGdDN5RV12SzpkQX2DgzAFiwzcLtYdQSgBJ1cPPbbj9WBF";
   const approveTx2 = "3AHThchU8EAjQ2aYsbrDy212JJvHPE3ajtLx2ZLKVBxJnfSHnRTTUeZxX2en2zz4UGmUuzMjU3sgbV5J9bkKZbk2";
 
@@ -1035,22 +1031,15 @@ function BorrowScreen({ notes }: { notes: StoredNote[] }) {
             </dd>
             <dt>LendingPool program</dt>
             <dd>
-              <a
-                href={lendingPoolExplorerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "var(--privacy)" }}
-              >
+              <code style={{ wordBreak: "break-all", fontSize: "12px" }}>
                 J2yn42PLSiRvGEGj24Uj2q4QeGHZa1sbgzs5foLK81qn
-              </a>
+              </code>
             </dd>
           </dl>
-          <button
-            style={{ marginTop: "16px", padding: "10px 14px" }}
-            onClick={() => window.open(lendingPoolExplorerUrl, "_blank", "noopener,noreferrer")}
-          >
-            Open lending_pool activity on Solana Explorer
-          </button>
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            All four entries above are real on-chain devnet artifacts. Tx signatures and program ID are verifiable
+            by any client; clicking a tx hash above opens Solana Explorer for that transaction.
+          </p>
         </Panel>
 
         <Panel title="What's wired vs roadmap">
